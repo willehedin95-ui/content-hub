@@ -38,7 +38,15 @@ export async function GET(req: NextRequest) {
   if (marketRelevance) query = query.eq("market_relevance", marketRelevance);
   if (sentiment) query = query.eq("sentiment", sentiment);
   if (platform) query = query.eq("research_sources.platform", platform);
-  if (search) query = query.or(`review_text.ilike.%${search}%,summary.ilike.%${search}%,review_title.ilike.%${search}%`);
+  if (search) {
+    // Sanitize search to prevent PostgREST filter injection (same pattern as
+    // the assets route) - commas/parens/wildcards would otherwise be parsed
+    // as .or() syntax.
+    const safeSearch = search.replace(/[,.*{}()\\]/g, "");
+    if (safeSearch) {
+      query = query.or(`review_text.ilike.%${safeSearch}%,summary.ilike.%${safeSearch}%,review_title.ilike.%${safeSearch}%`);
+    }
+  }
 
   const { data, count, error } = await query;
 

@@ -36,10 +36,14 @@ export async function PATCH(
   if (body.demographics !== undefined) updateData.demographics = body.demographics;
   if (body.sort_order !== undefined) updateData.sort_order = body.sort_order;
 
+  // Bind the mutation to the product as well (same pattern as
+  // images/[imageId]) so a segmentId from another product/workspace
+  // can't be mutated through this product's route.
   const { data, error } = await db
     .from("product_segments")
     .update(updateData)
     .eq("id", segmentId)
+    .eq("product_id", productId)
     .select()
     .single();
 
@@ -75,7 +79,8 @@ export async function DELETE(
   const { error } = await db
     .from("product_segments")
     .delete()
-    .eq("id", segmentId);
+    .eq("id", segmentId)
+    .eq("product_id", productId);
 
   if (error) {
     return safeError(error, "Failed to delete segment");

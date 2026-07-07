@@ -3,9 +3,10 @@ import {
   getConfig,
   getProjectName,
   getProjectCustomDomain,
+  getWorkspaceIdForCfProject,
   md5hex,
-  loadManifest,
-  mergeManifest,
+  mergeManifestForDeploy,
+  checkMissingAssets,
   getUploadToken,
   uploadFiles,
   upsertHashes,
@@ -46,14 +47,21 @@ export async function getRelatedArticles(
 ): Promise<BlogArticleSummary[]> {
   const db = createServerSupabase();
 
+  // Scope to the workspace owning this language's CF project so slug
+  // collisions across workspaces can't pick the wrong article.
+  const relWorkspaceId = await getWorkspaceIdForCfProject(getProjectName(language));
+
   // Get current article's category + content_plan keywords
-  const { data: current } = await db
+  let currentQuery = db
     .from("translations")
-    .select("slug, seo_title, pages!inner(blog_category, content_type)")
+    .select("slug, seo_title, pages!inner(blog_category, content_type, workspace_id)")
     .eq("slug", currentSlug)
     .eq("language", language)
-    .eq("pages.content_type", "seo_blog")
-    .single();
+    .eq("pages.content_type", "seo_blog");
+  if (relWorkspaceId) {
+    currentQuery = currentQuery.eq("pages.workspace_id", relWorkspaceId);
+  }
+  const { data: current } = await currentQuery.limit(1).maybeSingle();
   const currentCategory = (current?.pages as unknown as { blog_category?: string })?.blog_category;
   const currentTitle = (current?.seo_title as string) || "";
 
@@ -136,32 +144,62 @@ export async function getRelatedArticles(
 }
 
 /**
- * Fetch all published SEO blog articles for a language.
- * Used for homepage generation and related articles sidebar.
+ * Fetch all published SEO blog articles for a language, scoped to the
+ * workspace that owns the language's CF Pages project (audit 2026-07-07, E1:
+ * halsobladet's homepage/RSS listed doginwork + hydro13 articles).
+ *
+ * Pass `workspaceId` to scope explicitly (e.g. from a caller that already
+ * knows the workspace); otherwise it is resolved via the CF-project mapping.
  */
 export async function getPublishedBlogArticles(
   language: Language,
-  excludeSlug?: string
+  excludeSlug?: string,
+  workspaceId?: string
 ): Promise<BlogArticleSummary[]> {
   const db = createServerSupabase();
+
+  let wsId = workspaceId;
+  if (!wsId) {
+    const projectName = getProjectName(language);
+    wsId = (await getWorkspaceIdForCfProject(projectName)) ?? undefined;
+    if (!wsId) {
+      console.warn(
+        `[getPublishedBlogArticles] No workspace mapping for CF project "${projectName}" - returning no articles to avoid cross-workspace leakage`
+      );
+      return [];
+    }
+  }
 
   const query = db
     .from("translations")
     .select(
-      "slug, seo_title, seo_description, updated_at, created_at, pages!inner(content_type, blog_category, blog_featured_image_url)"
+      "slug, seo_title, seo_description, updated_at, created_at, pages!inner(content_type, blog_category, blog_featured_image_url, workspace_id)"
     )
     .eq("language", language)
     .eq("status", "published")
     .eq("pages.content_type", "seo_blog")
+    .eq("pages.workspace_id", wsId)
     .not("slug", "is", null);
 
   if (excludeSlug) {
     query.neq("slug", excludeSlug);
   }
 
-  const { data } = await query.order("created_at", { ascending: false });
+  const { data, error } = await query.order("created_at", { ascending: false });
+  if (error) {
+    console.error(`[getPublishedBlogArticles] query failed: ${error.message}`);
+    return [];
+  }
 
-  return (data ?? []).map((t) => {
+  // Dedupe by slug - duplicate published rows exist in legacy data and the
+  // homepage/RSS must list each article once. Newest (first) wins.
+  const seenSlugs = new Set<string>();
+
+  return (data ?? []).filter((t) => {
+    if (!t.slug || seenSlugs.has(t.slug)) return false;
+    seenSlugs.add(t.slug);
+    return true;
+  }).map((t) => {
     const page = t.pages as unknown as {
       blog_category?: string;
       blog_featured_image_url?: string;
@@ -285,41 +323,55 @@ export async function deployBlogHomepage(
     });
   }
 
-  // Load existing manifest and merge
-  const existingManifest = await loadManifest(projectName);
-  const manifest: Record<string, string> = { ...existingManifest };
-  for (const f of newFiles) {
-    manifest[f.path] = f.hash;
-  }
-
-  const existingHashes = new Set(Object.values(existingManifest));
-  const filesToUpload = newFiles.filter((f) => !existingHashes.has(f.hash));
-
-  const jwt = await getUploadToken(accountId, apiToken, projectName);
-
-  if (filesToUpload.length > 0) {
-    await uploadFiles(jwt, filesToUpload);
-    await upsertHashes(
-      jwt,
-      filesToUpload.map((f) => f.hash)
-    );
-  }
-
-  const deploy = await createDeployment(
-    accountId,
-    apiToken,
-    projectName,
-    manifest
-  );
-
-  const newPathsOnly: Record<string, string> = {};
-  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
-  await mergeManifest(projectName, newPathsOnly);
+  const deploy = await uploadAndDeploy(accountId, apiToken, projectName, newFiles);
 
   return {
     url: `${baseUrl}/`,
     deploy_id: deploy.id,
   };
+}
+
+/**
+ * Shared deploy tail: CF check-missing based upload dedupe + deploy with the
+ * post-merge manifest (closes the concurrent-deploy manifest race).
+ * (audit 2026-07-07, P2 manifest-race + CF-dedupe)
+ */
+async function uploadAndDeploy(
+  accountId: string,
+  apiToken: string,
+  projectName: string,
+  newFiles: Array<{ path: string; hash: string; content: Buffer; contentType: string }>
+): Promise<{ id: string; url: string }> {
+  const jwt = await getUploadToken(accountId, apiToken, projectName);
+
+  const uniqueHashes = Array.from(new Set(newFiles.map((f) => f.hash)));
+  let missing: Set<string>;
+  try {
+    missing = await checkMissingAssets(jwt, uniqueHashes);
+  } catch (err) {
+    console.warn(
+      `[blog-deploy] check-missing failed - falling back to full upload:`,
+      err instanceof Error ? err.message : err
+    );
+    missing = new Set(uniqueHashes);
+  }
+  const seen = new Set<string>();
+  const filesToUpload = newFiles.filter((f) => {
+    if (!missing.has(f.hash) || seen.has(f.hash)) return false;
+    seen.add(f.hash);
+    return true;
+  });
+
+  if (filesToUpload.length > 0) {
+    await uploadFiles(jwt, filesToUpload);
+  }
+  await upsertHashes(jwt, uniqueHashes);
+
+  const newPathsOnly: Record<string, string> = {};
+  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
+  const mergedManifest = await mergeManifestForDeploy(projectName, newPathsOnly);
+
+  return createDeployment(accountId, apiToken, projectName, mergedManifest);
 }
 
 /**
@@ -359,35 +411,7 @@ export async function deployBlogRssFeed(
     },
   ];
 
-  const existingManifest = await loadManifest(projectName);
-  const manifest: Record<string, string> = { ...existingManifest };
-  for (const f of newFiles) {
-    manifest[f.path] = f.hash;
-  }
-
-  const existingHashes = new Set(Object.values(existingManifest));
-  const filesToUpload = newFiles.filter((f) => !existingHashes.has(f.hash));
-
-  const jwt = await getUploadToken(accountId, apiToken, projectName);
-
-  if (filesToUpload.length > 0) {
-    await uploadFiles(jwt, filesToUpload);
-    await upsertHashes(
-      jwt,
-      filesToUpload.map((f) => f.hash)
-    );
-  }
-
-  const deploy = await createDeployment(
-    accountId,
-    apiToken,
-    projectName,
-    manifest
-  );
-
-  const newPathsOnly: Record<string, string> = {};
-  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
-  await mergeManifest(projectName, newPathsOnly);
+  const deploy = await uploadAndDeploy(accountId, apiToken, projectName, newFiles);
 
   return {
     url: `${baseUrl}/rss.xml`,

@@ -5,7 +5,7 @@ import {
   listAdSets,
   listAdsInAdSet,
   updateAdSet,
-  setMetaConfig,
+  runWithMetaConfig,
 } from "@/lib/meta";
 import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 
@@ -110,15 +110,36 @@ export async function GET(req: NextRequest) {
   }
 
   // --- Load permanent ad set IDs (global protection list) ---
-  const { data: permanentMappings } = await db
+  const { data: permanentMappings, error: permErr } = await db
     .from("meta_campaign_mappings")
     .select("template_adset_id")
     .eq("is_permanent", true);
+  if (permErr) {
+    console.error("[cleanup-empty-adsets] permanent mappings query failed:", permErr.message);
+  }
   const permanentAdSetIds = new Set(
     (permanentMappings ?? [])
       .map((m: { template_adset_id: string | null }) => m.template_adset_id)
       .filter((x): x is string => Boolean(x)),
   );
+
+  // --- Ad set age lookup (M5 2026-07-07): freshly pushed ad sets are tracked in
+  // meta_campaigns; skip anything younger than 24h so we never pause an ad set
+  // whose ads are still in Meta review right after a push.
+  const { data: adsetAges, error: ageErr } = await db
+    .from("meta_campaigns")
+    .select("meta_adset_id, created_at")
+    .not("meta_adset_id", "is", null);
+  if (ageErr) {
+    console.error("[cleanup-empty-adsets] meta_campaigns age query failed:", ageErr.message);
+  }
+  const adsetCreatedAt = new Map<string, string>();
+  for (const row of adsetAges ?? []) {
+    if (row.meta_adset_id && row.created_at) {
+      adsetCreatedAt.set(row.meta_adset_id as string, row.created_at as string);
+    }
+  }
+  const MIN_ADSET_AGE_MS = 24 * 60 * 60 * 1000;
 
   // --- Walk each ad account ---
   type PauseRecord = {
@@ -135,7 +156,10 @@ export async function GET(req: NextRequest) {
 
   for (const entry of entries) {
     try {
-      setMetaConfig(entry.metaConfig as Parameters<typeof setMetaConfig>[0]);
+      // M5 (2026-07-07): whole account walk runs request-scoped — the pause
+      // write below is a money-write and must never hit the wrong ad account
+      // if a concurrent request swaps the module-global config.
+      await runWithMetaConfig(entry.metaConfig as Parameters<typeof runWithMetaConfig>[0], async () => {
 
       const campaigns = await listCampaigns();
       await sleep(READ_DELAY_MS);
@@ -157,15 +181,26 @@ export async function GET(req: NextRequest) {
           // Never touch permanent/template ad sets
           if (permanentAdSetIds.has(adSet.id)) continue;
 
+          // M5: never touch ad sets younger than 24h — a fresh push whose ads
+          // are still in review looks "empty" but is very much alive.
+          const createdAt = adsetCreatedAt.get(adSet.id);
+          if (createdAt && Date.now() - new Date(createdAt).getTime() < MIN_ADSET_AGE_MS) {
+            continue;
+          }
+
           const ads = await listAdsInAdSet(adSet.id);
           await sleep(READ_DELAY_MS);
 
           // "Empty" if either (a) there are no ads at all, or (b) every ad
           // is in a non-delivering state. We check effective_status on each
           // ad so rejections, pauses, and inherited states all count.
+          // M5 (2026-07-07): ads under Meta review (PENDING_REVIEW/PREAPPROVED/
+          // IN_PROCESS) count as ALIVE — pausing their ad set mid-review killed
+          // freshly pushed concepts.
+          const ALIVE_AD_STATUSES = new Set(["ACTIVE", "PENDING_REVIEW", "PREAPPROVED", "IN_PROCESS"]);
           const activeAds = ads.filter((a) => {
             const adEffective = a.effective_status || a.status;
-            return adEffective === "ACTIVE";
+            return ALIVE_AD_STATUSES.has(adEffective);
           });
 
           if (activeAds.length > 0) continue; // still has live ads → leave alone
@@ -222,15 +257,14 @@ export async function GET(req: NextRequest) {
           }
         }
       }
+
+      }); // end runWithMetaConfig for this ad account
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       console.error(`[cleanup-empty-adsets] Workspace ${entry.workspaceName} failed:`, msg);
       errors.push({ adSetId: `ws:${entry.workspaceName}`, error: msg });
     }
   }
-
-  // Reset workspace-specific Meta config
-  setMetaConfig(null);
 
   // --- Telegram digest ---
   if (paused.length > 0 && !dryRun) {

@@ -406,6 +406,28 @@ export function BuilderProvider({
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastImageDataRef = useRef<ClickedMedia | null>(null);
   const lastVideoDataRef = useRef<ClickedMedia | null>(null);
+  // Original inline scripts + third-party iframes stripped from the editor
+  // iframe at load, keyed by placeholder id. extractHtmlFromIframe()
+  // re-injects them so autosave/publish no longer silently destroy page
+  // functionality (audit 2026-07-07, E4). Ids are randomUUIDs (not sequence
+  // numbers): copy/paste can clone placeholder comments, and stale comments
+  // from an earlier load cycle must never collide with the current map.
+  const preservedNodesRef = useRef<Map<string, string>>(new Map());
+
+  /**
+   * Re-inject preserved script/iframe originals at their placeholder
+   * positions in a serialized HTML string, then strip any unmatched
+   * ch-preserved comments (stale/duplicated placeholders) so they can
+   * never leak into saved or published HTML.
+   * split/join = replaceAll without "$"-interpretation; cloned duplicate
+   * placeholders (user duplicated a section) each get the original node.
+   */
+  function reinjectPreservedNodes(html: string): string {
+    for (const [id, original] of preservedNodesRef.current) {
+      html = html.split(`<!--ch-preserved-${id}-->`).join(original);
+    }
+    return html.replace(/<!--ch-preserved-[a-zA-Z0-9-]+-->/g, "");
+  }
 
   // -----------------------------------------------------------------------
   // State — ported from EditPageClient.tsx
@@ -704,7 +726,10 @@ export function BuilderProvider({
       if (!responsiveStyle.textContent?.trim()) responsiveStyle.remove();
     }
 
-    return "<!DOCTYPE html>\n" + clone.outerHTML;
+    // Re-inject preserved inline scripts + third-party iframes at their
+    // placeholder positions and strip stale placeholders (see
+    // reinjectPreservedNodes / handleIframeLoad). (audit E4)
+    return reinjectPreservedNodes("<!DOCTYPE html>\n" + clone.outerHTML);
   }
 
   // -----------------------------------------------------------------------
@@ -988,16 +1013,31 @@ export function BuilderProvider({
         el.remove();
     });
 
-    // Strip third-party scripts/widgets from editor (Freshchat, analytics, etc.)
-    // They run live in the iframe and can't be selected/deleted. Keep only
-    // editor-injected scripts (data-cc-*). Originals are preserved in saved HTML.
+    // Strip third-party scripts/widgets from the editor (Freshchat, analytics,
+    // etc.) - they run live in the iframe and can't be selected/deleted. Keep
+    // only editor-injected scripts (data-cc-*).
+    //
+    // IMPORTANT (audit 2026-07-07, E4): plain removal permanently destroyed
+    // the page's scripts - the first autosave wrote the loss to the DB and the
+    // next publish deployed a functionally dead page. Instead we now swap each
+    // stripped node for a <!--ch-preserved-N--> comment placeholder and stash
+    // the original; extractHtmlFromIframe() re-injects the originals at the
+    // placeholder positions. If the user deletes a section, its placeholder
+    // goes with it and the node is (correctly) dropped.
+    preservedNodesRef.current = new Map();
+    const preserveNode = (el: Element) => {
+      const id = crypto.randomUUID();
+      preservedNodesRef.current.set(id, el.outerHTML);
+      const placeholder = doc.createComment(`ch-preserved-${id}`);
+      el.parentNode?.replaceChild(placeholder, el);
+    };
     doc.querySelectorAll("script").forEach((s) => {
-      if (!s.hasAttribute("data-cc-injected")) s.remove();
+      if (!s.hasAttribute("data-cc-injected")) preserveNode(s);
     });
-    // Also remove iframes injected by widgets (chat widgets, trackers)
+    // Also swap out iframes injected by widgets (chat widgets, trackers)
     doc.querySelectorAll("iframe:not([data-cc-injected])").forEach((f) => {
       const src = f.getAttribute("src") || "";
-      if (!src.startsWith("/api/preview")) f.remove();
+      if (!src.startsWith("/api/preview")) preserveNode(f);
     });
 
     // Convert clean data-pad attributes back to editor data-cc-padded
@@ -1935,7 +1975,9 @@ export function BuilderProvider({
       });
     }
     cleanNode(clone);
-    setSaveComponentHtml(clone.outerHTML);
+    // Re-inject preserved scripts/iframes so the saved component contains the
+    // real nodes, not ch-preserved placeholder comments (audit E4 follow-up).
+    setSaveComponentHtml(reinjectPreservedNodes(clone.outerHTML));
     setShowSaveComponentModal(true);
     closeContextMenu();
   }

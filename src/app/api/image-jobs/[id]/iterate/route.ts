@@ -68,6 +68,9 @@ export async function POST(
         return NextResponse.json({ error: "Segment not found" }, { status: 404 });
       }
       const seg = segment as ProductSegment;
+      // NOTE: segment_demographics is intentionally NOT passed along - raw
+      // quiz stats in that field leaked into the copy bot's prompt (audit
+      // 2026-07-07 F1). brainstorm.ts omits the Demographics line when absent.
       iterationContext = {
         ...iterationContext,
         segment_id: seg.id,
@@ -75,7 +78,6 @@ export async function POST(
         segment_description: seg.description,
         segment_core_desire: seg.core_desire,
         segment_core_constraints: seg.core_constraints,
-        segment_demographics: seg.demographics,
       };
       childName = `${parent.name} → ${seg.name}`;
       break;
@@ -153,14 +155,32 @@ export async function POST(
 
   if (parentDna && parent.product) {
     try {
-      // Fetch product + guidelines for Claude context
-      const [{ data: product }, { data: guidelines }, { data: segments }] = await Promise.all([
-        db.from("products").select("*").eq("slug", parent.product).single(),
-        db.from("copywriting_guidelines").select("*").or(`product_id.is.null,product_id.eq.${parent.product}`),
-        db.from("product_segments").select("*").eq("product_id", parent.product),
-      ]);
+      // Fetch product + guidelines for Claude context.
+      // parent.product stores the product SLUG - resolve it to the uuid FIRST.
+      // Querying product_id (uuid) with the slug fails with 22P02 and used to
+      // be swallowed, so iteration copy was generated without guidelines/segments.
+      const { data: product, error: productErr } = await db
+        .from("products")
+        .select("*")
+        .eq("slug", parent.product)
+        .eq("workspace_id", workspaceId)
+        .single();
+      if (productErr) {
+        console.warn("[iterate] Product lookup failed:", productErr.message);
+      }
 
       if (product) {
+        const [{ data: guidelines, error: guidelinesErr }, { data: segments, error: segmentsErr }] = await Promise.all([
+          db.from("copywriting_guidelines").select("*").or(`product_id.is.null,product_id.eq.${product.id}`),
+          db.from("product_segments").select("*").eq("product_id", product.id),
+        ]);
+        if (guidelinesErr) {
+          console.warn("[iterate] Guidelines query failed:", guidelinesErr.message);
+        }
+        if (segmentsErr) {
+          console.warn("[iterate] Segments query failed:", segmentsErr.message);
+        }
+
         const rewritten = await generateIterationCopy({
           parentName: parent.name,
           parentCopy: {

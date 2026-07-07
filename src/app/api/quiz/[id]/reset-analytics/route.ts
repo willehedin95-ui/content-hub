@@ -4,7 +4,7 @@ import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -19,13 +19,29 @@ export async function POST(
   // Verify quiz belongs to this workspace
   const { data: quiz, error: quizErr } = await db
     .from("quizzes")
-    .select("id")
+    .select("id, status")
     .eq("id", id)
     .eq("workspace_id", workspaceId)
     .single();
 
   if (quizErr || !quiz) {
     return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+  }
+
+  // Hard-delete guard: the confirm field is ALWAYS required, and doubly so
+  // for published quizzes where sessions/events are the live research base.
+  const body = (await req.json().catch(() => null)) as { confirm?: string } | null;
+  if (body?.confirm !== "DELETE_ALL") {
+    const status = quiz.status === "published" ? 403 : 400;
+    return NextResponse.json(
+      {
+        error:
+          quiz.status === "published"
+            ? 'This quiz is PUBLISHED - resetting deletes the live funnel\'s analytics. Pass { "confirm": "DELETE_ALL" } to proceed.'
+            : 'Missing confirmation - pass { "confirm": "DELETE_ALL" } to permanently delete all sessions and events.',
+      },
+      { status },
+    );
   }
 
   // Count before deletion for the response

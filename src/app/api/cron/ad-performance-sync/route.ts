@@ -7,9 +7,10 @@ import {
   AdSetInsightDailyRow,
   listCampaigns,
   getCampaignBudget,
-  setMetaConfig,
+  runWithMetaConfig,
 } from "@/lib/meta";
 import { startCronRun, completeCronRun, failCronRun } from "@/lib/cron-tracker";
+import { sendTelegramNotification } from "@/lib/telegram";
 import type { WorkspaceMetaConfig } from "@/types";
 
 export const maxDuration = 120;
@@ -39,6 +40,7 @@ function formatDate(d: Date): string {
 
 interface AccountConfig {
   label: string;
+  adAccountId: string;
   metaConfig: WorkspaceMetaConfig | null; // null = use env vars
 }
 
@@ -65,23 +67,40 @@ async function collectAccountConfigs(
   const envAccountId = process.env.META_AD_ACCOUNT_ID?.trim();
   if (envToken && envAccountId) {
     seenAccountIds.add(envAccountId);
-    configs.push({ label: `env(${envAccountId})`, metaConfig: null });
+    configs.push({ label: `env(${envAccountId})`, adAccountId: envAccountId, metaConfig: null });
   }
 
   // 2. Workspace-specific accounts
-  const { data: workspaces } = await db
+  const { data: workspaces, error: wsErr } = await db
     .from("workspaces")
     .select("slug, meta_config");
+  if (wsErr) {
+    console.error("[Ad Perf Sync] workspaces query failed:", wsErr.message);
+  }
 
   for (const ws of workspaces ?? []) {
     const mc = ws.meta_config as WorkspaceMetaConfig | null;
-    if (!mc?.ad_account_id || !mc?.system_user_token) continue;
+    if (!mc?.ad_account_id) continue;
     if (seenAccountIds.has(mc.ad_account_id)) continue;
+
+    // M4 (2026-07-07): workspaces without their own system_user_token fall back
+    // to the shared env token — same semantics as getToken(). hydro13/doginwork
+    // only set ad_account_id (+ use_shared_token) and were silently skipped,
+    // which froze their performance data. Skip only when NO token exists at all.
+    const useSharedToken = (mc as Record<string, unknown>).use_shared_token === true;
+    if (!mc.system_user_token && !envToken) {
+      console.error(
+        `[Ad Perf Sync] ws:${ws.slug}(${mc.ad_account_id}) has no system_user_token and no env fallback — skipping`
+      );
+      continue;
+    }
 
     seenAccountIds.add(mc.ad_account_id);
     configs.push({
       label: `ws:${ws.slug}(${mc.ad_account_id})`,
-      metaConfig: mc,
+      adAccountId: mc.ad_account_id,
+      // use_shared_token = explicitly use the shared env token for this account
+      metaConfig: useSharedToken ? { ...mc, system_user_token: undefined } : mc,
     });
   }
 
@@ -105,9 +124,8 @@ async function syncOneAccount(
     errors: [],
   };
 
-  // Set meta config for this account (null = env vars)
-  setMetaConfig(config.metaConfig);
-
+  // Caller wraps this whole function in runWithMetaConfig(config.metaConfig, …)
+  // so all Meta reads below hit the right account even under concurrency.
   const BATCH_SIZE = 500;
 
   // --- Ad-level sync ---
@@ -121,6 +139,9 @@ async function syncOneAccount(
         return {
           date: row.date_start,
           meta_ad_id: row.ad_id,
+          // P2 (2026-07-07): tag every row with its source ad account so
+          // downstream aggregates (morning brief, dashboard) never mix accounts.
+          ad_account_id: config.adAccountId,
           ad_name: row.ad_name || null,
           adset_id: row.adset_id || null,
           adset_name: row.adset_name || null,
@@ -291,7 +312,9 @@ export async function GET(req: NextRequest) {
 
   for (const account of accounts) {
     try {
-      const result = await syncOneAccount(db, account, sinceStr, untilStr);
+      const result = await runWithMetaConfig(account.metaConfig, () =>
+        syncOneAccount(db, account, sinceStr, untilStr)
+      );
       accountResults.push(result);
       totalAds += result.adsSynced;
       totalAdsets += result.adsetsSynced;
@@ -311,9 +334,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Clear meta config after all accounts are synced
-  setMetaConfig(null);
-
   // --- Concept metrics (derive from synced meta_ad_performance — account-agnostic) ---
   let conceptMetricsSynced = 0;
   try {
@@ -323,6 +343,49 @@ export async function GET(req: NextRequest) {
     }
   } catch (err) {
     console.error("[Ad Perf Sync] Concept metrics sync error (non-fatal):", err);
+  }
+
+  // M3 (2026-07-07): this cron could never fail before — a dead token produced
+  // "completed: 0 ads" forever. Any account error now fails the cron run and
+  // pings Telegram so token/permission breakage is visible the same day.
+  const allErrors = accountResults.flatMap((r) =>
+    r.errors.map((e) => `${r.label}: ${e}`)
+  );
+  const allAccountsFailed =
+    accountResults.length > 0 &&
+    accountResults.every(
+      (r) => r.errors.length > 0 && r.adsSynced + r.adsetsSynced + r.budgetsSynced === 0
+    );
+
+  if (allErrors.length > 0) {
+    const errorSummary = `${allErrors.length} error(s) across ${accounts.length} account(s): ${allErrors.join(" | ").slice(0, 900)}`;
+    await failCronRun(cronRunId, errorSummary);
+
+    const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+    if (chatId) {
+      await sendTelegramNotification(
+        chatId,
+        `🔴 ad-performance-sync ${allAccountsFailed ? "FAILED" : "completed with errors"}\n\n${allErrors.slice(0, 5).map((e) => `• ${e.slice(0, 200)}`).join("\n")}${allErrors.length > 5 ? `\n… and ${allErrors.length - 5} more` : ""}`
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        all_accounts_failed: allAccountsFailed,
+        accounts: accountResults,
+        errors: allErrors,
+        totals: {
+          ads_synced: totalAds,
+          adset_rows_synced: totalAdsets,
+          budgets_synced: totalBudgets,
+          concept_metrics_synced: conceptMetricsSynced,
+        },
+        date_range: { since: sinceStr, until: untilStr },
+        is_backfill: isBackfill,
+      },
+      { status: allAccountsFailed ? 500 : 200 }
+    );
   }
 
   await completeCronRun(

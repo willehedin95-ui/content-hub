@@ -88,61 +88,103 @@ export async function injectAffiliateLinks(
   const matched: Array<{ brand: string; network: string }> = [];
   let totalInjected = 0;
 
-  // Walk paragraphs and list items only
+  // Walk paragraphs and list items only. All matching happens on TEXT NODES
+  // (never on raw inner HTML) — the old regex-on-HTML approach could match a
+  // brand name inside an attribute value (e.g. alt="...Tempur...") and inject
+  // an <a> tag INSIDE the attribute, corrupting the markup.
   const elements = $("p, li").toArray();
-  for (const el of elements) {
-    if (totalInjected >= max) break;
-    if (injectedBrands.size === brands.length) break;
 
+  const brandRegex = (brandName: string): RegExp => {
+    const escapedBrand = brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\d])(${escapedBrand})(?![\\p{L}\\d])`, "iu");
+  };
+
+  type TextNode = { type: string; data?: string };
+
+  /** Find the first text node (in document order, within p/li) matching the regex. */
+  const findFirstTextMatch = (
+    re: RegExp
+  ): { node: TextNode; index: number; text: string; matchText: string } | null => {
+    for (const el of elements) {
+      const $el = $(el);
+      // Whole element inside an existing link — never inject here
+      if ($el.parents("a").length > 0) continue;
+
+      let found: { node: TextNode; index: number; text: string; matchText: string } | null = null;
+      $el.contents().each(function walkNode() {
+        if (found) return false;
+        const node = this as unknown as TextNode;
+        if (node.type !== "text") {
+          // Descend into inline children (strong/em/span) but never into <a>
+          const childEl = this as unknown as { name?: string };
+          if (childEl.name?.toLowerCase() === "a") return;
+          $(this).contents().each(walkNode);
+          return;
+        }
+        const text = node.data ?? "";
+        const m = text.match(re);
+        if (!m || m.index === undefined) return;
+        if ($(this).parents("a").length > 0) return;
+        found = { node, index: m.index, text, matchText: m[0] };
+      });
+      if (found) return found;
+    }
+    return null;
+  };
+
+  // Phase 1 (sync): decide WHICH brands get linked, in document order —
+  // preserves the old first-paragraph-wins semantics under the max cap.
+  const selected: JoinedBrand[] = [];
+  const locallySeen = new Set<string>();
+  outer: for (const el of elements) {
     const $el = $(el);
     if ($el.parents("a").length > 0) continue;
-
-    const initialHtml = $el.html();
-    if (!initialHtml) continue;
-    let elementHtml: string = initialHtml;
-
-    let changed = false;
-
+    const elText = $el.text();
     for (const b of brands) {
-      if (totalInjected >= max) break;
-      const brandKey = b.brandName.toLowerCase();
-      if (injectedBrands.has(brandKey)) continue;
+      const key = b.brandName.toLowerCase();
+      if (locallySeen.has(key)) continue;
+      if (!brandRegex(b.brandName).test(elText)) continue;
+      locallySeen.add(key);
+      selected.push(b);
+      if (selected.length >= brands.length) break outer;
+    }
+  }
 
-      const escapedBrand = b.brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const re = new RegExp(`(?<![\\p{L}\\d])(${escapedBrand})(?![\\p{L}\\d])`, "iu");
-      const match: RegExpMatchArray | null = elementHtml.match(re);
-      if (!match || match.index === undefined) continue;
+  // Phase 2 (async): resolve deep links and wrap the first text-node match.
+  for (const b of selected) {
+    if (totalInjected >= max) break;
+    const brandKey = b.brandName.toLowerCase();
+    if (injectedBrands.has(brandKey)) continue;
 
-      // Skip if inside existing <a>
-      const before: string = elementHtml.slice(0, match.index);
-      const opens = (before.match(/<a\b[^>]*>/gi) ?? []).length;
-      const closes = (before.match(/<\/a>/gi) ?? []).length;
-      if (opens > closes) continue;
+    // Resolve deep link (cache or live API call)
+    const link = await resolveAffiliateLink(b.brandName);
+    if (!link) continue;
 
-      // Resolve deep link (cache or live API call)
-      const link = await resolveAffiliateLink(b.brandName);
-      if (!link) continue;
+    // Fresh lookup at wrap time — earlier replacements may have re-split
+    // text nodes, so stored node references would be stale.
+    const hit = findFirstTextMatch(brandRegex(b.brandName));
+    if (!hit) continue;
 
-      const tag: string = `<a href="${escAttr(link.url)}" target="_blank" rel="sponsored noopener" data-affiliate-network="${escAttr(link.network)}">${match[1]}</a>`;
-      const updated: string = elementHtml.slice(0, match.index) + tag + elementHtml.slice(match.index + match[0].length);
-      elementHtml = updated;
+    const before = hit.text.slice(0, hit.index);
+    const after = hit.text.slice(hit.index + hit.matchText.length);
+    const tag = `<a href="${escAttr(link.url)}" target="_blank" rel="sponsored noopener" data-affiliate-network="${escAttr(link.network)}">${escText(hit.matchText)}</a>`;
+    $(hit.node as never).replaceWith(`${escText(before)}${tag}${escText(after)}`);
 
-      injectedBrands.add(brandKey);
-      matched.push({ brand: b.brandName, network: link.network });
-      totalInjected++;
-      changed = true;
+    injectedBrands.add(brandKey);
+    matched.push({ brand: b.brandName, network: link.network });
+    totalInjected++;
 
-      // Cache generated link if not already cached
-      if (!b.cachedTemplate) {
-        await db
-          .from("affiliate_programs")
-          .update({ deep_link_template: link.url, updated_at: new Date().toISOString() })
-          .eq("network", link.network)
-          .eq("advertiser_id", link.advertiserId);
+    // Cache generated link if not already cached
+    if (!b.cachedTemplate) {
+      const { error: cacheErr } = await db
+        .from("affiliate_programs")
+        .update({ deep_link_template: link.url, updated_at: new Date().toISOString() })
+        .eq("network", link.network)
+        .eq("advertiser_id", link.advertiserId);
+      if (cacheErr) {
+        console.warn("[affiliate] deep_link_template cache update failed:", cacheErr.message);
       }
     }
-
-    if (changed) $el.html(elementHtml);
   }
 
   return {
@@ -158,4 +200,9 @@ function escAttr(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/** Entity-escape plain text that gets re-parsed as HTML via replaceWith */
+function escText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

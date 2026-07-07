@@ -139,6 +139,7 @@ Return valid JSON only (no markdown fences):
 - The \`motion_prompt\` describes what CHANGES during the scene (camera + subject motion)
 - **Videos under 10 seconds = ALWAYS exactly 1 scene. No exceptions.**
 - Only create multiple scenes for clear, visible hard cuts (NOT camera motion or animated elements)
+- **NEVER output more than 4 scenes.** If a long video has more hard cuts, merge the least important adjacent shots — every scene costs a keyframe + video generation.
 - If user provides notes, apply them to the extraction`;
 }
 

@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
         meta_page_name: meta_page_name ?? null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "country" }
+      // P2 (2026-07-07): the unique index is (workspace_id, country) — the old
+      // onConflict "country" matched no constraint, so every POST 500:ed.
+      { onConflict: "workspace_id,country" }
     )
     .select()
     .single();

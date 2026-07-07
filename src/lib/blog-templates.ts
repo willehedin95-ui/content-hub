@@ -22,6 +22,9 @@ export interface BlogTemplate {
   getHtml: (articleName: string) => string;
 }
 
+/** Current year — templates must never hardcode a year (P3). */
+const YEAR = () => new Date().getFullYear();
+
 const sharedStyles = `
   <style>
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1f2937; line-height: 1.7; }
@@ -110,7 +113,7 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
   <div class="article">
     <h1>${esc(name)}</h1>
     <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Produktbild" alt="Produktjämförelse">
-    <p class="intro">Vi har testat och jämfört de mest populära alternativen på marknaden. Här är våra rekommendationer efter veckor av noggranna tester.</p>
+    <p class="intro">Vi har granskat och jämfört de mest populära alternativen på marknaden utifrån studier, verifierade recensioner och produktdata. Här är våra rekommendationer.</p>
 
     <div class="tldr">
       <strong>Kort sammanfattning</strong>
@@ -118,11 +121,11 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     </div>
 
     <div class="info-box">
-      <strong>Så testar vi:</strong> Vi köper alla produkter själva och testar dem under minst 2 veckor innan vi gör vårt omdöme. Ingen tillverkare har inflytande över våra resultat.
+      <strong>Så gör vi våra bedömningar:</strong> Vi går igenom publicerade studier, verifierade kundrecensioner och produktdata innan vi gör vårt omdöme. Ingen tillverkare har inflytande över våra resultat.
     </div>
 
-    <h2>Vilka produkter är bäst i test 2026?</h2>
-    <p>Vi har testat X produkter och valt ut de tre bästa. Här är en snabb översikt innan vi går in på detaljerna.</p>
+    <h2>Vilka produkter är bäst i test ${YEAR()}?</h2>
+    <p>Vi har jämfört X produkter och valt ut de tre bästa. Här är en snabb översikt innan vi går in på detaljerna.</p>
     <table>
       <tr><th>Produkt</th><th>Bäst för</th><th>Betyg</th></tr>
       <tr><td>Produkt 1</td><td>Bäst totalt</td><td><span class="score">9.2/10</span></td></tr>
@@ -136,8 +139,8 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     <h2>1. Produkt 1 — Bäst i test totalt</h2>
     <div class="product-card">
       <h3>Produkt 1</h3>
-      <p class="verdict">Vårt omdöme: Bäst totalt 2026</p>
-      <p>Beskriv produkten och din upplevelse. Vad gör den bra? Vem passar den för?</p>
+      <p class="verdict">Vårt omdöme: Bäst totalt ${YEAR()}</p>
+      <p>Beskriv produkten utifrån research och recensioner. Vad gör den bra? Vem passar den för?</p>
       <div class="pros-cons">
         <div class="pros"><h4>Fördelar</h4><ul><li>Fördel 1</li><li>Fördel 2</li><li>Fördel 3</li></ul></div>
         <div class="cons"><h4>Nackdelar</h4><ul><li>Nackdel 1</li><li>Nackdel 2</li></ul></div>
@@ -354,7 +357,7 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 
     <div class="cta-box">
       <p><strong>Redo att köpa?</strong></p>
-      <p>Se vårt test av de bästa alternativen 2026.</p>
+      <p>Se vår genomgång av de bästa alternativen ${YEAR()}.</p>
       <a href="#">Se bäst i test →</a>
     </div>
 
@@ -389,7 +392,7 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
   <div class="article">
     <h1>${esc(name)}</h1>
     <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=A+vs+B" alt="Jämförelse">
-    <p class="intro">Vilken är bäst — Produkt A eller Produkt B? Vi har testat båda och jämfört dem sida vid sida. Här är vår ärliga bedömning.</p>
+    <p class="intro">Vilken är bäst — Produkt A eller Produkt B? Vi har jämfört dem sida vid sida utifrån specifikationer, studier och verifierade användarrecensioner. Här är vår ärliga bedömning.</p>
 
     <div class="tldr">
       <strong>Kort sammanfattning</strong>
@@ -520,7 +523,7 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 
     <div class="cta-box">
       <p><strong>Vill du prova själv?</strong></p>
-      <a href="#">Se vårt test →</a>
+      <a href="#">Se vår jämförelse →</a>
     </div>
 
     <h2>Vanliga frågor</h2>
@@ -561,45 +564,45 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
   <div class="article">
     <h1>${esc(name)}</h1>
     <img class="hero-img" src="https://placehold.co/1200x675/f5f3ff/a78bfa?text=Resultat" alt="Resultat och upplevelser">
-    <p class="intro">En ärlig genomgång av resultat och upplevelser — vecka för vecka. Vad kan man realistiskt förvänta sig, och vad säger forskningen?</p>
+    <p class="intro">En ärlig genomgång av vilka resultat man realistiskt kan förvänta sig — vecka för vecka — baserat på kliniska studier och verifierade användarupplevelser.</p>
 
     <div class="tldr">
       <strong>Kort sammanfattning</strong>
-      <p>Första skillnaden märks efter [X veckor]: [effekt 1]. Efter [Y veckor]: [effekt 2]. Enligt <a href="#">kliniska studier</a> behöver man minst [Z veckor] för att se tydliga resultat.</p>
+      <p>Första skillnaden brukar rapporteras efter [X veckor]: [effekt 1]. Efter [Y veckor]: [effekt 2]. Enligt <a href="#">kliniska studier</a> behövs minst [Z veckor] för att se tydliga resultat.</p>
     </div>
 
-    <h2>Varför testade vi detta?</h2>
-    <p>Bakgrunden till testet. Vad var utgångspunkten? Beskriv problemet eller behovet som startade resan. Enligt <a href="#">en studie publicerad i [tidskrift]</a> är detta ett vanligt problem bland [målgrupp].</p>
+    <h2>Varför granskade vi detta?</h2>
+    <p>Bakgrunden till genomgången. Vad var utgångspunkten? Beskriv problemet eller behovet. Enligt <a href="#">en studie publicerad i [tidskrift]</a> är detta ett vanligt problem bland [målgrupp].</p>
 
-    <h2>Vad sa forskningen innan vi började?</h2>
+    <h2>Vad säger forskningen?</h2>
     <p>Sammanfatta relevant forskning. Vilka resultat har kliniska studier visat? Var realistisk — citera faktiska studier och ange doser/tidsramar. Exempelvis visade <a href="#">Proksch et al. (2014)</a> att [effekt] efter [X veckor] med [dos].</p>
 
     <div class="info-box">
-      <strong>Viktigt att veta:</strong> Individuella resultat varierar. Det vi beskriver här är en personlig upplevelse — inte ett medicinskt löfte. Kontakta alltid din läkare vid hälsofrågor.
+      <strong>Viktigt att veta:</strong> Individuella resultat varierar. Det vi beskriver här är en sammanställning av studier och användarupplevelser — inte ett medicinskt löfte. Kontakta alltid din läkare vid hälsofrågor.
     </div>
 
-    <h2>Hur såg resan ut vecka för vecka?</h2>
+    <h2>Vad kan man förvänta sig vecka för vecka?</h2>
 
     <div class="timeline">
       <div class="timeline-entry">
         <h3>Vecka 1–2: Start</h3>
-        <p>Beskriv de första intrycken. Hur kändes det? Var det någon skillnad alls? Smak, konsistens, rutin — allt som är relevant för läsaren.</p>
+        <p>Beskriv vad studier och användarrapporter visar för de första veckorna. Smak, konsistens, rutin — allt som är relevant för läsaren.</p>
       </div>
       <div class="timeline-entry">
         <h3>Vecka 3–4: Första förändringarna</h3>
-        <p>Beskriv de första märkbara skillnaderna. Var specifik — vad förändrades och hur märkte man det?</p>
+        <p>Beskriv de första märkbara skillnaderna som rapporteras. Var specifik — vad förändras och hur märks det, enligt källorna?</p>
       </div>
       <div class="timeline-entry">
         <h3>Vecka 5–8: Tydliga resultat</h3>
-        <p>Beskriv hur resultaten utvecklades. Vilka förändringar blev tydliga? Stämmer detta överens med vad forskningen förutspådde?</p>
+        <p>Beskriv hur resultaten utvecklas enligt studierna. Vilka förändringar blir tydliga? Stämmer användarrapporterna med forskningen?</p>
       </div>
       <div class="timeline-entry">
         <h3>Vecka 9–12: Långtidseffekt</h3>
-        <p>Beskriv resultat efter längre tid. Fortsatte förbättringen? Planade den ut? Vad blev slutresultatet?</p>
+        <p>Beskriv resultat efter längre tid enligt studier och recensioner. Fortsätter förbättringen? Planar den ut?</p>
       </div>
     </div>
 
-    <h2>Före och efter — vad förändrades egentligen?</h2>
+    <h2>Före och efter — vad förändras egentligen?</h2>
 
     <div class="before-after">
       <div class="before">
@@ -613,26 +616,17 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     </div>
 
     <div class="results-box">
-      <h3>Sammanfattning av resultat</h3>
+      <h3>Sammanfattning av rapporterade resultat</h3>
       <ul>
-        <li><strong>Effekt 1:</strong> Beskriv den tydligaste förändringen</li>
-        <li><strong>Effekt 2:</strong> Beskriv den näst tydligaste</li>
+        <li><strong>Effekt 1:</strong> Den oftast rapporterade förändringen</li>
+        <li><strong>Effekt 2:</strong> Den näst vanligaste</li>
         <li><strong>Effekt 3:</strong> Eventuell bonus-effekt</li>
-        <li><strong>Tid till resultat:</strong> X veckor</li>
+        <li><strong>Tid till resultat:</strong> X veckor (enligt studier)</li>
       </ul>
     </div>
 
-    <h2>Vad tyckte andra som testat?</h2>
-
-    <div class="quote-block">
-      <p>"Citat från en person som testat. Beskriv upplevelsen med egna ord — autentiskt och specifikt."</p>
-      <div class="attribution">— Namn, ålder, stad</div>
-    </div>
-
-    <div class="quote-block">
-      <p>"Ytterligare ett citat. Visa variation — inte alla behöver vara överdrivet positiva. Ärlighet bygger förtroende."</p>
-      <div class="attribution">— Namn, ålder, stad</div>
-    </div>
+    <h2>Vad rapporterar andra användare?</h2>
+    <p>Sammanfatta återkommande teman från verifierade kundrecensioner (t.ex. Trustpilot) — utan namngivna citat eller påhittade personer. Var ärlig: ta med både positiva och negativa mönster, och ange var recensionerna kommer ifrån.</p>
 
     <p><em>Läs även: <a href="#">Relaterad artikel på bloggen</a></em></p>
 
@@ -733,7 +727,7 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
 
     <h2 id="att-valja">Hur väljer du rätt?</h2>
     <p>Praktisk guide. Listicle eller decision tree. Länka till "bäst i test"-artikel.</p>
-    <p class="related-link">Se vår fullständiga jämförelse: <a href="/basta-x-slug/">Bästa X 2026 - testad och rankad</a></p>
+    <p class="related-link">Se vår fullständiga jämförelse: <a href="/basta-x-slug/">Bästa X ${YEAR()} - granskad och rankad</a></p>
 
     <h2 id="vanliga-fragor">Vanliga frågor</h2>
     <div class="faq-item">

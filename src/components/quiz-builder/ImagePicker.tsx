@@ -25,6 +25,7 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [showBank, setShowBank] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -73,6 +74,34 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
       : true,
   );
 
+  /** Validate + apply a manually entered image URL. Requires https:// (a
+   *  blob:/localhost URL bakes a dead reference into the published quiz)
+   *  and warns when the host is not Supabase Storage (external hosts can
+   *  remove the file and silently break the live funnel). */
+  function handleSetUrl() {
+    const url = urlInput.trim();
+    if (!/^https:\/\//i.test(url)) {
+      setErr("Image URL must start with https:// - blob:/http:/localhost URLs break on the published quiz.");
+      return;
+    }
+    let host = "";
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      setErr("Invalid URL");
+      return;
+    }
+    setErr(null);
+    setWarning(
+      host.endsWith(".supabase.co")
+        ? null
+        : `Heads up: ${host} is not Supabase Storage. Prefer Upload so the image can't disappear from under the published quiz.`,
+    );
+    onChange(url);
+    setUrlInput("");
+    setShowUrl(false);
+  }
+
   const previewBoxClass = compact
     ? "w-20 h-20 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden"
     : "w-full aspect-video rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden";
@@ -115,7 +144,7 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
             placeholder="https://..." value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)} />
           <button type="button" disabled={!urlInput.trim()}
-            onClick={() => { onChange(urlInput.trim()); setUrlInput(""); setShowUrl(false); }}
+            onClick={handleSetUrl}
             className="px-2 py-1 rounded bg-indigo-600 text-white text-[11px] disabled:opacity-50">
             Set
           </button>
@@ -147,6 +176,7 @@ export function ImagePicker({ value, onChange, hint, compact }: ImagePickerProps
         </div>
       )}
       {err && <div className="text-[11px] text-red-600">{err}</div>}
+      {warning && <div className="text-[11px] text-amber-600">{warning}</div>}
       <input ref={fileRef} type="file" accept="image/*" hidden
         onChange={(e) => {
           const f = e.target.files?.[0];

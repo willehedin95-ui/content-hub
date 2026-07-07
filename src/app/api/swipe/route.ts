@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 import { stripForTranslation, compactForSwiper } from "@/lib/html-parser";
+import { slugify } from "@/lib/slugify";
 import { buildRewritePrompts } from "@/lib/claude";
 import type { SwiperAngle } from "@/lib/claude";
 import type { ProductFull, CopywritingGuideline, ReferencePage } from "@/types";
@@ -110,33 +111,58 @@ export async function POST(req: NextRequest) {
 
   // Create page immediately with status='importing'
   const pageName = body.name || sourceUrl || "Untitled Import";
-  const pageSlug = body.slug || pageName
-    .toLowerCase()
-    .replace(/https?:\/\/[^/]+\/?/, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60) || "import";
+  const baseSlug =
+    slugify(
+      (body.slug as string) ||
+        String(pageName).replace(/https?:\/\/[^/]+\/?/, "")
+    ).slice(0, 60).replace(/-$/, "") || "import";
+
+  // Duplicate check (audit 2026-07-07, E2): the swiper had NO dedupe at all -
+  // repeated imports of the same URL silently created slug twins that later
+  // overwrote each other on publish. Find a free -2/-3… suffix up front, and
+  // handle the 23505 race from the unique index pages(workspace_id, slug).
+  const { data: taken } = await db
+    .from("pages")
+    .select("slug")
+    .eq("workspace_id", workspaceId)
+    .like("slug", `${baseSlug}%`);
+  const takenSlugs = new Set((taken ?? []).map((p) => p.slug as string));
+  let pageSlug = baseSlug;
+  for (let i = 2; takenSlugs.has(pageSlug) && i < 50; i++) {
+    pageSlug = `${baseSlug}-${i}`;
+  }
 
   const selectedProduct = product as ProductFull;
-  const { data: page, error: pageErr } = await db
+  const pageInsert = {
+    name: pageName,
+    product: selectedProduct.slug,
+    page_type: body.pageType || "advertorial",
+    source_url: sourceUrl || "",
+    original_html: "",
+    source_language: sourceLanguage || "en",
+    images_to_translate: [],
+    tags: ["swiped"],
+    swiped_from_url: sourceUrl || null,
+    status: "importing",
+    swipe_job_id: job.id,
+    workspace_id: workspaceId,
+  };
+
+  let { data: page, error: pageErr } = await db
     .from("pages")
-    .insert({
-      name: pageName,
-      product: selectedProduct.slug,
-      page_type: body.pageType || "advertorial",
-      source_url: sourceUrl || "",
-      original_html: "",
-      slug: pageSlug,
-      source_language: sourceLanguage || "en",
-      images_to_translate: [],
-      tags: ["swiped"],
-      swiped_from_url: sourceUrl || null,
-      status: "importing",
-      swipe_job_id: job.id,
-      workspace_id: workspaceId,
-    })
+    .insert({ ...pageInsert, slug: pageSlug })
     .select("id")
     .single();
+
+  // 23505 = concurrent insert grabbed the slug - retry once with a random suffix
+  if (pageErr && (pageErr as { code?: string }).code === "23505") {
+    pageSlug = `${baseSlug}-${Date.now().toString(36)}`;
+    ({ data: page, error: pageErr } = await db
+      .from("pages")
+      .insert({ ...pageInsert, slug: pageSlug })
+      .select("id")
+      .single());
+  }
 
   if (pageErr || !page) {
     console.error("[Swipe] Failed to create page:", pageErr?.message);

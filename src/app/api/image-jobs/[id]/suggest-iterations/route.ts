@@ -66,14 +66,31 @@ export async function POST(
     );
   }
 
-  // Fetch segments for the product (needed for segment_swap suggestions)
+  // Fetch segments for the product (needed for segment_swap suggestions).
+  // job.product stores the product SLUG - resolve it to the uuid FIRST.
+  // Querying product_id (uuid) with the slug fails with 22P02 and used to be
+  // swallowed, so segment_swap suggestions were silently disabled.
   const segments: ProductSegment[] = [];
   if (job.product) {
-    const { data: segs } = await db
-      .from("product_segments")
-      .select("*")
-      .eq("product_id", job.product);
-    if (segs) segments.push(...(segs as ProductSegment[]));
+    const { data: productRow, error: productErr } = await db
+      .from("products")
+      .select("id")
+      .eq("slug", job.product)
+      .eq("workspace_id", workspaceId)
+      .single();
+    if (productErr) {
+      console.warn("[suggest-iterations] Product lookup failed:", productErr.message);
+    }
+    if (productRow) {
+      const { data: segs, error: segsErr } = await db
+        .from("product_segments")
+        .select("*")
+        .eq("product_id", productRow.id);
+      if (segsErr) {
+        console.warn("[suggest-iterations] Segments query failed:", segsErr.message);
+      }
+      if (segs) segments.push(...(segs as ProductSegment[]));
+    }
   }
 
   // Build the prompt
@@ -89,8 +106,11 @@ You know that iteration means KEEPING what works and changing ONE dimension stra
 
 Return ONLY valid JSON. No markdown fences. No commentary.`;
 
+  // Demographics intentionally excluded - raw quiz stats in that field must
+  // not leak into bot prompts (audit 2026-07-07 F3). Segment id is included
+  // so segment_swap suggestions can return a valid, executable segment_id.
   const segmentList = segments.length > 0
-    ? segments.map((s) => `- ${s.name}: ${s.description ?? ""} (${s.demographics ?? ""})`).join("\n")
+    ? segments.map((s) => `- ${s.name} (segment_id: ${s.id}): ${s.description ?? ""}`).join("\n")
     : "No segments defined for this product.";
 
   const user = `## CONCEPT TO ITERATE: "${job.name}" (#${job.concept_number ?? "?"})

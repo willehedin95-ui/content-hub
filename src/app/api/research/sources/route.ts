@@ -147,10 +147,30 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
+  // Whitelist mutable fields. Spreading the raw body previously allowed
+  // overwriting anything, including workspace_id (moving a source into
+  // another brand's workspace) and scan-state columns.
+  const ALLOWED_PATCH_FIELDS = [
+    "name",
+    "domain",
+    "platform",
+    "is_own_brand",
+    "language",
+    "config",
+    "status",
+  ] as const;
+  const safeUpdates: Record<string, unknown> = {};
+  for (const field of ALLOWED_PATCH_FIELDS) {
+    if (field in updates) safeUpdates[field] = updates[field];
+  }
+  if (Object.keys(safeUpdates).length === 0) {
+    return NextResponse.json({ error: "No updatable fields provided" }, { status: 400 });
+  }
+
   const db = createServerSupabase();
   const { data, error } = await db
     .from("research_sources")
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...safeUpdates, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("workspace_id", workspaceId)
     .select()

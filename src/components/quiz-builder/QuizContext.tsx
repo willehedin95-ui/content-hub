@@ -22,6 +22,25 @@ export function useQuiz() {
   return v;
 }
 
+/**
+ * Deterministic JSON serialization with sorted object keys. Used for content
+ * comparison against server rows: Postgres jsonb does NOT preserve key
+ * order, so plain JSON.stringify of a round-tripped row differs from the
+ * client's stringify even when the content is identical - which would make
+ * every 409-recovery fail after a publish. Keys with undefined values are
+ * skipped (matching JSON.stringify semantics for object properties).
+ */
+function stableStringify(value: unknown): string {
+  if (value === undefined) return "null"; // array-slot semantics; roots are never undefined here
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+}
+
 export function QuizProvider({
   initialQuiz,
   children,
@@ -40,20 +59,83 @@ export function QuizProvider({
     settings: initialQuiz.settings,
     name: initialQuiz.name,
   });
+  // In-flight guard: never run two PATCHes concurrently. If edits arrive
+  // while a save is in flight, we queue ONE follow-up save which always
+  // sends latest.current - i.e. never an older snapshot than the last sent.
+  const inFlight = useRef(false);
+  const queued = useRef(false);
+  // Optimistic lock baseline: the updated_at we last saw from the server.
+  const lastKnownUpdatedAt = useRef<string | null>(initialQuiz.updated_at ?? null);
+  // Snapshot of the content we last successfully persisted - used to tell
+  // "someone else changed metadata only (publish)" from a real edit conflict.
+  const lastSaved = useRef<{ data: string; settings: string; name: string }>({
+    data: stableStringify(initialQuiz.data),
+    settings: stableStringify(initialQuiz.settings),
+    name: initialQuiz.name,
+  });
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<void> => {
+    if (inFlight.current) {
+      queued.current = true;
+      return;
+    }
+    inFlight.current = true;
     setSaveState("saving");
-    const res = await fetch(`/api/quiz/${initialQuiz.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(latest.current),
-    });
-    if (res.ok) {
-      const updated = (await res.json()) as QuizRow;
-      setQuiz(updated);
-      setSaveState("saved");
-    } else {
+    try {
+      const payload = { ...latest.current };
+      const res = await fetch(`/api/quiz/${initialQuiz.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          ...(lastKnownUpdatedAt.current
+            ? { expected_updated_at: lastKnownUpdatedAt.current }
+            : {}),
+        }),
+      });
+      if (res.ok) {
+        const updated = (await res.json()) as QuizRow;
+        lastKnownUpdatedAt.current = updated.updated_at ?? null;
+        lastSaved.current = {
+          data: stableStringify(payload.data),
+          settings: stableStringify(payload.settings),
+          name: payload.name,
+        };
+        setQuiz(updated);
+        setSaveState("saved");
+      } else if (res.status === 409) {
+        // Someone else bumped updated_at. If the server's CONTENT still
+        // matches what we last saved (publish/status flips only touch
+        // metadata), adopt the new baseline and retry. If content differs,
+        // a second editor/adaptation changed it - refuse to clobber.
+        const fresh = (await fetch(`/api/quiz/${initialQuiz.id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)) as QuizRow | null;
+        if (
+          fresh &&
+          stableStringify(fresh.data) === lastSaved.current.data &&
+          stableStringify(fresh.settings) === lastSaved.current.settings &&
+          fresh.name === lastSaved.current.name
+        ) {
+          lastKnownUpdatedAt.current = fresh.updated_at ?? null;
+          queued.current = true; // retry with the fresh baseline
+        } else {
+          console.error(
+            "[quiz-autosave] Conflict: quiz content was modified in another session - not overwriting. Reload the editor to continue.",
+          );
+          setSaveState("error");
+        }
+      } else {
+        setSaveState("error");
+      }
+    } catch {
       setSaveState("error");
+    } finally {
+      inFlight.current = false;
+      if (queued.current) {
+        queued.current = false;
+        void save();
+      }
     }
   }, [initialQuiz.id]);
 

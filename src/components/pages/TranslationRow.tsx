@@ -94,7 +94,7 @@ export default function TranslationRow({
   const [showDirectPublishModal, setShowDirectPublishModal] = useState(false);
   const [pageHtml, setPageHtml] = useState("");
   const [imageProgress, setImageProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
-  const [bgImageProgress, setBgImageProgress] = useState<{ done: number; total: number; status: string } | null>(null);
+  const [bgImageProgress, setBgImageProgress] = useState<{ done: number; total: number; status: string; message?: string | null } | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const bgPollRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -169,6 +169,7 @@ export default function TranslationRow({
           done: data.images_done,
           total: data.images_total,
           status: data.image_status,
+          message: data.image_error || null,
         });
 
         if (data.image_status === "done" || data.image_status === "error") {
@@ -243,37 +244,53 @@ export default function TranslationRow({
 
     setImageProgress({ done: 0, total: images.length, errors: [] });
 
-    for (let idx = 0; idx < images.length; idx++) {
-      const img = images[idx];
+    // Server-driven batch (audit 2026-07-07, L1): one request starts a
+    // server-side drain; we just poll progress. A closed tab no longer
+    // strands the batch - it finishes server-side.
+    try {
+      const res = await fetch("/api/translate-page-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          translationId,
+          language: language.value,
+          images: images.map((img) => ({ src: img.src })),
+        }),
+        signal: abortRef.current?.signal,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setImageProgress((prev) =>
+          prev ? { ...prev, errors: [data.error || "Failed to start image translation"] } : prev
+        );
+        return;
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setImageProgress((prev) =>
+        prev ? { ...prev, errors: ["Network error - could not start image translation"] } : prev
+      );
+      return;
+    }
+
+    // Poll batch progress until done/error (or the user cancels the UI wait -
+    // the server-side batch keeps running either way)
+    while (!abortRef.current?.signal.aborted) {
+      await new Promise((r) => setTimeout(r, 3000));
       if (abortRef.current?.signal.aborted) return;
       try {
-        const res = await fetch("/api/translate-page-images", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            translationId,
-            imageUrl: img.src,
-            language: language.value,
-            // First call initializes batch tracking in DB
-            ...(idx === 0 && { batchInit: true, batchTotal: images.length }),
-          }),
-          signal: abortRef.current?.signal,
+        const statusRes = await fetch(`/api/translations/${translationId}/image-status`);
+        if (!statusRes.ok) continue;
+        const data = await statusRes.json();
+        setImageProgress({
+          done: data.images_done ?? 0,
+          total: data.images_total ?? images.length,
+          errors: data.image_error ? [data.image_error] : [],
         });
-
-        if (!res.ok) {
-          const data = await res.json();
-          setImageProgress((prev) =>
-            prev ? { ...prev, done: prev.done + 1, errors: [...prev.errors, data.error || "Image failed"] } : prev
-          );
-        } else {
-          setImageProgress((prev) =>
-            prev ? { ...prev, done: prev.done + 1 } : prev
-          );
-        }
+        if (data.image_status === "done" || data.image_status === "error") return;
       } catch {
-        setImageProgress((prev) =>
-          prev ? { ...prev, done: prev.done + 1, errors: [...prev.errors, "Network error"] } : prev
-        );
+        // Transient polling error - keep polling
       }
     }
   }
@@ -753,6 +770,7 @@ export default function TranslationRow({
                   done={bgImageProgress.done}
                   total={bgImageProgress.total}
                   status={bgImageProgress.status}
+                  message={bgImageProgress.message}
                 />
               )}
             </div>

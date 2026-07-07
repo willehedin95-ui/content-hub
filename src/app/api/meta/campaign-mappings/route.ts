@@ -57,7 +57,10 @@ export async function POST(req: NextRequest) {
         format: format ?? "image",
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "product,country,format" }
+      // P2 (2026-07-07): keyed per workspace — the old global (product,country,
+      // format) index let workspace B silently overwrite workspace A's mapping.
+      // The (workspace_id,product,country,format) unique index exists in DB.
+      { onConflict: "workspace_id,product,country,format" }
     )
     .select()
     .single();

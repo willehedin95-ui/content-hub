@@ -4,6 +4,8 @@ import { safeError } from "@/lib/api-error";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/lib/constants";
 import { getWorkspaceId } from "@/lib/workspace";
 import { BLOG_TEMPLATES } from "@/lib/blog-templates";
+import { slugify } from "@/lib/slugify";
+import { recoverStuckTranslations } from "@/lib/stale-translations";
 
 export async function GET(req: NextRequest) {
   const db = createServerSupabase();
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
   const [dataResult, countResult] = await Promise.all([
     db
       .from("pages")
-      .select(`*, translations (id, language, status, published_url, seo_title)`)
+      .select(`*, translations (id, language, status, published_url, seo_title, updated_at)`)
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1),
@@ -25,6 +27,19 @@ export async function GET(req: NextRequest) {
 
   if (dataResult.error) {
     return safeError(dataResult.error, "Failed to fetch pages");
+  }
+
+  // Recover stuck publishing/translating translations (>10 min) from the
+  // list view too - previously only the detail view healed them (audit L5).
+  const pagesData = (dataResult.data ?? []) as Array<{
+    translations?: Array<{ id: string; status?: string; updated_at?: string }>;
+  }>;
+  const allTranslations = pagesData.flatMap((p) => p.translations ?? []);
+  const recovered = await recoverStuckTranslations(db, allTranslations);
+  if (recovered.size > 0) {
+    for (const t of allTranslations) {
+      if (recovered.has(t.id)) t.status = "error";
+    }
   }
 
   return NextResponse.json({
@@ -56,21 +71,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const pageSlug = slug || name.toLowerCase()
-    .replace(/[åä]/g, "a")
-    .replace(/ö/g, "o")
-    .replace(/[æ]/g, "ae")
-    .replace(/[ø]/g, "o")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+  const pageSlug = slugify(typeof slug === "string" && slug.trim() ? slug : name);
+  if (!pageSlug) {
+    return NextResponse.json(
+      { error: "Could not derive a valid slug from the name/slug provided" },
+      { status: 400 }
+    );
+  }
 
   // Check for duplicate slug within workspace
-  const { data: existingPage } = await db
+  const { data: existingPage, error: dupCheckError } = await db
     .from("pages")
     .select("id")
     .eq("slug", pageSlug)
     .eq("workspace_id", workspaceId)
-    .single();
+    .maybeSingle();
+
+  if (dupCheckError) {
+    return safeError(dupCheckError, "Failed to check for duplicate slug");
+  }
 
   if (existingPage) {
     return NextResponse.json(
@@ -108,6 +127,15 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
+    // 23505 = unique_violation on pages(workspace_id, slug). The pre-check
+    // above can't catch a concurrent insert (the old .single() race) - the
+    // unique index is the real guard; surface it as a clear 409. (audit E2)
+    if ((error as { code?: string }).code === "23505") {
+      return NextResponse.json(
+        { error: `A page with slug "${pageSlug}" already exists (created concurrently). Pick another slug.` },
+        { status: 409 }
+      );
+    }
     return safeError(error, "Failed to create page");
   }
 

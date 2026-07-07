@@ -38,12 +38,27 @@ export async function PATCH(
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const { data, error } = await db
+  // Ownership check: the row must belong to this product OR be a global
+  // reference (product_id IS NULL - listed under every product, so an
+  // unconditional product_id bind would no-op/500 on those). This still
+  // blocks mutating another product's rows through this route.
+  const { data: existing, error: existingErr } = await db
+    .from("reference_pages")
+    .select("id, product_id")
+    .eq("id", refId)
+    .single();
+  if (existingErr || !existing || (existing.product_id !== null && existing.product_id !== productId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let updateQuery = db
     .from("reference_pages")
     .update(updateData)
-    .eq("id", refId)
-    .select()
-    .single();
+    .eq("id", refId);
+  if (existing.product_id !== null) {
+    updateQuery = updateQuery.eq("product_id", productId);
+  }
+  const { data, error } = await updateQuery.select().single();
 
   if (error) {
     return safeError(error, "Failed to update reference page");
@@ -74,10 +89,25 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { error } = await db
+  // Ownership check: allow rows belonging to this product OR global rows
+  // (product_id IS NULL) - see PATCH above for why.
+  const { data: existing, error: existingErr } = await db
+    .from("reference_pages")
+    .select("id, product_id")
+    .eq("id", refId)
+    .single();
+  if (existingErr || !existing || (existing.product_id !== null && existing.product_id !== productId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let deleteQuery = db
     .from("reference_pages")
     .delete()
     .eq("id", refId);
+  if (existing.product_id !== null) {
+    deleteQuery = deleteQuery.eq("product_id", productId);
+  }
+  const { error } = await deleteQuery;
 
   if (error) {
     return safeError(error, "Failed to delete reference page");

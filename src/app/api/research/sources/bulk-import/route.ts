@@ -10,6 +10,8 @@ export const maxDuration = 800;
 
 const MIN_SIGNIFICANCE = 4;
 const EVAL_DELAY_MS = 150;
+// Each post triggers a paid Haiku evaluation — hard cap per request.
+const MAX_POSTS_PER_REQUEST = 200;
 
 function detectLanguage(text: string): string {
   const hasSwedish =
@@ -35,7 +37,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, x-import-token",
   };
 }
 
@@ -62,6 +64,22 @@ export async function OPTIONS() {
  */
 export async function POST(req: NextRequest) {
   try {
+    // Middleware-exempt route that spends money (one Haiku eval per post).
+    // A known workspace UUID is NOT auth — require the shared import token.
+    const importToken = process.env.RESEARCH_IMPORT_TOKEN;
+    if (!importToken) {
+      return NextResponse.json(
+        { error: "Import disabled — RESEARCH_IMPORT_TOKEN not configured" },
+        { status: 503, headers: corsHeaders() }
+      );
+    }
+    if (req.headers.get("x-import-token") !== importToken) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: corsHeaders() }
+      );
+    }
+
     // Try cookie-based auth first, then body workspace_id
     let workspaceId = await getWorkspaceId().catch(() => null);
     const body = await req.json();
@@ -90,6 +108,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "source_name and posts[] are required" },
         { status: 400, headers: corsHeaders() }
+      );
+    }
+
+    if (posts.length > MAX_POSTS_PER_REQUEST) {
+      return NextResponse.json(
+        { error: `Too many posts — max ${MAX_POSTS_PER_REQUEST} per request` },
+        { status: 413, headers: corsHeaders() }
       );
     }
 

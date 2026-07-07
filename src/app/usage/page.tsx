@@ -21,18 +21,22 @@ interface Summary {
   total_output_tokens: number;
 }
 
+// Matches the API semantics: /api/usage always applies a day window
+// (missing/0 falls back to 30) and caps at 5000 rows, so there is no true
+// "All time" - the longest window offered is 365 days.
 const PERIOD_OPTIONS = [
-  { label: "All time", value: 0 },
   { label: "Last 7 days", value: 7 },
   { label: "Last 30 days", value: 30 },
   { label: "Last 90 days", value: 90 },
+  { label: "Last 365 days", value: 365 },
 ];
 
 export default function UsagePage() {
   const [logs, setLogs] = useState<(UsageLog & { pages?: { name: string } | null })[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(0);
+  const [days, setDays] = useState(30);
+  const [truncated, setTruncated] = useState(false);
   const [sekRate, setSekRate] = useState(() => {
     if (typeof window !== "undefined") {
       return parseFloat(localStorage.getItem("sek_rate") || "10.50");
@@ -46,12 +50,12 @@ export default function UsagePage() {
     setLoading(true);
     setFetchError("");
     try {
-      const params = days > 0 ? `?days=${days}` : "";
-      const res = await fetch(`/api/usage${params}`);
+      const res = await fetch(`/api/usage?days=${days}`);
       if (!res.ok) throw new Error("Failed to load usage data");
       const data = await res.json();
       setLogs(data.logs);
       setSummary(data.summary);
+      setTruncated(Boolean(data.truncated));
     } catch {
       setFetchError("Failed to load usage data. Try refreshing the page.");
     } finally {
@@ -164,6 +168,14 @@ export default function UsagePage() {
           </button>
         </div>
       </div>
+
+      {truncated && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          Showing the 5,000 most recent entries for this period - summary totals
+          are partial. Pick a shorter period for exact numbers.
+        </div>
+      )}
 
       {/* Summary cards */}
       {summary && (

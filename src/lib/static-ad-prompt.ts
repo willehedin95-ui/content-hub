@@ -759,7 +759,8 @@ function buildBriefUserPrompt(opts: {
     if (opts.segment.description) lines.push(`Description: ${opts.segment.description}`);
     if (opts.segment.core_desire) lines.push(`Core desire: ${opts.segment.core_desire}`);
     if (opts.segment.core_constraints) lines.push(`Core constraints: ${opts.segment.core_constraints}`);
-    if (opts.segment.demographics) lines.push(`Demographics: ${opts.segment.demographics}`);
+    // demographics is a UI-only field (raw quiz stats live there) — it must
+    // never reach generation prompts or the stats can echo into ad copy/images.
     lines.push(`\nTailor ALL hooks, headlines, and visual prompts to THIS specific person. The imagery should feel like it was made for someone who matches this description.`);
   }
 

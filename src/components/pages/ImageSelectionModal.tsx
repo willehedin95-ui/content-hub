@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   X,
   Loader2,
@@ -71,9 +71,12 @@ export default function ImageSelectionModal({
   const [anyTranslated, setAnyTranslated] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [successCount, setSuccessCount] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (open && pageHtml) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
       const extracted = extractImagesFromHtml(pageHtml);
       setImages(extracted);
       setSelected(new Set());
@@ -85,6 +88,13 @@ export default function ImageSelectionModal({
       setSuccessCount(0);
     }
   }, [open, pageHtml]);
+
+  // Stop polling on unmount (the server-side batch keeps running regardless)
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   function toggleImage(index: number) {
     setSelected((prev) => {
@@ -123,44 +133,66 @@ export default function ImageSelectionModal({
     setProgress({ done: 0, total: selectedImages.length });
     setErrors([]);
 
-    let successes = 0;
+    // Server-driven batch (audit 2026-07-07, L1): ONE request starts a
+    // server-side drain - closing the tab no longer strands the batch.
+    // Progress is polled from /api/translations/[id]/image-status.
+    try {
+      const res = await fetch("/api/translate-page-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          translationId,
+          language: language.value,
+          images: selectedImages.map((img) => ({
+            src: img.src,
+            index: img.index,
+            aspectRatio: computeAspectRatio(img.width, img.height),
+          })),
+        }),
+      });
 
-    // Process images sequentially to avoid overwhelming the API
-    for (let idx = 0; idx < selectedImages.length; idx++) {
-      const img = selectedImages[idx];
-      try {
-        const aspectRatio = computeAspectRatio(img.width, img.height);
-
-        const res = await fetch("/api/translate-page-images", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            translationId,
-            imageUrl: img.src,
-            imageIndex: img.index,
-            language: language.value,
-            aspectRatio,
-            // First call initializes batch tracking in DB
-            ...(idx === 0 && { batchInit: true, batchTotal: selectedImages.length }),
-          }),
-        });
-
-        if (!res.ok) {
-          const data = await res.json();
-          setErrors((prev) => [...prev, data.error || `Image ${img.index + 1} failed`]);
-        } else {
-          setAnyTranslated(true);
-          successes++;
-        }
-      } catch {
-        setErrors((prev) => [...prev, `Image ${img.index + 1}: network error`]);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrors([data.error || `Failed to start batch (${res.status})`]);
+        setTranslating(false);
+        return;
       }
-      setProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+    } catch {
+      setErrors(["Network error - could not start image translation"]);
+      setTranslating(false);
+      return;
     }
 
-    setSuccessCount(successes);
-    setCompleted(true);
-    setTranslating(false);
+    // Poll batch progress
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const statusRes = await fetch(`/api/translations/${translationId}/image-status`);
+        if (!statusRes.ok) return;
+        const data = await statusRes.json();
+
+        setProgress({ done: data.images_done ?? 0, total: data.images_total ?? selectedImages.length });
+
+        if (data.image_status === "done" || data.image_status === "error") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+
+          if (data.image_status === "error") {
+            // Failure summary from the server, e.g. "3 of 8 image(s) failed…"
+            setErrors([data.image_error || "Some images failed to translate"]);
+          }
+          const failedMatch = (data.image_error || "").match(/^(\d+) of \d+/);
+          const failedCount = failedMatch ? parseInt(failedMatch[1], 10) : (data.image_status === "error" ? 1 : 0);
+          const succeeded = Math.max(0, (data.images_total ?? selectedImages.length) - failedCount);
+          setSuccessCount(succeeded);
+          setAnyTranslated(succeeded > 0);
+          setCompleted(true);
+          setTranslating(false);
+        }
+      } catch {
+        // Ignore polling errors - batch continues server-side
+      }
+    }, 3000);
   }
 
   if (!open) return null;

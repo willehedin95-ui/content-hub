@@ -30,9 +30,21 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 
 const MAX_PAGES_BACKFILL = 10;
 const MAX_PAGES_INCREMENTAL = 3;
-const MAX_PAGES_DEEP = 100; // ~2000 reviews — covers even the largest competitors
+// Deep scan cap. The old value (100 pages ≈ 2000 reviews) could never finish:
+// at ~1.2s per Haiku eval + scrape time that's 40+ min of work inside the
+// 800s Vercel PRO cap, and everything after the kill was lost. 40 pages
+// (~800 reviews) fits with margin, and Trustpilot deep mode is anyway capped
+// at 10 pages per star level by scrapeReviewsByStars. Combined with the
+// dedupe + checkpointing below, a re-run resumes cheaply where it stopped.
+const MAX_PAGES_DEEP = 40;
 const EVAL_DELAY_MS = 150;
 const MIN_SIGNIFICANCE = 4;
+// Persist nuggets + progress every N evaluated reviews so a killed run keeps
+// what has already been paid for.
+const CHECKPOINT_EVERY = 25;
+// Stop evaluating when this much wall time has passed since scan start -
+// leaves headroom under maxDuration=800s for scrape time and final writes.
+const EVAL_DEADLINE_MS = 700_000;
 
 interface RawReview {
   id: string;
@@ -59,6 +71,10 @@ export interface SourceRecord {
 export interface ScanResult {
   reviewsScraped: number;
   nuggetsStored: number;
+  /** Reviews skipped because their external_review_id already had a stored nugget. */
+  skippedExisting?: number;
+  /** True when the eval loop stopped early on the time budget (re-run resumes via dedupe). */
+  truncated?: boolean;
   error?: string;
 }
 
@@ -67,6 +83,7 @@ export async function scanSingleSource(
   workspaceId: string,
   opts?: { deep?: boolean }
 ): Promise<ScanResult> {
+  const startedAt = Date.now();
   const db = createServerSupabase();
   const isBackfill = !source.last_scanned_at;
   const isDeep = opts?.deep === true;
@@ -264,16 +281,74 @@ export async function scanSingleSource(
     return { reviewsScraped: 0, nuggetsStored: 0 };
   }
 
+  // --- Dedupe: skip reviews that already have a stored nugget ---
+  // Saves the Haiku cost of re-evaluating them (deep scans re-scrape
+  // everything) and makes a re-run after a timeout resume where it stopped.
+  const existingIds = new Set<string>();
+  const scrapedIds = rawReviews.map((r) => r.id).filter(Boolean);
+  for (let i = 0; i < scrapedIds.length; i += 200) {
+    const chunk = scrapedIds.slice(i, i + 200);
+    const { data: existing, error: existingErr } = await db
+      .from("research_nuggets")
+      .select("external_review_id")
+      .eq("source_id", source.id)
+      .in("external_review_id", chunk);
+    if (existingErr) {
+      // Fail open (re-evaluate) but loudly - the upsert is idempotent so the
+      // only downside is a redundant paid eval, never data corruption.
+      console.error("Nugget dedupe query error:", existingErr.message);
+      continue;
+    }
+    for (const row of existing ?? []) {
+      existingIds.add(row.external_review_id as string);
+    }
+  }
+  const reviewsToEval = rawReviews.filter((r) => !existingIds.has(r.id));
+  const skippedExisting = rawReviews.length - reviewsToEval.length;
+
   // --- Evaluate each review with Haiku ---
   let nuggetsStored = 0;
   let latestReviewDate = source.last_review_date
     ? new Date(source.last_review_date)
     : new Date(0);
 
-  const nuggetBatch: Array<Record<string, unknown>> = [];
+  let nuggetBatch: Array<Record<string, unknown>> = [];
 
-  for (let i = 0; i < rawReviews.length; i++) {
-    const review = rawReviews[i];
+  // Incremental checkpoint: upsert accumulated nuggets so a killed run keeps
+  // everything paid for so far. Deliberately does NOT advance
+  // last_review_date: reviews arrive newest-first, so persisting the newest
+  // evaluated date before the OLDER tail has been processed would make the
+  // next incremental scan (sinceDate = last_review_date) skip that tail
+  // permanently. Resume-after-interrupt is instead handled by the
+  // external_review_id dedupe, which makes re-runs cheap.
+  const flushCheckpoint = async (): Promise<void> => {
+    if (nuggetBatch.length > 0) {
+      const { error } = await db.from("research_nuggets").upsert(nuggetBatch, {
+        onConflict: "workspace_id,source_id,external_review_id",
+      });
+      if (error) {
+        console.error("Nugget upsert error:", error.message);
+      } else {
+        nuggetsStored += nuggetBatch.length;
+      }
+      nuggetBatch = [];
+    }
+  };
+
+  let evaluatedCount = 0;
+  let truncated = false;
+
+  for (let i = 0; i < reviewsToEval.length; i++) {
+    const review = reviewsToEval[i];
+
+    if (Date.now() - startedAt > EVAL_DEADLINE_MS) {
+      truncated = true;
+      console.warn(
+        `[research-scan] Time budget hit for ${source.name} after ${evaluatedCount}/${reviewsToEval.length} evals - stopping early (next run resumes via dedupe)`
+      );
+      break;
+    }
+
     if (i > 0) {
       await new Promise((r) => setTimeout(r, EVAL_DELAY_MS));
     }
@@ -287,35 +362,8 @@ export async function scanSingleSource(
         competitorName: source.name,
       });
 
-      if (result.evaluation.significance < MIN_SIGNIFICANCE) continue;
-
-      const reviewDate = new Date(review.date);
-      if (!isNaN(reviewDate.getTime()) && reviewDate > latestReviewDate) {
-        latestReviewDate = reviewDate;
-      }
-
-      nuggetBatch.push({
-        workspace_id: workspaceId,
-        source_id: source.id,
-        external_review_id: review.id,
-        review_stars: review.rating,
-        review_date: review.date,
-        reviewer_name: review.author,
-        review_title: review.title,
-        review_text: review.text,
-        language: review.language,
-        market_relevance: getMarketRelevance(review.language),
-        sentiment: result.evaluation.sentiment,
-        significance: result.evaluation.significance,
-        tags: result.evaluation.tags,
-        customer_phrases: result.evaluation.customer_phrases,
-        pain_points: result.evaluation.pain_points,
-        desires: result.evaluation.desires,
-        competitor_name: source.name,
-        summary: result.evaluation.summary,
-        ai_evaluation: result.evaluation as unknown as Record<string, unknown>,
-      });
-
+      // Log the paid eval regardless of significance (below-threshold evals
+      // cost the same Haiku money as stored ones).
       await db.from("usage_logs").insert({
         type: "research_evaluation",
         model: "claude-haiku-4-5",
@@ -329,36 +377,62 @@ export async function scanSingleSource(
           significance: result.evaluation.significance,
         },
       });
+
+      if (result.evaluation.significance >= MIN_SIGNIFICANCE) {
+        const reviewDate = new Date(review.date);
+        if (!isNaN(reviewDate.getTime()) && reviewDate > latestReviewDate) {
+          latestReviewDate = reviewDate;
+        }
+
+        nuggetBatch.push({
+          workspace_id: workspaceId,
+          source_id: source.id,
+          external_review_id: review.id,
+          review_stars: review.rating,
+          review_date: review.date,
+          reviewer_name: review.author,
+          review_title: review.title,
+          review_text: review.text,
+          language: review.language,
+          market_relevance: getMarketRelevance(review.language),
+          sentiment: result.evaluation.sentiment,
+          significance: result.evaluation.significance,
+          tags: result.evaluation.tags,
+          customer_phrases: result.evaluation.customer_phrases,
+          pain_points: result.evaluation.pain_points,
+          desires: result.evaluation.desires,
+          competitor_name: source.name,
+          summary: result.evaluation.summary,
+          ai_evaluation: result.evaluation as unknown as Record<string, unknown>,
+        });
+      }
     } catch (evalErr) {
       console.error(
         `Eval failed for review ${review.id} from ${source.name} (${source.platform}):`,
         evalErr
       );
     }
-  }
 
-  // --- Batch upsert nuggets ---
-  if (nuggetBatch.length > 0) {
-    const batchSize = 500;
-    for (let i = 0; i < nuggetBatch.length; i += batchSize) {
-      const batch = nuggetBatch.slice(i, i + batchSize);
-      const { error } = await db.from("research_nuggets").upsert(batch, {
-        onConflict: "workspace_id,source_id,external_review_id",
-      });
-      if (error) {
-        console.error("Nugget upsert error:", error);
-      } else {
-        nuggetsStored += batch.length;
-      }
+    evaluatedCount++;
+    if (evaluatedCount % CHECKPOINT_EVERY === 0) {
+      await flushCheckpoint();
     }
   }
 
+  // Flush whatever is left after the loop.
+  await flushCheckpoint();
+
   // --- Update source metadata ---
-  await db
+  // last_review_date only advances on a COMPLETE run: after a truncated run
+  // the older tail is unevaluated, and moving the watermark forward would
+  // make the next incremental scan skip those reviews permanently.
+  const { error: finalErr } = await db
     .from("research_sources")
     .update({
       last_scanned_at: new Date().toISOString(),
-      last_review_date: latestReviewDate.toISOString(),
+      ...(!truncated && latestReviewDate.getTime() > 0
+        ? { last_review_date: latestReviewDate.toISOString() }
+        : {}),
       total_reviews_fetched: (source.total_reviews_fetched || 0) + rawReviews.length,
       external_id: externalId,
       status: "active",
@@ -366,8 +440,16 @@ export async function scanSingleSource(
       updated_at: new Date().toISOString(),
     })
     .eq("id", source.id);
+  if (finalErr) {
+    console.error("Source metadata update error:", finalErr.message);
+  }
 
-  return { reviewsScraped: rawReviews.length, nuggetsStored };
+  return {
+    reviewsScraped: rawReviews.length,
+    nuggetsStored,
+    skippedExisting,
+    truncated,
+  };
 }
 
 // --- Source name auto-update ---

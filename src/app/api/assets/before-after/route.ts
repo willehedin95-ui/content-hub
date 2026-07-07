@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { CLAUDE_MODEL } from "@/lib/constants";
-import { calcClaudeCost } from "@/lib/pricing";
+import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import {
   UNFLATTERING_LIGHTING_OPTIONS,
@@ -858,6 +858,22 @@ export async function POST(req: NextRequest) {
       const referenceImages = image_url ? [image_url] : [];
       const taskId = await createImageTask(prompt, referenceImages, ASPECT_RATIO, RESOLUTION);
 
+      // Log the Kie cost IMMEDIATELY after task creation - the image is paid
+      // for once the task exists, so a poll timeout must not hide the spend.
+      await db.from("usage_logs").insert({
+        type: "before_after",
+        model: "nano-banana-2",
+        cost_usd: KIE_IMAGE_COST,
+        metadata: {
+          task_id: taskId,
+          aspect_ratio: ASPECT_RATIO,
+          resolution: RESOLUTION,
+          body_zone,
+          intensity,
+          has_source: Boolean(image_url),
+        },
+      });
+
       // Heartbeat keeps the NDJSON stream alive across the 60-300s Kie poll.
       // Without it, intermediaries treat the connection as idle and the
       // browser reader can hang even after the backend finishes.
@@ -879,20 +895,6 @@ export async function POST(req: NextRequest) {
         await writer.close();
         return;
       }
-
-      await db.from("usage_logs").insert({
-        type: "before_after",
-        model: "nano-banana-2",
-        cost_usd: 0,
-        metadata: {
-          task_id: taskId,
-          aspect_ratio: ASPECT_RATIO,
-          resolution: RESOLUTION,
-          body_zone,
-          intensity,
-          has_source: Boolean(image_url),
-        },
-      });
 
       await emit({
         step: "completed",

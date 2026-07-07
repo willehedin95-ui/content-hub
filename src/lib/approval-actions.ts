@@ -52,7 +52,13 @@ export async function clearFromPushPipeline(
 // CONCEPT APPROVE / REJECT
 // ---------------------------------------------------------------------------
 
-export async function approveConceptAction(jobId: string, source: string = "review_page"): Promise<ApprovalResult> {
+export async function approveConceptAction(
+  jobId: string,
+  source: string = "review_page",
+  // approveIterationAction reuses this full approve path but logs its own
+  // action_type so the activity feed can tell iterations from concepts.
+  actionType: string = "concept_approved",
+): Promise<ApprovalResult> {
   const db = createServerSupabase();
 
   const { data: job } = await db
@@ -201,7 +207,7 @@ export async function approveConceptAction(jobId: string, source: string = "revi
   // Log to autopilot_actions
   await db.from("autopilot_actions").insert({
     workspace_id: job.workspace_id,
-    action_type: "concept_approved",
+    action_type: actionType,
     target_id: jobId,
     target_name: job.name,
     details: { concept_number: job.concept_number, markets, source },
@@ -358,28 +364,13 @@ export async function rejectVideoAction(jobId: string, source: string = "review_
 // ---------------------------------------------------------------------------
 
 export async function approveIterationAction(jobId: string, source: string = "review_page"): Promise<ApprovalResult> {
-  const db = createServerSupabase();
-
-  const { data: job } = await db
-    .from("image_jobs")
-    .select("id, name, concept_number, workspace_id")
-    .eq("id", jobId)
-    .single();
-
-  if (!job) {
-    return { ok: false, action: "approve", error: "Concept not found", jobId };
-  }
-
-  await db.from("autopilot_actions").insert({
-    workspace_id: job.workspace_id,
-    action_type: "iterate_approved",
-    target_id: jobId,
-    target_name: job.name,
-    details: { concept_number: job.concept_number, source },
-    success: true,
-  });
-
-  return { ok: true, action: "approved", jobId, jobName: job.name, conceptNumber: job.concept_number };
+  // An iteration is an image_jobs row like any concept. This used to only log
+  // iterate_approved without queueing anything, so "Approve" never put the
+  // child on the launchpad and the nightly push cron never saw it. Reuse the
+  // full concept-approve path (judge gate, landing-page assign, launchpad
+  // priority APPEND at max+1 = last in queue, market + lifecycle rows) with
+  // the iteration-specific action_type.
+  return approveConceptAction(jobId, source, "iterate_approved");
 }
 
 export async function rejectIterationAction(jobId: string, source: string = "review_page"): Promise<ApprovalResult> {
@@ -387,12 +378,40 @@ export async function rejectIterationAction(jobId: string, source: string = "rev
 
   const { data: job } = await db
     .from("image_jobs")
-    .select("id, name, concept_number, workspace_id")
+    .select("id, name, concept_number, workspace_id, iteration_of")
     .eq("id", jobId)
     .single();
 
   if (!job) {
     return { ok: false, action: "reject", error: "Concept not found", jobId };
+  }
+
+  // Two flows land here:
+  // 1) A CHILD job created via /iterate (iteration_of set) - rejecting it
+  //    archives the child (same pattern as rejectConceptAction; archived_at +
+  //    status must agree since /review/pending filters on archived_at IS
+  //    NULL) and clears it from the push pipeline.
+  // 2) The fatigue-refresh flow (autopilot-iterate) generates batch-2 images
+  //    INTO THE SAME image_jobs row as the LIVE concept (no iteration_of set,
+  //    Telegram button carries the parent job id) - rejecting there means
+  //    "keep the ad, discard the new images". Archiving would take down the
+  //    live concept and null its launchpad_priority, so for parent jobs we
+  //    only clean up the iteration images.
+  if (job.iteration_of) {
+    const { error: rejectErr } = await db.from("image_jobs").update({
+      archived_at: new Date().toISOString(),
+      status: "archived",
+      launchpad_priority: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", jobId);
+
+    if (rejectErr) {
+      // Reporting success on a failed update would leave the iteration live in
+      // the review feed / push pipeline despite the reviewer rejecting it.
+      return { ok: false, action: "reject", error: `Reject failed: ${rejectErr.message}`, jobId, jobName: job.name };
+    }
+
+    await clearFromPushPipeline(db, [jobId]);
   }
 
   const { cleanupIterationImages } = await import("@/lib/autopilot-iterate");

@@ -35,12 +35,27 @@ export async function PATCH(
   if (body.content !== undefined) updateData.content = body.content;
   if (body.sort_order !== undefined) updateData.sort_order = body.sort_order;
 
-  const { data, error } = await db
+  // Ownership check: the row must belong to this product OR be a global
+  // guideline (product_id IS NULL - listed under every product, so an
+  // unconditional product_id bind would no-op/500 on those). This still
+  // blocks mutating another product's rows through this route.
+  const { data: existing, error: existingErr } = await db
+    .from("copywriting_guidelines")
+    .select("id, product_id")
+    .eq("id", guidelineId)
+    .single();
+  if (existingErr || !existing || (existing.product_id !== null && existing.product_id !== productId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let updateQuery = db
     .from("copywriting_guidelines")
     .update(updateData)
-    .eq("id", guidelineId)
-    .select()
-    .single();
+    .eq("id", guidelineId);
+  if (existing.product_id !== null) {
+    updateQuery = updateQuery.eq("product_id", productId);
+  }
+  const { data, error } = await updateQuery.select().single();
 
   if (error) {
     return safeError(error, "Failed to update guideline");
@@ -71,10 +86,25 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { error } = await db
+  // Ownership check: allow rows belonging to this product OR global rows
+  // (product_id IS NULL) - see PATCH above for why.
+  const { data: existing, error: existingErr } = await db
+    .from("copywriting_guidelines")
+    .select("id, product_id")
+    .eq("id", guidelineId)
+    .single();
+  if (existingErr || !existing || (existing.product_id !== null && existing.product_id !== productId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let deleteQuery = db
     .from("copywriting_guidelines")
     .delete()
     .eq("id", guidelineId);
+  if (existing.product_id !== null) {
+    deleteQuery = deleteQuery.eq("product_id", productId);
+  }
+  const { error } = await deleteQuery;
 
   if (error) {
     return safeError(error, "Failed to delete guideline");

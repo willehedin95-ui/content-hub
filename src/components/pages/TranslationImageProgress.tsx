@@ -3,6 +3,7 @@ import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 /**
  * Inline image translation progress shown during active translation.
  * Displays "Images X/Y" with spinner or check icon.
+ * Failures are NEVER shown as green (audit 2026-07-07, L4).
  */
 export function InlineImageProgress({
   done,
@@ -13,16 +14,19 @@ export function InlineImageProgress({
   total: number;
   errors: string[];
 }) {
+  const hasErrors = errors.length > 0;
   return (
     <div className="flex items-center gap-1.5">
-      {done < total ? (
+      {done < total && !hasErrors ? (
         <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+      ) : hasErrors ? (
+        <AlertCircle className="w-3 h-3 text-red-500" />
       ) : (
         <CheckCircle2 className="w-3 h-3 text-emerald-500" />
       )}
-      <span className="text-xs text-amber-600">
+      <span className={`text-xs ${hasErrors ? "text-red-600" : "text-amber-600"}`}>
         Images {done}/{total}
-        {errors.length > 0 && ` (${errors.length} failed)`}
+        {hasErrors && ` - ${errors[0]}`}
       </span>
     </div>
   );
@@ -36,10 +40,12 @@ export function BackgroundImageProgress({
   done,
   total,
   status,
+  message,
 }: {
   done: number;
   total: number;
   status: string;
+  message?: string | null;
 }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -52,8 +58,8 @@ export function BackgroundImageProgress({
       )}
       <span className={`text-xs ${status === "done" ? "text-emerald-600" : status === "error" ? "text-red-600" : "text-amber-600"}`}>
         Images {done}/{total}
-        {status === "done" && " \u2014 done!"}
-        {status === "error" && " \u2014 error"}
+        {status === "done" && " - done!"}
+        {status === "error" && ` - ${message || "error"}`}
       </span>
     </div>
   );

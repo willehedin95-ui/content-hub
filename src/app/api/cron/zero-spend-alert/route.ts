@@ -168,22 +168,27 @@ export async function GET(req: NextRequest) {
     (workspaces ?? []).filter((w) => isTelegramDisabled(w)).map((w) => w.id as string),
   );
 
-  // Check for recent auto-pause by us (in case auto-pause-bleeders killed it)
-  const { data: autoPaused } = await db
+  // Check for recent auto-pause by us (in case auto-pause-bleeders killed it).
+  // M1 (2026-07-07): the table's timestamp column is paused_at, NOT created_at —
+  // the old query errored silently and the auto-pause correlation never showed.
+  const { data: autoPaused, error: autoPausedErr } = await db
     .from("auto_paused_ads")
-    .select("meta_ad_id, ad_name, adset_id, reason, created_at")
+    .select("meta_ad_id, ad_name, adset_id, reason, paused_at")
     .in(
       "adset_id",
       flagged.map((f) => f.adset_id),
     )
-    .gte("created_at", monthStart.toISOString());
+    .gte("paused_at", monthStart.toISOString());
+  if (autoPausedErr) {
+    console.error("[zero-spend-alert] auto_paused_ads query failed:", autoPausedErr.message);
+  }
 
   const autoPauseMap = new Map<string, { reason: string; when: string }>();
   for (const ap of autoPaused ?? []) {
     if (ap.adset_id) {
       autoPauseMap.set(ap.adset_id as string, {
         reason: (ap.reason as string) ?? "",
-        when: ((ap.created_at as string) ?? "").slice(0, 10),
+        when: ((ap.paused_at as string) ?? "").slice(0, 10),
       });
     }
   }

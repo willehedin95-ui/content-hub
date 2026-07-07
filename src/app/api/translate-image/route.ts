@@ -3,8 +3,11 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { generateImage } from "@/lib/kie";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { KIE_MODEL, STORAGE_BUCKET } from "@/lib/constants";
+import { getWorkspaceId } from "@/lib/workspace";
 
-export const maxDuration = 180;
+// Vercel PRO cap is 800s. Kie polling alone can take up to ~280s, so 180
+// killed paid renders mid-flight (audit 2026-07-07, L2).
+export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const { imageUrl, prompt, translationId, aspectRatio } = (await req.json()) as {
@@ -25,14 +28,23 @@ export async function POST(req: NextRequest) {
     const startTime = Date.now();
     const db = createServerSupabase();
 
-    // Validate translationId exists before calling expensive Kie AI
+    // Validate translationId exists + belongs to the active workspace
+    // before calling expensive Kie AI (audit 2026-07-07, P3 workspace-scoping)
+    const workspaceId = await getWorkspaceId();
     const { data: trans, error: transErr } = await db
       .from("translations")
-      .select("id, page_id")
+      .select("id, page_id, pages!inner(workspace_id)")
       .eq("id", translationId)
       .single();
 
     if (transErr || !trans) {
+      return NextResponse.json(
+        { error: "Translation not found" },
+        { status: 404 }
+      );
+    }
+    const transPages = trans.pages as unknown as { workspace_id?: string } | null;
+    if (transPages?.workspace_id && transPages.workspace_id !== workspaceId) {
       return NextResponse.json(
         { error: "Translation not found" },
         { status: 404 }
@@ -82,7 +94,7 @@ export async function POST(req: NextRequest) {
     // 5. Log usage (trans already fetched above for validation)
     const durationMs = Date.now() - startTime;
 
-    await db.from("usage_logs").insert({
+    const { error: logError } = await db.from("usage_logs").insert({
       type: "image_generation",
       page_id: trans.page_id,
       translation_id: translationId,
@@ -97,6 +109,9 @@ export async function POST(req: NextRequest) {
         kie_cost_time_ms: costTimeMs,
       },
     });
+    if (logError) {
+      console.error("[translate-image] usage_logs insert failed:", logError.message);
+    }
 
     return NextResponse.json({ newImageUrl: urlData.publicUrl, duration_ms: durationMs });
   } catch (error) {

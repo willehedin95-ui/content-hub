@@ -27,12 +27,14 @@ type PublishTarget = {
   pathPrefix: string;
 };
 
-/** Maps quiz market to the CF Pages project name (matches the env-var convention). */
+/** Maps quiz market to the CF Pages project name (matches the env-var convention).
+ *  Env values are trimmed - a trailing newline in e.g. CF_PAGES_PROJECT_DA
+ *  ("smarthelse\n") silently targets a non-existent CF project. */
 function getQuizProjectName(market: "se" | "dk" | "no"): string {
   const map: Record<string, string> = {
-    se: process.env.CF_PAGES_PROJECT_SV ?? "halsobladet-blog",
-    dk: process.env.CF_PAGES_PROJECT_DA ?? "smarthelse",
-    no: process.env.CF_PAGES_PROJECT_NO ?? "helseguiden",
+    se: (process.env.CF_PAGES_PROJECT_SV ?? "halsobladet-blog").trim(),
+    dk: (process.env.CF_PAGES_PROJECT_DA ?? "smarthelse").trim(),
+    no: (process.env.CF_PAGES_PROJECT_NO ?? "helseguiden").trim(),
   };
   const name = map[market];
   if (!name) throw new Error(`[quiz-publish] No CF Pages project for market: ${market}`);
@@ -42,9 +44,9 @@ function getQuizProjectName(market: "se" | "dk" | "no"): string {
 /** Maps market to the custom domain for building the public URL. */
 function getQuizDomain(market: "se" | "dk" | "no"): string {
   const map: Record<string, string> = {
-    se: process.env.CF_PAGES_DOMAIN_SV ?? "halsobladet.com",
-    dk: process.env.CF_PAGES_DOMAIN_DA ?? "smarthelse.dk",
-    no: process.env.CF_PAGES_DOMAIN_NO ?? "helseguiden.com",
+    se: (process.env.CF_PAGES_DOMAIN_SV ?? "halsobladet.com").trim(),
+    dk: (process.env.CF_PAGES_DOMAIN_DA ?? "smarthelse.dk").trim(),
+    no: (process.env.CF_PAGES_DOMAIN_NO ?? "helseguiden.com").trim(),
   };
   return map[market] ?? `${getQuizProjectName(market)}.pages.dev`;
 }
@@ -224,10 +226,12 @@ export async function publishQuiz(
   // 4. Ensure runtime bundle is uploaded to this project
   await ensureRuntimeBundle(accountId, apiToken, projectName, bundle);
 
-  // 5. Determine API base URL (used in __QUIZ_CONFIG__)
-  const apiBaseUrl =
+  // 5. Determine API base URL (used in __QUIZ_CONFIG__). Trimmed - a stray
+  //    trailing newline in APP_URL bakes a broken URL into the shell.
+  const apiBaseUrl = (
     process.env.APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "")
+  ).trim();
   if (!apiBaseUrl) {
     throw new Error("[quiz-publish] APP_URL or VERCEL_URL env var must be set");
   }

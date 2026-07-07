@@ -53,11 +53,30 @@ export async function POST(
     );
   }
 
-  // Mark as pushing
-  await db
+  // P3 (2026-07-07): atomic claim — the read-then-update above is racy under
+  // double-click/double-request. Compare-and-swap on the status we just read:
+  // the single UPDATE only succeeds for ONE caller; a concurrent push matches
+  // zero rows and gets a 409 instead of creating duplicate (PAUSED) ads.
+  const claimBase = db
     .from("meta_campaigns")
     .update({ status: "pushing", updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("workspace_id", workspaceId);
+  const { data: claimed, error: claimErr } = await (
+    campaign.status === null
+      ? claimBase.is("status", null)
+      : claimBase.eq("status", campaign.status)
+  ).select("id");
+
+  if (claimErr) {
+    return safeError(claimErr, "Failed to claim campaign for push");
+  }
+  if (!claimed || claimed.length === 0) {
+    return NextResponse.json(
+      { error: "Campaign is already being pushed (or was just pushed) by another request" },
+      { status: 409 }
+    );
+  }
 
   try {
     // 1. Resolve Meta campaign ID (from mapping or existing)
@@ -101,8 +120,10 @@ export async function POST(
       }
 
       // Create non-DCO ad set from template config (not duplicate, since
-      // duplicating inherits is_dynamic_creative=true which breaks PAC rules)
-      const templateConfig = await getAdSetConfig(mapping.template_adset_id);
+      // duplicating inherits is_dynamic_creative=true which breaks PAC rules).
+      // P2 (2026-07-07): read runs inside runWithMetaConfig too — reading the
+      // template from the wrong account yields a wrong campaign_id for creation.
+      const templateConfig = await runWithMetaConfig(metaCfg, () => getAdSetConfig(mapping.template_adset_id));
       const newAdSet = await runWithMetaConfig(metaCfg, () => createAdSetFromTemplate({
         templateConfig,
         name: campaign.name,

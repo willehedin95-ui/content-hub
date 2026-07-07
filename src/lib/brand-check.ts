@@ -441,12 +441,24 @@ export async function removeShortlist(name: string): Promise<void> {
   await supabase.from("brand_shortlist").delete().eq("name", name.trim());
 }
 
+// Normalisera cache-nyckeldelarna så "5,3" och "3,5" (eller omkastade
+// offices) träffar samma cache-rad istället för att skapa dubbletter.
+function normalizeCacheKeyPart(value: string, numeric: boolean): string {
+  const parts = Array.from(
+    new Set(value.split(",").map((s) => s.trim()).filter(Boolean))
+  );
+  parts.sort(numeric ? (a, b) => Number(a) - Number(b) : undefined);
+  return parts.join(",");
+}
+
 export async function runBrandChecks(
   rawNames: string[],
   niceClasses = "3,5",
   offices = "EM,SE,DK,NO"
 ): Promise<BrandCheckResult[]> {
   const { createServerSupabase } = await import("@/lib/supabase-admin");
+  niceClasses = normalizeCacheKeyPart(niceClasses, true);
+  offices = normalizeCacheKeyPart(offices.toUpperCase(), false);
   const names = Array.from(new Set(rawNames.map((n) => n.trim()).filter(Boolean))).slice(0, 40);
   if (names.length === 0) return [];
 

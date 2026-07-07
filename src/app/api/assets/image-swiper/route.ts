@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 import { CLAUDE_MODEL } from "@/lib/constants";
-import { calcClaudeCost } from "@/lib/pricing";
+import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
-import type { ProductFull, CopywritingGuideline, ProductSegment } from "@/types";
+import type { ProductFull } from "@/types";
 
 export const maxDuration = 800;
 
@@ -63,41 +64,26 @@ export async function POST(req: NextRequest) {
 
   // Fetch product data (only when product is selected)
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
 
   let product: ProductFull | null = null;
-  let guidelines: CopywritingGuideline[] = [];
-  let segments: ProductSegment[] = [];
   let productHeroUrls: string[] = [];
-  let productBrief: string | undefined;
 
   if (productSlug) {
+    // Workspace-scoped lookup (same pattern as video-swiper) - product slugs
+    // are only unique per workspace, so an unscoped lookup could resolve a
+    // slug from another brand's workspace.
     const { data: productData, error: productErr } = await db
       .from("products")
       .select("*")
       .eq("slug", productSlug)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (productErr || !productData) {
       return NextResponse.json({ error: `Product "${productSlug}" not found` }, { status: 404 });
     }
     product = productData as ProductFull;
-
-    const { data: guidelinesData } = await db
-      .from("copywriting_guidelines")
-      .select("*")
-      .or(`product_id.eq.${product.id},product_id.is.null`)
-      .order("sort_order", { ascending: true });
-
-    guidelines = (guidelinesData ?? []) as CopywritingGuideline[];
-    productBrief = guidelines.find((g) => g.name === "Product Brief")?.content;
-
-    const { data: segmentsData } = await db
-      .from("product_segments")
-      .select("*")
-      .eq("product_id", product.id)
-      .order("sort_order", { ascending: true });
-
-    segments = (segmentsData ?? []) as ProductSegment[];
 
     // Fetch product hero images for Nano Banana reference
     const { data: productImages } = await db
@@ -333,7 +319,7 @@ export async function POST(req: NextRequest) {
       await db.from("usage_logs").insert({
         type: "image_swiper",
         model: "nano-banana-2",
-        cost_usd: 0,
+        cost_usd: KIE_IMAGE_COST,
         metadata: {
           product: productSlug,
           task_id: imageTaskId,

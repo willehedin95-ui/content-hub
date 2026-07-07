@@ -17,7 +17,7 @@ import {
   EventBuffer,
   detectDeviceType,
 } from "./state";
-import { startSession, flushEvents, subscribeKlaviyo } from "./api";
+import { startSessionWithRetry, flushEvents, subscribeKlaviyo } from "./api";
 import { StepRenderer, ProgressBar, OfferTimerBar } from "./renderer";
 import { topoOrderSteps } from "./topo";
 import { t } from "./i18n";
@@ -80,6 +80,10 @@ export function App({ data, settings, config }: AppProps) {
   // downstream title/text content.
   const [variables, setVariables] = useState<Record<string, string>>({});
   const bufferRef = useRef<EventBuffer | null>(null);
+  // Mirror of sessionId readable at redirect time without stale-closure risk:
+  // the exit redirect builds its URL inside async callbacks, and the session
+  // may resolve (via retry) between click and redirect.
+  const sessionIdRef = useRef<string | null>(null);
   const sessionInitialized = useRef(false);
 
   // Auto-dismiss preview toast after 4s
@@ -112,9 +116,27 @@ export function App({ data, settings, config }: AppProps) {
     };
   }, []);
 
-  // Compute ordered steps for progress tracking (do once)
+  // Compute ordered steps for progress tracking (do once). A variant group
+  // counts as ONE logical step - a visitor only ever passes one sibling per
+  // group, so counting siblings individually made the header show e.g.
+  // "27" when the user actually sees 25 steps.
   const orderedSteps = topoOrderSteps(data);
-  const totalSteps = orderedSteps.length;
+  const seenVariantGroups = new Set<string>();
+  const logicalSteps = orderedSteps.filter((s) => {
+    if (!s.variantGroupId) return true;
+    if (seenVariantGroups.has(s.variantGroupId)) return false;
+    seenVariantGroups.add(s.variantGroupId);
+    return true;
+  });
+  const totalSteps = logicalSteps.length;
+  /** Index of a step in the deduped logical order (variant siblings map to
+   *  their group's single slot). -1 when not found. */
+  const logicalStepIndex = (node: StepNode): number =>
+    logicalSteps.findIndex((s) =>
+      node.variantGroupId
+        ? s.variantGroupId === node.variantGroupId
+        : s.id === node.id,
+    );
 
   // Initialize: resolve variants, start session, fire PageView pixel
   useEffect(() => {
@@ -244,9 +266,27 @@ export function App({ data, settings, config }: AppProps) {
     // In preview mode skip all API calls - just render
     if (config.preview) return;
 
-    // Start session async (don't block render)
+    // Create the event buffer SYNCHRONOUSLY at mount, before the session
+    // exists. Events (first step_view, fast answers) buffer client-side and
+    // are flushed as soon as startSession resolves - a slow or flaky session
+    // start no longer costs the entire session's events.
+    bufferRef.current = new EventBuffer(
+      null,
+      (sId, evts) => flushEvents(config.apiBaseUrl, sId, evts),
+      config.apiBaseUrl,
+    );
+    if (firstNode && firstNode.kind === "step") {
+      bufferRef.current.push({
+        event_type: "step_view",
+        step_id: firstNode.id,
+        variant_group_id: firstNode.variantGroupId,
+      });
+    }
+
+    // Start session async (don't block render). Retries with backoff
+    // (1s/3s/9s) - cold-start blips on the hub no longer orphan the visit.
     const utm = extractUTM();
-    void startSession(
+    void startSessionWithRetry(
       config.apiBaseUrl,
       config.quizId,
       assignments,
@@ -255,31 +295,14 @@ export function App({ data, settings, config }: AppProps) {
     )
       .then((sid) => {
         setSessionId(sid);
-        bufferRef.current = new EventBuffer(
-          sid,
-          (sId, evts) => flushEvents(config.apiBaseUrl, sId, evts),
-          config.apiBaseUrl,
-        );
-        // Log first step view + force-flush immediately. This guarantees
-        // the event lands even if the visitor bounces within the 2s flush
-        // interval - the EventBuffer's normal interval and the
-        // pagehide/sendBeacon fallback together ensure no events are
-        // dropped, but we want the first step_view recorded as fast as
-        // possible (Meta Pixel PageView and our analytics agree on the
-        // start count).
-        if (firstNode && firstNode.kind === "step") {
-          bufferRef.current.push({
-            event_type: "step_view",
-            step_id: firstNode.id,
-            variant_group_id: firstNode.variantGroupId,
-          });
-          // Immediate (non-blocking) flush so step_view is in DB inside
-          // ~200ms instead of waiting for the next 2s interval tick.
-          void bufferRef.current.flush();
-        }
+        sessionIdRef.current = sid;
+        // Attach the id + flush everything buffered since mount. The first
+        // step_view lands as fast as the session API allows (Meta Pixel
+        // PageView and our analytics agree on the start count).
+        bufferRef.current?.setSessionId(sid);
       })
       .catch((err) => {
-        console.warn("[quiz-runtime] session start failed:", err);
+        console.warn("[quiz-runtime] session start failed after retries:", err);
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -400,9 +423,9 @@ export function App({ data, settings, config }: AppProps) {
       }
       setCurrentNode(node);
 
-      // Update step index for progress bar
+      // Update step index for progress bar (variant-group aware)
       if (node.kind === "step") {
-        const idx = orderedSteps.findIndex((s) => s.id === node.id);
+        const idx = logicalStepIndex(node);
         if (idx >= 0) setStepIndex(idx);
 
         if (!config.preview) {
@@ -523,12 +546,14 @@ export function App({ data, settings, config }: AppProps) {
           firePixelEvent("Lead", { content_name: settings.metadata.title, value: 0 });
         }
 
-        // Subscribe to Klaviyo
-        if (settings.providers.klaviyo?.listId && sessionId) {
+        // Subscribe to Klaviyo (read the session id from the ref - the
+        // session may have resolved after this callback was created)
+        const sid = sessionIdRef.current;
+        if (settings.providers.klaviyo?.listId && sid) {
           try {
             await subscribeKlaviyo(
               config.apiBaseUrl,
-              sessionId,
+              sid,
               email,
               settings.providers.klaviyo.listId,
             );
@@ -566,7 +591,7 @@ export function App({ data, settings, config }: AppProps) {
       const rest = h.slice(0, -1);
       setCurrentNode(prev);
       if (prev.kind === "step") {
-        const idx = orderedSteps.findIndex((s) => s.id === prev.id);
+        const idx = logicalStepIndex(prev);
         if (idx >= 0) setStepIndex(idx);
       }
       return rest;
@@ -593,7 +618,12 @@ export function App({ data, settings, config }: AppProps) {
         });
       }
 
-      // Build the redirect URL up front so we never lose it to a hanging flush.
+      // Build the redirect URL as a function so it can be evaluated AT
+      // REDIRECT TIME: startSession retries with backoff, so the session id
+      // may resolve during the flush window below. We never wait extra for
+      // it - but if it exists by then, qz_sid/utm_content ride along and
+      // the purchase attributes correctly instead of landing as "Direct LP".
+      //
       // UTM strategy: utm_source=quiz, utm_medium=funnel, utm_campaign=<slug>,
       // utm_content=<sessionId> (links Shopify orders back to a quiz session
       // via custom-attribute capture or a Shopify webhook), utm_term=<pain>
@@ -607,35 +637,39 @@ export function App({ data, settings, config }: AppProps) {
       // any other destination (LP page, /products/...) we keep using plain
       // utm/qz query params so trackers and the existing qz-attribution.js
       // ScriptTag continue to find them.
-      const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "";
-      const url = new URL(redirectBase, location.href);
-      const isCartPermalink = /^\/cart\/\d+:\d+/i.test(url.pathname);
-      const setParam = (key: string, value: string) => {
-        if (isCartPermalink) {
-          url.searchParams.set(`attributes[${key}]`, value);
-        } else {
-          url.searchParams.set(key, value);
-        }
+      const buildTarget = (): string => {
+        const sid = sessionIdRef.current;
+        const redirectBase = exitNode.redirectUrl || settings.redirectUrl || "";
+        const url = new URL(redirectBase, location.href);
+        const isCartPermalink = /^\/cart\/\d+:\d+/i.test(url.pathname);
+        const setParam = (key: string, value: string) => {
+          if (isCartPermalink) {
+            url.searchParams.set(`attributes[${key}]`, value);
+          } else {
+            url.searchParams.set(key, value);
+          }
+        };
+        setParam("utm_source", "quiz");
+        setParam("utm_medium", "funnel");
+        setParam("utm_campaign", config.quizSlug || "quiz");
+        if (sid) setParam("utm_content", sid);
+        const pain = variables.primary_pain_value || variables.primary_pain;
+        if (pain) setParam("utm_term", pain);
+        if (sid) setParam("qz_sid", sid);
+        if (pain) setParam("qz_pain", pain);
+        if (variables.breed) setParam("qz_breed", variables.breed);
+        if (variables.time_per_day) setParam("qz_time", variables.time_per_day);
+        if (variables.age) setParam("qz_age", variables.age);
+        return url.toString();
       };
-      setParam("utm_source", "quiz");
-      setParam("utm_medium", "funnel");
-      setParam("utm_campaign", config.quizSlug || "quiz");
-      if (sessionId) setParam("utm_content", sessionId);
-      const pain = variables.primary_pain_value || variables.primary_pain;
-      if (pain) setParam("utm_term", pain);
-      if (sessionId) setParam("qz_sid", sessionId);
-      if (pain) setParam("qz_pain", pain);
-      if (variables.breed) setParam("qz_breed", variables.breed);
-      if (variables.time_per_day) setParam("qz_time", variables.time_per_day);
-      if (variables.age) setParam("qz_age", variables.age);
-      const target = url.toString();
 
       // Race the flush against a 1.5s timeout - if events can't reach the hub
       // (CORS error, blocked network, slow API) we still redirect on time.
+      // We never wait indefinitely for the session id.
       const flushPromise = bufferRef.current?.flush().catch(() => {}) ?? Promise.resolve();
       const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
       void Promise.race([flushPromise, timeoutPromise]).finally(() => {
-        location.href = target;
+        location.href = buildTarget();
       });
     },
     [settings, sessionId, config.preview, config.quizSlug, variables],

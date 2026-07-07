@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant, setOptionRoute, ensureDefaultEdge } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant, setOptionRoute, ensureDefaultEdge, validateQuizForPublish } from "./quiz-graph";
 import type { QuizData, QuizNode, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -205,6 +205,37 @@ describe("createVariant", () => {
     if (variant.kind !== "step") throw new Error("not step");
     expect(variant.subEls).not.toBe(origNode.subEls);
     expect(variant.subEls).toEqual(origNode.subEls);
+  });
+
+  it("clones the original's outgoing edges (same targets + conditions) to the variant", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "B" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "C" });
+    const [origId, bId, cId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: origId, to: bId }); // default edge
+    q = setOptionRoute(q, origId, "qel_1", "opt_1", cId); // conditional edge
+    const next = createVariant(q, origId);
+    const variantId = Object.keys(next.nodes).find(
+      (id) => ![origId, bId, cId].includes(id),
+    )!;
+    const variantEdges = Object.values(next.edges).filter((e) => e.from === variantId);
+    expect(variantEdges).toHaveLength(2);
+    const defaultEdge = variantEdges.find((e) => !e.condition || e.condition.kind === "default");
+    const condEdge = variantEdges.find((e) => e.condition?.kind === "option");
+    expect(defaultEdge?.to).toBe(bId);
+    expect(condEdge?.to).toBe(cId);
+    expect(condEdge?.condition).toEqual({ kind: "option", questionElId: "qel_1", optionId: "opt_1" });
+    // Original's own edges untouched
+    expect(Object.values(next.edges).filter((e) => e.from === origId)).toHaveLength(2);
+  });
+
+  it("does not clone edges when the original has none", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "A" });
+    const origId = Object.keys(q.nodes)[0];
+    const next = createVariant(q, origId);
+    expect(Object.values(next.edges)).toHaveLength(0);
   });
 });
 
@@ -624,6 +655,174 @@ describe("promoteVariant", () => {
     const stepId = Object.keys(q.nodes)[0];
     const result = promoteVariant(q, stepId);
     expect(result).toBe(q);
+  });
+
+  it("repoints inbound edges from the old primary to the winner", () => {
+    // prev -> primary -> next, variant of primary has no own edges (legacy).
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "Prev" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "Primary" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "Next" });
+    const [prevId, primaryId, nextId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: prevId, to: primaryId });
+    q = connectNodes(q, { from: primaryId, to: nextId });
+    q = createVariant(q, primaryId);
+    const variantId = Object.keys(q.nodes).find(
+      (id) => ![prevId, primaryId, nextId].includes(id),
+    )!;
+    // Simulate a legacy variant with NO outgoing edges (pre edge-cloning)
+    const edgesWithoutVariantOut = Object.fromEntries(
+      Object.entries(q.edges).filter(([, e]) => e.from !== variantId),
+    );
+    q = { ...q, edges: edgesWithoutVariantOut };
+
+    const next = promoteVariant(q, variantId);
+
+    // Primary removed, winner remains without variant fields
+    expect(next.nodes[primaryId]).toBeUndefined();
+    const winner = next.nodes[variantId];
+    if (winner.kind !== "step") throw new Error("not step");
+    expect(winner.variantGroupId).toBeUndefined();
+
+    // prev now points at the winner (no dead end at prev)
+    const prevOut = Object.values(next.edges).filter((e) => e.from === prevId);
+    expect(prevOut).toHaveLength(1);
+    expect(prevOut[0].to).toBe(variantId);
+
+    // winner inherited the primary's outgoing edge to next
+    const winnerOut = Object.values(next.edges).filter((e) => e.from === variantId);
+    expect(winnerOut).toHaveLength(1);
+    expect(winnerOut[0].to).toBe(nextId);
+
+    // no edges reference the removed primary
+    for (const e of Object.values(next.edges)) {
+      expect(e.from).not.toBe(primaryId);
+      expect(e.to).not.toBe(primaryId);
+    }
+  });
+
+  it("keeps the winner's own outgoing edges instead of inheriting the primary's", () => {
+    let q = emptyQuiz();
+    q = addStepNode(q, { position: { x: 0, y: 0 }, name: "Prev" });
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "Primary" });
+    q = addStepNode(q, { position: { x: 600, y: 0 }, name: "NextA" });
+    q = addStepNode(q, { position: { x: 900, y: 0 }, name: "NextB" });
+    const [prevId, primaryId, nextAId, nextBId] = Object.keys(q.nodes);
+    q = connectNodes(q, { from: prevId, to: primaryId });
+    q = connectNodes(q, { from: primaryId, to: nextAId });
+    q = createVariant(q, primaryId); // variant clones primary->NextA
+    const variantId = Object.keys(q.nodes).find(
+      (id) => ![prevId, primaryId, nextAId, nextBId].includes(id),
+    )!;
+    // Point the variant somewhere else (its own routing)
+    const variantEdgeId = Object.entries(q.edges).find(([, e]) => e.from === variantId)![0];
+    q = { ...q, edges: { ...q.edges, [variantEdgeId]: { ...q.edges[variantEdgeId], to: nextBId } } };
+
+    const next = promoteVariant(q, variantId);
+    const winnerOut = Object.values(next.edges).filter((e) => e.from === variantId);
+    expect(winnerOut).toHaveLength(1);
+    expect(winnerOut[0].to).toBe(nextBId); // kept its own edge, no inheritance
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateQuizForPublish tests
+// ---------------------------------------------------------------------------
+
+describe("validateQuizForPublish", () => {
+  /** start -> A -> exit, valid baseline */
+  function validQuiz() {
+    let q = emptyQuiz();
+    q.nodes["start1"] = { id: "start1", kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } };
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "A" });
+    const aId = Object.keys(q.nodes).find((k) => k !== "start1")!;
+    q.nodes["exit1"] = { id: "exit1", kind: "exit", name: "Exit", size: { width: 180, height: 80 }, position: { x: 600, y: 0 }, redirectUrl: "" };
+    q = connectNodes(q, { from: "start1", to: aId });
+    q = connectNodes(q, { from: aId, to: "exit1" });
+    return { q, aId };
+  }
+
+  it("returns no problems for a valid graph", () => {
+    const { q } = validQuiz();
+    expect(validateQuizForPublish(q)).toEqual([]);
+  });
+
+  it("flags a reachable step with no outgoing edge", () => {
+    let { q, aId } = validQuiz();
+    q = addStepNode(q, { position: { x: 300, y: 300 }, name: "DeadEnd" });
+    const deadId = Object.keys(q.nodes).find(
+      (k) => !["start1", aId, "exit1"].includes(k),
+    )!;
+    q = connectNodes(q, { from: aId, to: deadId });
+    const problems = validateQuizForPublish(q);
+    expect(problems.some((p) => p.includes("DeadEnd") && p.includes("no outgoing edge"))).toBe(true);
+  });
+
+  it("does not flag UNREACHABLE steps without outgoing edges", () => {
+    let { q } = validQuiz();
+    q = addStepNode(q, { position: { x: 900, y: 900 }, name: "Orphan" });
+    const problems = validateQuizForPublish(q);
+    expect(problems).toEqual([]);
+  });
+
+  it("flags edges referencing deleted nodes", () => {
+    const { q } = validQuiz();
+    q.edges["bad1"] = { id: "bad1", from: "ghost_from", to: "ghost_to" };
+    const problems = validateQuizForPublish(q);
+    expect(problems.some((p) => p.includes("missing source node"))).toBe(true);
+    expect(problems.some((p) => p.includes("missing target node"))).toBe(true);
+  });
+
+  it("flags when no exit node is reachable", () => {
+    let q = emptyQuiz();
+    q.nodes["start1"] = { id: "start1", kind: "start", size: { width: 180, height: 80 }, position: { x: 0, y: 0 } };
+    q = addStepNode(q, { position: { x: 300, y: 0 }, name: "A" });
+    const aId = Object.keys(q.nodes).find((k) => k !== "start1")!;
+    q = connectNodes(q, { from: "start1", to: aId });
+    // A loops to itself so it has an outgoing edge but never reaches an exit
+    q = connectNodes(q, { from: aId, to: aId });
+    const problems = validateQuizForPublish(q);
+    expect(problems.some((p) => p.includes("No exit node is reachable"))).toBe(true);
+  });
+
+  it("flags variant group trafficPct not summing to 100", () => {
+    let { q, aId } = validQuiz();
+    q = createVariant(q, aId);
+    const variantId = Object.keys(q.nodes).find(
+      (k) => !["start1", aId, "exit1"].includes(k),
+    )!;
+    q = setTrafficSplit(q, { [aId]: 50, [variantId]: 30 });
+    const problems = validateQuizForPublish(q);
+    expect(problems.some((p) => p.includes("sums to 80%"))).toBe(true);
+  });
+
+  it("validates variant siblings reachable only via variant resolution", () => {
+    // Variant sibling has its edges stripped (legacy dead-end variant):
+    // must be flagged even though no real edge points at it.
+    let { q, aId } = validQuiz();
+    q = createVariant(q, aId);
+    const variantId = Object.keys(q.nodes).find(
+      (k) => !["start1", aId, "exit1"].includes(k),
+    )!;
+    const edges = Object.fromEntries(
+      Object.entries(q.edges).filter(([, e]) => e.from !== variantId),
+    );
+    q = { ...q, edges };
+    const problems = validateQuizForPublish(q);
+    expect(problems.some((p) => p.includes("(variant)") && p.includes("no outgoing edge"))).toBe(true);
+  });
+
+  it("flags image_cards options without imageUrl", () => {
+    let { q, aId } = validQuiz();
+    q = addSubEl(q, aId, { kind: "question", layout: "image_cards" });
+    const problems = validateQuizForPublish(q);
+    const missing = problems.filter((p) => p.includes("missing an image"));
+    expect(missing).toHaveLength(2); // both default options lack imageUrl
+  });
+
+  it("flags a quiz without a start node", () => {
+    const q = emptyQuiz();
+    expect(validateQuizForPublish(q)).toEqual(["Quiz has no start node"]);
   });
 });
 

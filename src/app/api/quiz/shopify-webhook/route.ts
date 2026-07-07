@@ -1,9 +1,16 @@
 // POST /api/quiz/shopify-webhook
 //
-// Shopify orders/create webhook handler. Receives every new order from a
-// configured Shopify store, finds the matching quiz session via the
-// `qz_sid` note attribute, marks the session as purchased, and fires a
-// Meta CAPI Purchase event with quiz attribution as custom_data.
+// Shopify order webhook handler. Receives orders from a configured
+// Shopify store, finds the matching quiz session via the `qz_sid` note
+// attribute, marks the session as purchased, and fires a Meta CAPI
+// Purchase event with quiz attribution as custom_data.
+//
+// Topic policy: BOTH orders/create and orders/paid are accepted — the
+// doginwork store is only subscribed to orders/create (see
+// doginwork/output/SHOPIFY-CAPI-SETUP.md), so gating on orders/paid alone
+// would kill purchase tracking. Double-delivery when both topics are
+// subscribed is safe: meta_capi_events.event_id (`shopify_{order.id}`)
+// is checked before any processing, so the first delivery wins.
 //
 // Workspace routing: a workspace's `meta_config.shopify_webhook_secret`
 // is used to verify the HMAC. The first workspace whose secret matches
@@ -320,8 +327,10 @@ export async function POST(req: NextRequest) {
   const topic = req.headers.get("x-shopify-topic") ?? "";
   const shopDomain = req.headers.get("x-shopify-shop-domain") ?? "";
 
-  if (topic !== "orders/create" && topic !== "orders/paid") {
-    // Acknowledge but ignore non-order topics
+  if (topic !== "orders/paid" && topic !== "orders/create") {
+    // Acknowledge but ignore non-order topics. Both order topics are
+    // accepted (the store may be subscribed to either); the event_id
+    // idempotency check below dedupes double delivery.
     return NextResponse.json({ ok: true, ignored: topic }, { status: 200 });
   }
 
@@ -341,14 +350,120 @@ export async function POST(req: NextRequest) {
   const attr = extractAttribution(order);
   const db = createServerSupabase();
 
-  // Idempotency: skip if we've already processed this order
-  const { data: alreadyDone } = await db
-    .from("quiz_sessions")
-    .select("id")
-    .eq("purchase_order_id", String(order.id))
-    .maybeSingle();
-  if (alreadyDone) {
-    return NextResponse.json({ ok: true, idempotent: true }, { status: 200 });
+  // ─── Idempotency via atomic claim on meta_capi_events ────────────────────
+  // Shopify can deliver orders/create + orders/paid for the same order (and
+  // retries failed deliveries), sometimes concurrently. SELECT-then-act is
+  // racy, so the row itself is the lock:
+  //   - INSERT event_id with status='processing'; unique violation (23505)
+  //     means another delivery already claimed this order.
+  //   - existing 'sent'       -> already delivered, skip everything.
+  //   - existing 'failed'     -> reclaim via conditional UPDATE (wins only if
+  //     still 'failed') and redo ONLY the CAPI send - the first attempt's
+  //     session/quiz_events writes must not be repeated.
+  //   - existing 'processing' -> in flight elsewhere; reclaim only if stale
+  //     (>10 min = crashed mid-flight), else back off and let Shopify retry.
+  // The final upsert further down overwrites the claim row with sent/failed.
+  // sent_at doubles as the claim timestamp until that upsert.
+  const capiEventId = `shopify_${order.id}`;
+  const claimTs = new Date().toISOString();
+  let claimed = false;
+  // True when a previous attempt already ran the session/event writes
+  // (failed CAPI retry or stale-processing takeover) - skip re-writing them.
+  let isRetryOfFailed = false;
+
+  const { error: claimErr } = await db.from("meta_capi_events").insert({
+    event_id: capiEventId,
+    event_name: "Purchase",
+    shopify_order_id: order.id,
+    shopify_order_number: order.order_number,
+    pixel_id: ws.pixel_id,
+    event_time: new Date(order.created_at).toISOString(),
+    value: parseFloat(order.total_price),
+    currency: order.currency,
+    status: "processing",
+    sent_at: claimTs,
+  });
+  if (!claimErr) {
+    claimed = true;
+  } else if (claimErr.code === "23505") {
+    const { data: existing } = await db
+      .from("meta_capi_events")
+      .select("event_id, status")
+      .eq("event_id", capiEventId)
+      .maybeSingle();
+    if (existing?.status === "failed") {
+      const { data: reclaimed } = await db
+        .from("meta_capi_events")
+        .update({ status: "processing", sent_at: claimTs })
+        .eq("event_id", capiEventId)
+        .eq("status", "failed")
+        .select("event_id");
+      if (reclaimed && reclaimed.length > 0) {
+        claimed = true;
+        isRetryOfFailed = true;
+      }
+    } else if (existing?.status === "processing") {
+      const staleCutoff = new Date(Date.now() - 10 * 60_000).toISOString();
+      const { data: reclaimed } = await db
+        .from("meta_capi_events")
+        .update({ sent_at: claimTs })
+        .eq("event_id", capiEventId)
+        .eq("status", "processing")
+        .lt("sent_at", staleCutoff)
+        .select("event_id");
+      if (reclaimed && reclaimed.length > 0) {
+        claimed = true;
+        isRetryOfFailed = true; // prior attempt may have written session/events
+      }
+    }
+    if (!claimed) {
+      return NextResponse.json(
+        { ok: true, idempotent: true, reason: `capi_${existing?.status ?? "claimed"}` },
+        { status: 200 },
+      );
+    }
+  } else {
+    // Claim insert failed for a non-duplicate reason (schema drift, CHECK
+    // constraint on status, ...). Don't brick purchase processing - fall
+    // back to the pre-claim SELECT check and continue unclaimed.
+    console.error("[shopify-webhook] capi claim insert failed:", claimErr.message);
+    const { data: existing } = await db
+      .from("meta_capi_events")
+      .select("event_id, status")
+      .eq("event_id", capiEventId)
+      .maybeSingle();
+    if (existing?.status === "sent") {
+      return NextResponse.json(
+        { ok: true, idempotent: true, reason: "capi_already_sent" },
+        { status: 200 },
+      );
+    }
+    isRetryOfFailed = existing?.status === "failed";
+  }
+
+  // Idempotency (secondary, FRESH claims only): a session already carrying
+  // this order means it was processed before meta_capi_events logging
+  // existed. On failed-CAPI retries this check MUST be skipped - the first
+  // attempt already set purchase_order_id, so returning here would make
+  // failed sends permanently unretryable.
+  if (!isRetryOfFailed) {
+    const { data: alreadyDone } = await db
+      .from("quiz_sessions")
+      .select("id")
+      .eq("purchase_order_id", String(order.id))
+      .maybeSingle();
+    if (alreadyDone) {
+      if (claimed) {
+        // Roll back our claim so no stuck 'processing' row blocks the
+        // event_id forever - this legacy order has no CAPI log to keep.
+        await db
+          .from("meta_capi_events")
+          .delete()
+          .eq("event_id", capiEventId)
+          .eq("status", "processing");
+      }
+      return NextResponse.json({ ok: true, idempotent: true }, { status: 200 });
+    }
   }
 
   // Find quiz session by qz_sid (if present)
@@ -362,9 +477,11 @@ export async function POST(req: NextRequest) {
     if (!session) sessionId = null;
   }
 
-  // Update session with purchase + log a 'purchase' event for the funnel chart
+  // Update session with purchase + log a 'purchase' event for the funnel
+  // chart. Skipped on failed-CAPI retries - the first attempt already wrote
+  // these, and re-running would duplicate the quiz_events purchase row.
   let sessionUpdated = false;
-  if (sessionId) {
+  if (sessionId && !isRetryOfFailed) {
     const { error: updErr } = await db
       .from("quiz_sessions")
       .update({
@@ -412,36 +529,39 @@ export async function POST(req: NextRequest) {
   // sources (webhook-driven vs cron-sync). onConflict on event_id keeps the
   // table idempotent on Shopify's webhook retries.
   //
-  // Wrapped in try/catch: a logging failure must NOT cause the webhook to
-  // 500. Shopify would retry the order and we'd risk attribution duplication
-  // or noisy errors. Logging is best-effort - the actual CAPI POST already
-  // succeeded or failed by this point.
-  try {
-    await db.from("meta_capi_events").upsert(
-      {
-        event_id: `shopify_${order.id}`,
-        event_name: "Purchase",
-        shopify_order_id: order.id,
-        shopify_order_number: order.order_number,
-        pixel_id: ws.pixel_id,
-        event_time: new Date(order.created_at).toISOString(),
-        value: parseFloat(order.total_price),
-        currency: order.currency,
-        status: capiResult.ok ? "sent" : "failed",
-        response_data: capiResult.ok ? { events_received: capiResult.events_received } : null,
-        error_message: capiResult.ok ? null : capiResult.error ?? null,
-        sent_at: new Date().toISOString(),
-      },
-      { onConflict: "event_id" },
-    );
-  } catch (logErr) {
-    console.error("[shopify-webhook] meta_capi_events log failed:", logErr);
+  // Best-effort: a logging failure must NOT cause the webhook to 500
+  // (Shopify would retry the order). supabase-js doesn't throw - it returns
+  // { error } - so we read and log it explicitly instead of a dead catch.
+  // NOTE: this overwrites the 'processing' claim row from the top. If it
+  // fails, the claim goes stale and becomes reclaimable after 10 min.
+  const { error: capiLogErr } = await db.from("meta_capi_events").upsert(
+    {
+      event_id: capiEventId,
+      event_name: "Purchase",
+      shopify_order_id: order.id,
+      shopify_order_number: order.order_number,
+      pixel_id: ws.pixel_id,
+      event_time: new Date(order.created_at).toISOString(),
+      value: parseFloat(order.total_price),
+      currency: order.currency,
+      status: capiResult.ok ? "sent" : "failed",
+      response_data: capiResult.ok ? { events_received: capiResult.events_received } : null,
+      error_message: capiResult.ok ? null : capiResult.error ?? null,
+      sent_at: new Date().toISOString(),
+    },
+    { onConflict: "event_id" },
+  );
+  if (capiLogErr) {
+    console.error("[shopify-webhook] meta_capi_events log failed:", capiLogErr.message);
   }
 
   // Telegram notification for Valpakademin orders. Source = Quiz when we
   // resolved a quiz session via qz_sid, otherwise Direct LP (or other path
-  // surfaced via utm_*).
-  await sendPurchaseTelegram(order, attr, shopDomain, sessionUpdated);
+  // surfaced via utm_*). Skipped on failed-CAPI retries - the first attempt
+  // already notified; a retry would ping the same order twice.
+  if (!isRetryOfFailed) {
+    await sendPurchaseTelegram(order, attr, shopDomain, sessionUpdated);
+  }
 
   return NextResponse.json({
     ok: true,

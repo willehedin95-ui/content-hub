@@ -25,6 +25,34 @@ export async function startSession(
   return json.session_id;
 }
 
+/**
+ * startSession with retry + backoff (3 retries: 1s / 3s / 9s). A single
+ * failed cold-start request used to cost the ENTIRE session's events and
+ * left the exit redirect without qz_sid (purchases misattributed to
+ * "Direct LP"). Events buffer client-side while this retries.
+ */
+export async function startSessionWithRetry(
+  apiBaseUrl: string,
+  quizId: string,
+  variantAssignments: Record<string, string>,
+  utm: UTMParams,
+  market: string,
+): Promise<string> {
+  const delaysMs = [1000, 3000, 9000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    try {
+      return await startSession(apiBaseUrl, quizId, variantAssignments, utm, market);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < delaysMs.length) {
+        await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 export async function flushEvents(
   apiBaseUrl: string,
   sessionId: string,

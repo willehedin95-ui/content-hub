@@ -68,7 +68,7 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 - **Hydro13 blog**: publishes to `get-renew.com/blogs/kollagen/*` via Shopify Admin API (NOT CF Pages). Routed by `workspaces.settings.blog_publish_target: "shopify"`. See `src/lib/shopify-blog-publish.ts`.
 - **DNS**: Cloudflare manages DNS for smarthelse.dk and helseguiden.com; Hostinger manages halsobladet.com (subdomain CNAME)
 - **Domain registrar**: Hostinger (all three domains)
-- **Publishing code**: `src/lib/cloudflare-pages.ts` — `publishPage()`, `publishABTest()`
+- **Publishing code**: `src/lib/cloudflare-pages.ts` — `publishPage()`. (A/B-testning via `ab_tests`/`publishABTest` är BORTTAGEN 2026-07-07 — nya systemet är `page_tests`, två separata pages med Meta-adset-split. CF-projekt→workspace-mappning: `workspaces.settings.cf_pages_projects` med konstant-fallback i cloudflare-pages.ts — nya CF-projekt MÅSTE mappas där, annars kastar sitemap-deployen.)
 - **Manifest tracking**: `cf_pages_manifests` table tracks path→hash per project for incremental uploads
 
 ## Features

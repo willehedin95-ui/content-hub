@@ -315,11 +315,20 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
   const [substep, setSubstep] = useState<Substep>("rewriting");
   const [progress, setProgress] = useState("Waiting for worker...");
   const [error, setError] = useState<string | null>(null);
+  // What kind of error occurred decides what "Retry" does:
+  //  - "job": the rewrite itself failed → full re-run (/api/swipe/retry, costs a new Claude run)
+  //  - "poll": only the status polling failed → just resume polling (no re-run!)
+  //  - "save": the final page save failed → retry the save with the kept HTML
+  // (audit 2026-07-07, P3: Retry after a transient poll error used to re-run
+  //  the whole Claude rewrite = double cost)
+  const [errorKind, setErrorKind] = useState<"job" | "poll" | "save" | null>(null);
+  const [pollNonce, setPollNonce] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingRef = useRef(true);
   const completedRef = useRef(false);
+  const lastSaveRef = useRef<{ html: string; name?: string } | null>(null);
 
   // Image selection state
   const [rewrittenHtml, setRewrittenHtml] = useState<string | null>(null);
@@ -386,6 +395,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     async (html: string, name?: string) => {
       if (completedRef.current) return;
       completedRef.current = true;
+      lastSaveRef.current = { html, name };
 
       setSubstep("restoring");
       setProgress("Saving to page...");
@@ -396,11 +406,30 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
       };
       if (name) body.name = name;
 
-      await fetch(`/api/pages/${pageId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      // Check the response - this used to report "Import complete!" even
+      // when the save failed (audit 2026-07-07, L3).
+      try {
+        const res = await fetch(`/api/pages/${pageId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          let msg = `Failed to save page (HTTP ${res.status})`;
+          try {
+            const data = await res.json();
+            if (data.error) msg = `Failed to save page: ${data.error}`;
+          } catch { /* non-JSON error body */ }
+          throw new Error(msg);
+        }
+      } catch (err) {
+        completedRef.current = false; // allow retrying the save
+        setError(err instanceof Error ? err.message : "Failed to save page");
+        setErrorKind("save");
+        setSubstep("error");
+        return;
+      }
 
       setSubstep("done");
       setProgress("Import complete!");
@@ -435,15 +464,21 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     [product, saveAndRefresh]
   );
 
-  // Polling
+  // Polling - tolerates up to 3 consecutive transient failures before
+  // erroring out (audit 2026-07-07, P3: one network blip used to flip the
+  // panel into the error state whose Retry re-ran the whole paid rewrite).
   useEffect(() => {
     pollingRef.current = true;
     const startTime = Date.now();
+    const MAX_TRANSIENT_FAILURES = 3;
 
     async function poll() {
+      let transientFailures = 0;
+
       while (pollingRef.current) {
         if (Date.now() - startTime > POLL_TIMEOUT) {
           setError("Timed out waiting for rewrite (30 min limit)");
+          setErrorKind("poll");
           setSubstep("error");
           return;
         }
@@ -456,6 +491,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
           }
 
           const data = await res.json();
+          transientFailures = 0; // successful poll resets the counter
 
           if (data.status === "completed" && data.rewrittenHtml) {
             await handleRewriteComplete(data.rewrittenHtml);
@@ -464,6 +500,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
 
           if (data.status === "failed") {
             setError(data.error || "Rewrite failed");
+            setErrorKind("job");
             setSubstep("error");
             return;
           }
@@ -475,9 +512,16 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
             setProgress(data.progress.message);
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : "Polling failed");
-          setSubstep("error");
-          return;
+          transientFailures++;
+          if (transientFailures > MAX_TRANSIENT_FAILURES) {
+            setError(
+              `${err instanceof Error ? err.message : "Polling failed"} (after ${MAX_TRANSIENT_FAILURES} retries - the rewrite may still be running)`
+            );
+            setErrorKind("poll");
+            setSubstep("error");
+            return;
+          }
+          // Transient - wait and poll again
         }
 
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
@@ -489,11 +533,32 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     return () => {
       pollingRef.current = false;
     };
-  }, [swipeJobId, handleRewriteComplete]);
+  }, [swipeJobId, handleRewriteComplete, pollNonce]);
 
   async function handleRetry() {
+    // Save failed → just retry the save (no polling, no re-run)
+    if (errorKind === "save" && lastSaveRef.current) {
+      setError(null);
+      setErrorKind(null);
+      await saveAndRefresh(lastSaveRef.current.html, lastSaveRef.current.name);
+      return;
+    }
+
+    // Polling failed → RESUME polling; the job may have completed fine.
+    // A full /api/swipe/retry here would re-run Claude = double cost.
+    if (errorKind === "poll") {
+      setError(null);
+      setErrorKind(null);
+      setSubstep("rewriting");
+      setProgress("Resuming...");
+      setPollNonce((n) => n + 1);
+      return;
+    }
+
+    // Job actually failed → full re-run via the worker
     setRetrying(true);
     setError(null);
+    setErrorKind(null);
     setSubstep("rewriting");
     setProgress("Retrying...");
     completedRef.current = false;
@@ -510,9 +575,10 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
         throw new Error(data.error || "Retry failed");
       }
 
-      pollingRef.current = true;
+      setPollNonce((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Retry failed");
+      setErrorKind("job");
       setSubstep("error");
     } finally {
       setRetrying(false);
@@ -717,7 +783,26 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
     const videoToImageReplacements = new Map<number, string>();
     const videoToVideoReplacements = new Map<number, string>();
 
-    const allVideos = doc.querySelectorAll("video");
+    // Src-based video matching with index fallback (audit 2026-07-07, P3):
+    // pure index lookup could hit the wrong <video> if the DOM shifted
+    // between extraction and replacement.
+    const allVideos = Array.from(doc.querySelectorAll("video"));
+    const findVideoEl = (idx: number): HTMLVideoElement | null => {
+      const item = selected.find((s) => s.index === idx);
+      if (item?.videoSrc) {
+        // Only trust the src match when it's unambiguous - duplicated video
+        // srcs (repeated hero) would otherwise all hit the first element.
+        const bySrc = allVideos.filter((v) => {
+          const src =
+            v.getAttribute("src") ||
+            v.querySelector("source")?.getAttribute("src") ||
+            "";
+          return src === item.videoSrc;
+        });
+        if (bySrc.length === 1) return bySrc[0];
+      }
+      return allVideos[idx] ?? null;
+    };
 
     for (const [indexStr, { url, asVideo }] of Object.entries(replacements)) {
       const i = parseInt(indexStr, 10);
@@ -748,7 +833,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
 
     // Replace video → img (for videos generated as static images)
     videoToImageReplacements.forEach((newUrl, vidIdx) => {
-      const video = allVideos[vidIdx];
+      const video = findVideoEl(vidIdx);
       if (video && video.parentElement) {
         const img = doc.createElement("img");
         img.setAttribute("src", newUrl);
@@ -761,7 +846,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
 
     // Replace video src (for videos generated as actual videos)
     videoToVideoReplacements.forEach((newUrl, vidIdx) => {
-      const video = allVideos[vidIdx];
+      const video = findVideoEl(vidIdx);
       if (video) {
         video.setAttribute("src", newUrl);
         video.removeAttribute("poster");
@@ -1113,7 +1198,13 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
               className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 mt-1 font-medium disabled:opacity-50"
             >
               <RotateCcw className="w-3 h-3" />
-              {retrying ? "Retrying..." : "Retry"}
+              {retrying
+                ? "Retrying..."
+                : errorKind === "poll"
+                  ? "Resume (no re-run)"
+                  : errorKind === "save"
+                    ? "Retry save"
+                    : "Retry"}
             </button>
           </div>
         </div>

@@ -1052,7 +1052,12 @@ function ResetDialog({
     if (!confirmed) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/quiz/${quizId}/reset-analytics`, { method: "POST" });
+      const res = await fetch(`/api/quiz/${quizId}/reset-analytics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Server requires explicit confirmation before hard-deleting analytics
+        body: JSON.stringify({ confirm: "DELETE_ALL" }),
+      });
       if (res.ok) {
         onDone();
       } else {

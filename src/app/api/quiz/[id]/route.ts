@@ -49,20 +49,48 @@ export async function PATCH(
   for (const k of allowed) if (k in body) patch[k] = body[k];
   patch.updated_at = new Date().toISOString();
 
+  // Optimistic lock (opt-in): when the client sends expected_updated_at,
+  // the update only applies if the row hasn't been written since the client
+  // last read it. Prevents autosave lost-update races between two editor
+  // sessions. Clients not sending the field keep the old last-write-wins.
+  const expectedUpdatedAt =
+    typeof body.expected_updated_at === "string" && body.expected_updated_at
+      ? body.expected_updated_at
+      : null;
+
   const db = createServerSupabase();
-  const { data, error } = await db
+  let query = db
     .from("quizzes")
     .update(patch)
     .eq("id", id)
-    .eq("workspace_id", workspaceId)
-    .select()
-    .single();
+    .eq("workspace_id", workspaceId);
+  if (expectedUpdatedAt) {
+    query = query.eq("updated_at", expectedUpdatedAt);
+  }
+  const { data, error } = await query.select().maybeSingle();
 
   if (error) {
-    if (error.code === "PGRST116") {
-      return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
-    }
     return safeError(error, "Failed to update quiz");
+  }
+
+  if (!data) {
+    // No row updated: either the quiz doesn't exist in this workspace, or
+    // the optimistic lock failed. Distinguish so the client can react.
+    if (expectedUpdatedAt) {
+      const { data: exists } = await db
+        .from("quizzes")
+        .select("id")
+        .eq("id", id)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
+      if (exists) {
+        return NextResponse.json(
+          { error: "Conflict: quiz was modified by another session" },
+          { status: 409 },
+        );
+      }
+    }
+    return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
   }
 
   return NextResponse.json(data);

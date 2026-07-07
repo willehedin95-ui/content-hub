@@ -133,6 +133,11 @@ export async function POST(req: NextRequest) {
   // Overall timeout for the entire Puppeteer session (maxDuration is 60s)
   const BROWSER_TIMEOUT_MS = 45_000;
 
+  // Held outside browserWork so the timeout path can kill the process —
+  // previously a timeout returned a response but left Chromium running
+  // until the function froze (audit 2026-07-07, P3 fetch-url leak).
+  let activeBrowser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+
   try {
     const browserWork = async (): Promise<string> => {
       // Use Puppeteer to render JavaScript-heavy pages (e.g. Lovable/React apps)
@@ -145,6 +150,7 @@ export async function POST(req: NextRequest) {
           : await chromium.executablePath(),
         headless: true,
       });
+      activeBrowser = browser;
 
       try {
         const page = await browser.newPage();
@@ -194,15 +200,29 @@ export async function POST(req: NextRequest) {
 
         return await page.content();
       } finally {
-        await browser.close();
+        await browser.close().catch(() => {});
+        activeBrowser = null;
       }
     };
 
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Page fetch timed out after 45 seconds")), BROWSER_TIMEOUT_MS)
-    );
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error("Page fetch timed out after 45 seconds")),
+        BROWSER_TIMEOUT_MS
+      );
+    });
 
-    html = await Promise.race([browserWork(), timeout]);
+    try {
+      html = await Promise.race([browserWork(), timeout]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      // Timeout won the race → kill the still-running Chromium process
+      if (activeBrowser) {
+        await (activeBrowser as { close: () => Promise<void> }).close().catch(() => {});
+        activeBrowser = null;
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

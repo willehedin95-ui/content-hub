@@ -18,7 +18,7 @@ export async function GET() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const sinceDate = thirtyDaysAgo.toISOString().split("T")[0];
 
-  const { data: trafficRows } = await db
+  const { data: trafficRows, error: trafficErr } = await db
     .from("postmaster_traffic_stats")
     .select(
       "domain, date, domain_reputation, user_reported_spam_ratio, dkim_success_ratio, spf_success_ratio, dmarc_success_ratio, ip_reputations, delivery_errors, spammy_feedback_loops"
@@ -34,7 +34,7 @@ export async function GET() {
   }
 
   // Pull DMARC reports (last 30 days)
-  const { data: dmarcRows } = await db
+  const { data: dmarcRows, error: dmarcErr } = await db
     .from("dmarc_reports")
     .select(
       "id, postmark_report_id, domain, organization_name, date_range_begin, date_range_end, total_messages, dkim_pass, spf_pass, dmarc_pass, dmarc_fail, unique_source_ips, records, policy_published"
@@ -43,12 +43,23 @@ export async function GET() {
     .order("date_range_begin", { ascending: false });
 
   // Pull last sync log
-  const { data: lastSync } = await db
+  const { data: lastSync, error: syncErr } = await db
     .from("deliverability_sync_log")
     .select("*")
     .order("ran_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // Surface query failures instead of rendering an empty-but-healthy-looking
+  // dashboard on top of ignored errors.
+  const queryError = trafficErr || dmarcErr || syncErr;
+  if (queryError) {
+    console.error("[deliverability/data] Query error:", queryError.message);
+    return NextResponse.json(
+      { error: `Failed to load deliverability data: ${queryError.message}` },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     postmaster: postmasterByDomain,

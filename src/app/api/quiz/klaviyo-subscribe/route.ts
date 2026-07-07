@@ -2,9 +2,11 @@
 // Proxies Klaviyo list-subscribe calls from the quiz runtime.
 // Hides the Klaviyo API key from the published page.
 //
-// CONCERN: KLAVIYO_API_KEY is not yet in .env.local (no Klaviyo setup for quizzes).
-// If not configured, email is saved to quiz_sessions.email only.
-// To enable: add KLAVIYO_API_KEY to .env.local with the workspace Klaviyo key.
+// The API key is resolved per workspace (session -> quiz -> workspace.slug):
+//   doginwork                 -> KLAVIYO_DOGINWORK_API_KEY
+//   swedishbalance/happysleep -> KLAVIYO_SB_API_KEY
+// Other workspaces have no Klaviyo account wired up - subscribe returns
+// ok:false (email is still saved on the session row).
 //
 // CORS-friendly - called from CF Pages domains.
 
@@ -22,6 +24,40 @@ type SubscribeBody = {
   email: string;
   listId: string;
 };
+
+/** Resolve the Klaviyo API key for the workspace owning this session's quiz. */
+async function getKlaviyoKeyForSession(
+  db: ReturnType<typeof createServerSupabase>,
+  sessionId: string,
+): Promise<{ key: string | null; slug: string | null }> {
+  const { data: session } = await db
+    .from("quiz_sessions")
+    .select("quiz_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (!session?.quiz_id) return { key: null, slug: null };
+
+  const { data: quiz } = await db
+    .from("quizzes")
+    .select("workspace_id")
+    .eq("id", session.quiz_id as string)
+    .maybeSingle();
+  if (!quiz?.workspace_id) return { key: null, slug: null };
+
+  const { data: ws } = await db
+    .from("workspaces")
+    .select("slug")
+    .eq("id", quiz.workspace_id as string)
+    .maybeSingle();
+  const slug = (ws?.slug as string | undefined) ?? null;
+
+  const keyBySlug: Record<string, string | undefined> = {
+    doginwork: process.env.KLAVIYO_DOGINWORK_API_KEY,
+    swedishbalance: process.env.KLAVIYO_SB_API_KEY,
+    happysleep: process.env.KLAVIYO_SB_API_KEY,
+  };
+  return { key: (slug && keyBySlug[slug]?.trim()) || null, slug };
+}
 
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin");
@@ -52,13 +88,14 @@ export async function POST(req: NextRequest) {
     .update({ email: body.email })
     .eq("id", body.session_id);
 
-  // Attempt Klaviyo subscribe if API key is configured
-  const klaviyoKey = process.env.KLAVIYO_API_KEY;
+  // Resolve the workspace-specific Klaviyo key (session -> quiz -> workspace)
+  const { key: klaviyoKey, slug } = await getKlaviyoKeyForSession(db, body.session_id);
   if (!klaviyoKey) {
-    // No Klaviyo key configured - email saved to DB only (see CONCERN above)
-    console.info("[quiz/klaviyo-subscribe] No KLAVIYO_API_KEY; email saved to session only");
+    console.error(
+      `[quiz/klaviyo-subscribe] No Klaviyo API key for workspace "${slug ?? "unknown"}" - email saved to session only`,
+    );
     return NextResponse.json(
-      { ok: true, klaviyo: false, reason: "KLAVIYO_API_KEY not configured" },
+      { ok: false, klaviyo: false, reason: `No Klaviyo API key configured for workspace ${slug ?? "unknown"}` },
       { headers: corsHeaders },
     );
   }
@@ -112,9 +149,9 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("[quiz/klaviyo-subscribe] Klaviyo error:", res.status, errText);
-      // Return partial success - email is already saved to DB
+      // Honest failure signal (email is still saved on the session row)
       return NextResponse.json(
-        { ok: true, klaviyo: false, reason: `Klaviyo returned ${res.status}` },
+        { ok: false, klaviyo: false, reason: `Klaviyo returned ${res.status}` },
         { headers: corsHeaders },
       );
     }
@@ -122,7 +159,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[quiz/klaviyo-subscribe] fetch error:", msg);
     return NextResponse.json(
-      { ok: true, klaviyo: false, reason: msg },
+      { ok: false, klaviyo: false, reason: msg },
       { headers: corsHeaders },
     );
   }

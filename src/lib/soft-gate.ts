@@ -34,6 +34,18 @@ export interface GateContext {
   knownSlugs: string[];
   /** Allow-listed external domains the writer may link to. */
   allowedExternalDomains: string[];
+  /**
+   * The blog's own domains. Used by the internal-link check — passed in from
+   * workspace/language config so the gate has no hardcoded domains and works
+   * for all languages/workspaces.
+   *
+   * NOTE: the gate runs BEFORE Shopify link-rewriting, so articles for
+   * Shopify-target workspaces still link to the source CF domain at gate
+   * time. Callers therefore pass BOTH the language's CF domain AND the
+   * workspace's store domain — a link matching ANY of them counts as
+   * internal.
+   */
+  blogDomains?: string[];
 }
 
 export interface GateResult {
@@ -122,16 +134,34 @@ export function runSoftGate(ctx: GateContext): GateResult {
 
   // 6. Internal links: at least a couple should point to other articles on
   //    our own blog (the internal-link injector usually handles this, so
-  //    0 is a sign something broke).
+  //    0 is a sign something broke). The blog domains come from the caller
+  //    (workspace/language config) — no hardcoded domains here, so da/no
+  //    blogs and Shopify-target workspaces are checked against THEIR domains.
+  const gateDomains = (ctx.blogDomains ?? [])
+    .map((d) =>
+      d
+        .trim()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/\/.*$/, "")
+    )
+    .filter(Boolean);
   const ownLinks = $("a[href]")
     .map((_, el) => $(el).attr("href") || "")
     .get()
     .filter((h) => {
       if (!h) return false;
-      // Match relative /blogs/kollagen/... or absolute same-domain links
-      if (h.startsWith("/blogs/") || h.includes("get-renew.com/blogs/")) return true;
-      if (h.includes("halsobladet.com/") && h.split("/").filter(Boolean).length >= 2) return true;
-      return false;
+      if (h.startsWith("#")) return false;
+      // Relative links are internal by definition
+      if (h.startsWith("/")) return true;
+      // Absolute links: internal when hostname matches ANY own-blog domain
+      if (!gateDomains.length) return false;
+      try {
+        const hostname = new URL(h).hostname.replace(/^www\./, "");
+        return gateDomains.includes(hostname);
+      } catch {
+        return false;
+      }
     });
   if (ownLinks.length < MIN_INTERNAL_LINKS) {
     reasons.push(`too_few_internal_links:${ownLinks.length}<${MIN_INTERNAL_LINKS}`);
@@ -144,6 +174,7 @@ export function runSoftGate(ctx: GateContext): GateResult {
     .filter((h) => {
       // Strip our own domains. Includes all market storefronts + content
       // domains across all three brands.
+      if (gateDomains.some((d) => h.includes(d))) return false;
       if (h.includes("get-renew.com") || h.includes("halsobladet.com")) return false;
       if (h.includes("swedishbalance.se") || h.includes("swedishbalance.dk") || h.includes("swedishbalance.no") || h.includes("swedishbalance.org")) return false;
       if (h.includes("smarthelse.dk") || h.includes("helseguiden.com")) return false;

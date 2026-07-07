@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import {
   processOneQueueItem,
@@ -28,7 +28,15 @@ const STUCK_SWIPE_MAX_AGE_MIN = 15;
  * is the safety net that makes sure queue processing happens even when
  * the browser tab is closed.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Middleware-exempt (public /api/cron/ prefix) — this route spends Kie/AI
+  // money, so it must verify the cron secret like every other cron route.
+  const authHeader = req.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const startedAt = Date.now();
   const db = createServerSupabase();
 

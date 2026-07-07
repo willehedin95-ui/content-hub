@@ -5,6 +5,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import * as cheerio from "cheerio";
 import { CLAUDE_MODEL } from "./constants";
 import { BLOG_TEMPLATES } from "./blog-templates";
 import { createServerSupabase } from "./supabase-admin";
@@ -460,32 +461,68 @@ export interface AntiSlopResult {
  * Words match as whole words only (word-boundary) to avoid breaking substrings
  * like "optimala" inside "optimalare" (which shouldn't exist, but guard anyway).
  *
+ * Operates on TEXT NODES only (via cheerio) — never on raw HTML. The old
+ * regex-on-full-HTML approach could rewrite words inside href/src/alt
+ * attributes, class names, and <style>/<script> blocks, corrupting markup.
+ *
  * Also detects banned phrases but does NOT auto-fix them — returned in
  * `phrasesFound` so caller can decide whether to regenerate via Claude.
  */
 export function applyAntiSlop(html: string): AntiSlopResult {
   let wordsReplaced = 0;
-  let result = html;
 
-  for (const [bannedWord, synonyms] of Object.entries(WORD_SUBSTITUTIONS)) {
-    const escaped = bannedWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Word boundaries around letters, matching case-insensitive
-    const regex = new RegExp(`\\b${escaped}\\b`, "gi");
-    result = result.replace(regex, (match) => {
-      // Rotate through synonyms to avoid one word repeating 10 times
-      const idx = wordsReplaced % synonyms.length;
-      const replacement = synonyms[idx];
-      wordsReplaced++;
-      // Preserve first-letter case (e.g. Optimal → Bra)
-      if (match[0] === match[0].toUpperCase()) {
-        return replacement[0].toUpperCase() + replacement.slice(1);
+  const substitutions = Object.entries(WORD_SUBSTITUTIONS).map(([word, synonyms]) => ({
+    regex: new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"),
+    synonyms,
+  }));
+
+  // Fragment mode (isDocument=false) so writer output that starts at <h1>
+  // isn't force-wrapped in <html><body>. Full documents pass through intact.
+  const $ = cheerio.load(html, null, false);
+
+  // Tags whose text content must never be rewritten
+  const SKIP_TAGS = new Set(["script", "style", "code", "pre", "noscript"]);
+
+  const replaceInText = (text: string): string => {
+    let result = text;
+    for (const { regex, synonyms } of substitutions) {
+      result = result.replace(regex, (match) => {
+        // Rotate through synonyms to avoid one word repeating 10 times
+        const idx = wordsReplaced % synonyms.length;
+        const replacement = synonyms[idx];
+        wordsReplaced++;
+        // Preserve first-letter case (e.g. Optimal → Bra)
+        if (match[0] === match[0].toUpperCase()) {
+          return replacement[0].toUpperCase() + replacement.slice(1);
+        }
+        return replacement;
+      });
+    }
+    return result;
+  };
+
+  type DomNode = { type: string; data?: string; name?: string; children?: DomNode[] };
+
+  const walk = (nodes: DomNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "text") {
+        if (node.data && node.data.trim()) {
+          node.data = replaceInText(node.data);
+        }
+        continue;
       }
-      return replacement;
-    });
-  }
+      if (node.name && SKIP_TAGS.has(node.name.toLowerCase())) continue;
+      if (node.children?.length) walk(node.children);
+    }
+  };
+
+  const rootNode = $.root().get(0) as unknown as { children?: DomNode[] } | undefined;
+  if (rootNode?.children?.length) walk(rootNode.children);
+
+  const result = $.root().html() ?? html;
 
   // Detect banned phrases (case-insensitive substring in stripped text)
-  const stripped = result.replace(/<[^>]+>/g, " ").toLowerCase();
+  const stripped = $.root().text().toLowerCase();
   const phrasesFound = BANNED_PHRASES.filter((p) => stripped.includes(p));
 
   return { html: result, wordsReplaced, phrasesFound };
@@ -500,6 +537,12 @@ export interface ArticleResult {
   seoDescription: string;
   wordCount: number;
   cost: number;
+  /**
+   * The verified PubMed study URLs that were handed to the writer prompt.
+   * Empty when research citations are disabled or PubMed lookup failed.
+   * Passed to the soft gate so hallucinated-citation checks actually run.
+   */
+  verifiedCitationUrls: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -669,13 +712,18 @@ Return the complete revised article HTML (same structure, just with the added ci
   // Post-process: enforce anti-slop rules the prompt couldn't enforce reliably.
   // Single banned words get auto-replaced with synonyms; banned phrases are
   // logged (would need a regenerate call — keeping simple for now).
-  const antiSlop = applyAntiSlop(cleanHtml);
-  if (antiSlop.wordsReplaced > 0) {
-    cleanHtml = antiSlop.html;
-    console.log(`[blog-writer] Anti-slop: replaced ${antiSlop.wordsReplaced} banned words`);
-  }
-  if (antiSlop.phrasesFound.length > 0) {
-    console.warn(`[blog-writer] Anti-slop: banned phrases still present: ${antiSlop.phrasesFound.join(", ")}`);
+  // ONLY for Swedish: WORD_SUBSTITUTIONS/BANNED_PHRASES are Swedish synonym
+  // lists — injecting Swedish words into Danish/Norwegian articles corrupts
+  // the text (BL3).
+  if (request.language === "sv") {
+    const antiSlop = applyAntiSlop(cleanHtml);
+    if (antiSlop.wordsReplaced > 0) {
+      cleanHtml = antiSlop.html;
+      console.log(`[blog-writer] Anti-slop: replaced ${antiSlop.wordsReplaced} banned words`);
+    }
+    if (antiSlop.phrasesFound.length > 0) {
+      console.warn(`[blog-writer] Anti-slop: banned phrases still present: ${antiSlop.phrasesFound.join(", ")}`);
+    }
   }
 
   // Naturlig svenska second pass: rewrites text for natural Swedish narrative
@@ -723,6 +771,7 @@ Return the complete revised article HTML (same structure, just with the added ci
     seoDescription,
     wordCount,
     cost,
+    verifiedCitationUrls: verifiedStudies.map((s) => s.url),
   };
 }
 
@@ -1073,10 +1122,11 @@ ${request.language === "da"
 
 ## Your Identity
 - You are the editorial team at ${blogName}, a small independent health review site
-- First-person plural: "vi har testat", "vår bedömning", "vi rekommenderar"
+- First-person plural: "vi har granskat", "vår bedömning", "vi rekommenderar"
 - Your style: knowledgeable but conversational, like a helpful expert friend
-- You have personally tested every product you review
-- You buy all products yourself — no sponsorships
+- Your reviews are based on desk research: published studies, verified customer reviews, ingredient/material data, and price comparisons
+- NEVER claim hands-on testing, test panels, or test periods that did not happen — no "vi har testat i X veckor", no invented testers
+- You are editorially independent — no manufacturer pays for placement or rankings
 
 ## Our Product (the one we recommend)
 ${productContext}
@@ -1147,7 +1197,7 @@ holistisk, revolutionerande, banbrytande, game-changer, optimal, transformera, n
 - At least 3 FAQ items in a .faq-item section at the bottom
 - Include a summary box (.tldr class) near the top with heading "Kort sammanfattning" (NOT "TL;DR") — each point as a separate <li> inside a <ul>
 - Wrap ALL <table> elements in <div class="table-wrap">...</div> for mobile scrollability
-- Year "2026" in title and body
+- Year "${new Date().getFullYear()}" in title and body
 
 ## Featured snippet optimization (CRITICAL - pos 0 in SERP)
 - The very FIRST paragraph (before the .tldr box) must contain a direct, complete answer to the search query "${request.primaryKeyword}" in 40-60 words. This is the "featured snippet body" Google looks for.
@@ -1181,25 +1231,31 @@ ${methodologyInstructionForTemplate(request.templateId, langName)}`;
 
 /**
  * For listicle / comparison / buying-guide templates, instruct the writer
- * to include a "How we tested / How we ranked" methodology section. This is
- * a critical E-E-A-T signal that Google's December 2025 update prioritizes.
- * Affiliate sites without this took heavy ranking hits.
+ * to include a "How we ranked / methodology" section. This is a critical
+ * E-E-A-T signal that Google's December 2025 update prioritizes.
+ *
+ * IMPORTANT: research-based framing ONLY. The old version encouraged
+ * fabricated empirical claims ("We tested 7 products over 9 weeks with 3
+ * testers") — that violates marknadsföringslagen + Google's product-reviews
+ * policy on YMYL content. The methodology must describe what actually
+ * happened: desk research over studies, verified reviews, and product data.
  */
 function methodologyInstructionForTemplate(templateId: string, langName: string): string {
   const needsMethodology = ["listicle", "comparison", "buying-guide"].includes(templateId);
   if (!needsMethodology) return "";
-  const heading = langName === "danish" ? "Sådan testede vi" : langName === "norwegian" ? "Slik testet vi" : "Så här testade vi";
+  const lang = langName.toLowerCase();
+  const heading = lang === "danish" ? "Sådan har vi vurderet" : lang === "norwegian" ? "Slik har vi vurdert" : "Så här har vi gjort urvalet";
   return `
 
 ## Methodology section (E-E-A-T critical for ${templateId})
 Include a "${heading}" H2 section (3-5 paragraphs) covering:
-- How many products we evaluated and over what time period
-- What criteria we ranked on (specific testable attributes, NOT vague terms like "quality")
+- That the ranking is based on research: published studies, verified customer reviews (e.g. Trustpilot), ingredient/material data and price comparisons — frame it as "vi har gått igenom studier och verifierade recensioner", NOT as hands-on lab testing
+- What criteria we ranked on (specific attributes, NOT vague terms like "quality")
 - Sources we consulted (peer-reviewed studies, verified Trustpilot reviews, ingredient databases like Livsmedelsverket)
 - Disclosure: we sell our own product in this category (transparency boosts trust per Helpful Content Update)
-- Why our recommendation is honest despite the disclosure (objective criteria, real test data)
+- Why our recommendation is honest despite the disclosure (objective criteria, transparent sources)
 
-Be specific - "We tested 7 products over 9 weeks with 3 testers" beats "We thoroughly researched the market".`;
+CRITICAL — NEVER fabricate empirical test claims: no invented number of physically tested products, no invented test periods ("under 9 veckor"), no invented test panels or testers. Only use numbers that are verifiably true from this article's own data (e.g. the actual count of products compared in the article).`;
 }
 
 function buildWriterUserPrompt(
@@ -1207,6 +1263,14 @@ function buildWriterUserPrompt(
   templateHtml: string
 ): string {
   const productUrl = getProductUrlWithUTM(request.productSlug, request.language, request.slug);
+  const langName =
+    request.language === "sv"
+      ? "Swedish"
+      : request.language === "da"
+        ? "Danish"
+        : request.language === "no"
+          ? "Norwegian"
+          : "Swedish";
 
   return `Write the complete article based on this brief:
 
@@ -1229,13 +1293,13 @@ ${templateHtml}
 8. Word count target: ${request.wordCount}
 9. IMAGES — Include exactly these 3 image placeholders (they will be replaced with AI-generated images). Each MUST have a UNIQUE URL:
    a. ONE hero image immediately after the H1 heading (before the intro paragraph):
-      <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Hero" alt="[descriptive alt text in Swedish]">
+      <img class="hero-img" src="https://placehold.co/1200x675/f3f4f6/9ca3af?text=Hero" alt="[descriptive alt text in ${langName}]">
    b. FIRST section image (between major sections):
-      <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+1" alt="[descriptive alt text in Swedish]">
+      <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+1" alt="[descriptive alt text in ${langName}]">
    c. SECOND section image (between later sections):
-      <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+2" alt="[descriptive alt text in Swedish]">
-   CRITICAL: Each placeholder URL must be different (text=Hero, text=Section+1, text=Section+2). The hero image MUST be directly after the H1. Place section images after H2 sections where a visual break would help readability. Alt text must be in Swedish.
-10. Write the ENTIRE article in Swedish. No English words except brand names.
+      <img class="section-img" src="https://placehold.co/1200x675/e2e8f0/64748b?text=Section+2" alt="[descriptive alt text in ${langName}]">
+   CRITICAL: Each placeholder URL must be different (text=Hero, text=Section+1, text=Section+2). The hero image MUST be directly after the H1. Place section images after H2 sections where a visual break would help readability. Alt text must be in ${langName}.
+10. Write the ENTIRE article in ${langName}. No English words except brand names.
 11. If the title says "12 kuddar" but you only have 10 verified products, adjust the title number to match (e.g. "Test av 10 kuddar"). NEVER pad with fabricated products.
 12. TABLES: Put the 2 most important columns FIRST — on mobile only the first 2 columns are visible. Example: "Kudde" + "Betyg" as columns 1-2, then "Pris" + "Bäst för" as 3-4. Always wrap tables in <div class="table-wrap">...</div>.
 

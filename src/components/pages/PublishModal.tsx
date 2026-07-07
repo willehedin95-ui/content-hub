@@ -174,7 +174,9 @@ export default function PublishModal({ open, translationId, onClose }: PublishMo
             <div className="space-y-2 mb-5">
               {[
                 { key: "optimizing_images", label: "Optimizing images" },
-                { key: "deploying", label: "Deploying to Cloudflare Pages" },
+                // Neutral label: blog pages in Shopify-target workspaces
+                // (hydro13) deploy to Shopify, not Cloudflare
+                { key: "deploying", label: "Deploying" },
               ].map((step) => {
                 const isDone =
                   step.key === "optimizing_images" && (publishStep === "deploying");

@@ -12,7 +12,7 @@
 import * as cheerio from "cheerio";
 import { createServerSupabase } from "./supabase-admin";
 import { slugifyCategory, getArticlePath } from "./blog-shell";
-import { getProjectCustomDomain } from "./cloudflare-pages";
+import { getProjectCustomDomain, getProjectName, getWorkspaceIdForCfProject } from "./cloudflare-pages";
 import type { Language } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -275,21 +275,52 @@ function extractDistinguishingTerm(slug: string, keyword: string): string | null
  * Query all published blog articles and build LinkTarget array.
  * Uses SLUG_KEYWORDS for known content-plan articles, extracts from
  * SEO title for dynamically-generated articles.
+ *
+ * Workspace-scoped (audit 2026-07-07, E1): targets live on the language's
+ * CF Pages domain, so only articles from the workspace that OWNS that CF
+ * project may be linked. Callers from another workspace (e.g. hydro13's
+ * Shopify blog) can pass `workspaceId`; if it differs from the CF project's
+ * owner, no targets are returned - cross-brand links to halsobladet was a
+ * live bug.
  */
 export async function buildLinkTargetsFromDB(
   language: Language,
-  excludeSlug?: string
+  excludeSlug?: string,
+  workspaceId?: string
 ): Promise<LinkTarget[]> {
   const db = createServerSupabase();
   const domain = getProjectCustomDomain(language);
   if (!domain) return [];
 
+  let cfWorkspaceId: string | null = null;
+  try {
+    cfWorkspaceId = await getWorkspaceIdForCfProject(getProjectName(language));
+  } catch {
+    // No CF project configured for this language - no valid link domain
+    return [];
+  }
+  if (!cfWorkspaceId) {
+    console.warn(
+      `[buildLinkTargetsFromDB] No workspace mapping for language "${language}" - returning no targets to avoid cross-workspace links`
+    );
+    return [];
+  }
+  if (workspaceId && workspaceId !== cfWorkspaceId) {
+    // Caller's workspace doesn't own this CF domain - linking its articles
+    // to another brand's blog is exactly the bug this guards against.
+    console.warn(
+      `[buildLinkTargetsFromDB] workspace ${workspaceId} does not own the ${language} CF project - no targets`
+    );
+    return [];
+  }
+
   const { data: articles } = await db
     .from("translations")
-    .select("slug, seo_title, pages!inner(blog_category, content_type)")
+    .select("slug, seo_title, pages!inner(blog_category, content_type, workspace_id)")
     .eq("language", language)
     .eq("status", "published")
-    .eq("pages.content_type", "seo_blog");
+    .eq("pages.content_type", "seo_blog")
+    .eq("pages.workspace_id", cfWorkspaceId);
 
   if (!articles?.length) return [];
 
@@ -309,8 +340,13 @@ export async function buildLinkTargetsFromDB(
     }
   }
 
+  const seenSlugs = new Set<string>();
   return articles
-    .filter((a) => a.slug !== excludeSlug)
+    .filter((a) => {
+      if (!a.slug || a.slug === excludeSlug || seenSlugs.has(a.slug)) return false;
+      seenSlugs.add(a.slug);
+      return true;
+    })
     .map((a) => {
       const page = a.pages as unknown as { blog_category?: string };
       const catSlug = page.blog_category

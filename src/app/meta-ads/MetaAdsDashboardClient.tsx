@@ -78,6 +78,12 @@ interface DashboardData {
     copies: BreakdownItem[];
     images: BreakdownItem[];
   };
+  // Account scoping + staleness (2026-07-07)
+  accounts?: string[];
+  selected_account?: string | null;
+  data_date?: string | null;
+  data_age_days?: number | null;
+  stale?: boolean;
 }
 
 interface LearningInfo {
@@ -187,6 +193,7 @@ export default function MetaAdsDashboardClient() {
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState(7);
   const [country, setCountry] = useState("all");
+  const [account, setAccount] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [breakdownTab, setBreakdownTab] = useState<BreakdownTab>("headlines");
@@ -201,8 +208,9 @@ export default function MetaAdsDashboardClient() {
     setLoading(true);
     setError(null);
     try {
+      const accountParam = account ? `&account=${encodeURIComponent(account)}` : "";
       const [dashRes, learningRes] = await Promise.all([
-        fetch(`/api/meta-ads/dashboard?days=${period}&country=${country}`),
+        fetch(`/api/meta-ads/dashboard?days=${period}&country=${country}${accountParam}`),
         fetch("/api/meta-ads/learning-phase"),
       ]);
 
@@ -227,7 +235,7 @@ export default function MetaAdsDashboardClient() {
     } finally {
       setLoading(false);
     }
-  }, [period, country]);
+  }, [period, country, account]);
 
   useEffect(() => {
     fetchData();
@@ -391,6 +399,28 @@ export default function MetaAdsDashboardClient() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Ad account selector — shown when data spans multiple accounts.
+              Aggregates are always scoped to ONE account (never blended). */}
+          {(data.accounts?.length ?? 0) > 1 && (
+            <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden">
+              {data.accounts!.map((a) => (
+                <button
+                  key={a}
+                  onClick={() => setAccount(a)}
+                  title={`Ad account ${a}`}
+                  className={cn(
+                    "px-3 py-1.5 text-sm font-medium transition-colors",
+                    (account ?? data.selected_account) === a
+                      ? "bg-indigo-600 text-white"
+                      : "text-gray-600 hover:bg-gray-50"
+                  )}
+                >
+                  …{a.slice(-4)}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Period selector */}
           <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden">
             {[7, 14, 30].map((d) => (
@@ -437,6 +467,27 @@ export default function MetaAdsDashboardClient() {
           </button>
         </div>
       </div>
+
+      {/* ── Staleness warning (A2 2026-07-07) ── */}
+      {data.stale && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              Performance data is stale
+              {data.data_date
+                ? ` — latest synced day is ${data.data_date}${typeof data.data_age_days === "number" ? ` (${data.data_age_days} days old)` : ""}`
+                : " — no synced data found"}
+              .
+            </p>
+            <p className="text-sm text-amber-700 mt-0.5">
+              Money actions (scale +20%, pause, budget shifts) are blocked until
+              ad-performance-sync has fetched fresh data. Numbers below do NOT
+              reflect current spend.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── KPI Cards ── */}
       {kpis && (

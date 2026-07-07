@@ -44,6 +44,10 @@ export type SubEl =
       inputType?: "text" | "number" | "date";
       min?: number;
       max?: number;
+      /* When set, renders an escape-link under the Continue button (EveryDoggy
+       * "Prefer not to say" pattern). Click clears the variable and advances.
+       * Mirrors src/types/quiz.ts. */
+      skipLabel?: string;
     }
   | {
       id: string;

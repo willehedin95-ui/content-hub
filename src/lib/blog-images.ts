@@ -38,6 +38,11 @@ export interface GenerateBlogImagesOptions {
   articleHtml: string;
   slug: string;
   productSlug?: string;
+  /** Article language ("sv" | "da" | "no") — controls the language of any
+   * visible text in generated images. Defaults to Swedish. */
+  language?: string;
+  /** Workspace the article belongs to — stamped into usage_logs metadata. */
+  workspaceId?: string;
 }
 
 export interface BlogImageResult {
@@ -156,7 +161,14 @@ RULES:
 Output ONLY a JSON array, no markdown fences:
 [{"index": 0, "prompt": "...", "style": "native-messy"}]`;
 
-const HAIKU_SYSTEM_PROMPT = `You generate image prompts for Nano Banana Pro (an AI image generator) to create REALISTIC phone-style images for a Swedish health & wellness blog. Images must look like someone took them with their iPhone — NOT stock photos, NOT polished studio shots.
+/** Map a language code to the display name used in the image prompts. */
+function langNameFor(language: string | undefined): string {
+  if (language === "da") return "Danish";
+  if (language === "no") return "Norwegian";
+  return "Swedish";
+}
+
+const buildHaikuSystemPrompt = (langName: string) => `You generate image prompts for Nano Banana Pro (an AI image generator) to create REALISTIC phone-style images for a ${langName} health & wellness blog. Images must look like someone took them with their iPhone — NOT stock photos, NOT polished studio shots.
 
 The image MUST be directly relevant to the section it appears in. Read the section heading and alt text carefully.
 
@@ -195,9 +207,9 @@ RULES:
 - Muted, slightly warm color palette — real indoor lighting
 - NEVER use: "photorealistic", "cinematic", "vibrant", "beautiful", "stunning", "professional"
 - All images are 16:9 LANDSCAPE format — compose horizontally
-- TEXT IN IMAGES — this is a SWEDISH blog. If text is visible anywhere (labels, papers, book spines, computer screens, signs, packaging), it MUST be in SWEDISH — never English, never a mix. For EVERY scene that could show text, either:
+- TEXT IN IMAGES — this is a ${langName.toUpperCase()} blog. If text is visible anywhere (labels, papers, book spines, computer screens, signs, packaging), it MUST be in ${langName.toUpperCase()} — never English, never a mix. For EVERY scene that could show text, either:
     (a) explicitly avoid it: "label facing away", "unlabeled bottle", "closed book", "blank paper", "screen off", "blurred out-of-focus text"
-    (b) OR specify Swedish content: "handwritten Swedish notes about kollagen", "Swedish nutrition label reading 'Ingredienser: ...'", "Swedish research paper with visible heading 'Studie:'"
+    (b) OR specify ${langName} content: "handwritten ${langName} notes about collagen", "${langName} nutrition label", "${langName} research paper with a visible ${langName} heading"
   Default to (a) — avoid text. Only use (b) when text is unavoidable for the scene to make sense. Never allow Nano Banana to render English text (brand names, sciency English like "COLLAGEN", "HYALURONIC ACID", "SCIENCE FOR SAFER FOOD", etc.) — this has been a recurring failure.
 - Each image must illustrate a DIFFERENT aspect of the article
 - End each prompt with: "iPhone photo, candid, natural light."
@@ -211,7 +223,8 @@ async function generateImagePrompts(
   primaryKeyword: string,
   category: string,
   contentBrief: string,
-  productSlug?: string
+  productSlug?: string,
+  language?: string
 ): Promise<{ prompts: ImagePrompt[]; cost: number }> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
@@ -235,10 +248,12 @@ ${imageDescriptions}`;
 
   // Doginwork (puppy training) needs a fundamentally different image domain
   // than HappySleep/Hydro13 (health/wellness/sleep). Branch by productSlug.
+  // Doginwork is Swedish-only; the generic prompt is parameterized on the
+  // article language so da/no blogs don't get Swedish text in images (BL3).
   const systemPrompt =
     productSlug === "valpakademin"
       ? HAIKU_SYSTEM_PROMPT_DOGINWORK
-      : HAIKU_SYSTEM_PROMPT;
+      : buildHaikuSystemPrompt(langNameFor(language));
 
   const client = new Anthropic({ apiKey });
   const response = await client.messages.create({
@@ -290,7 +305,8 @@ export async function generateBlogImages(
     primaryKeyword,
     category,
     contentBrief,
-    opts.productSlug
+    opts.productSlug,
+    opts.language
   );
 
   console.log(`[blog-images] Generated ${prompts.length} image prompts (Haiku cost: $${haikuCost.toFixed(4)})`);
@@ -339,7 +355,7 @@ export async function generateBlogImages(
       console.log(`${label}: Done → ${urlData.publicUrl.slice(0, 80)}...`);
 
       // Log image generation cost
-      await db.from("usage_logs").insert({
+      const { error: imgLogErr } = await db.from("usage_logs").insert({
         type: "blog_image",
         model: KIE_MODEL,
         cost_usd: KIE_IMAGE_COST,
@@ -348,8 +364,13 @@ export async function generateBlogImages(
           image_index: placeholder.index,
           style: imgPrompt.style,
           prompt: imgPrompt.prompt.slice(0, 200),
+          workspace_id: opts.workspaceId ?? null,
+          language: opts.language ?? null,
         },
       });
+      if (imgLogErr) {
+        console.warn("[blog-images] usage_logs insert failed (non-critical):", imgLogErr.message);
+      }
 
       totalImageCost += KIE_IMAGE_COST;
       urlMap[placeholder.originalUrl] = urlData.publicUrl;
@@ -368,12 +389,20 @@ export async function generateBlogImages(
 
   // Log Haiku prompt cost
   if (prompts.length > 0) {
-    await db.from("usage_logs").insert({
+    const { error: promptLogErr } = await db.from("usage_logs").insert({
       type: "blog_image_prompt",
       model: "claude-haiku",
       cost_usd: haikuCost,
-      metadata: { slug, prompt_count: prompts.length },
+      metadata: {
+        slug,
+        prompt_count: prompts.length,
+        workspace_id: opts.workspaceId ?? null,
+        language: opts.language ?? null,
+      },
     });
+    if (promptLogErr) {
+      console.warn("[blog-images] usage_logs insert failed (non-critical):", promptLogErr.message);
+    }
   }
 
   const totalCost = totalImageCost + haikuCost;

@@ -363,21 +363,19 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
   }
 
   try {
-    if (data === "budget_apply_all") {
-      await answerCallbackQuery(query.id, "Applying budget shifts...");
-      await applyBudgetShifts(chatId, messageId);
+    if (data === "budget_apply_all" || data === "graduate_all" || data === "strategy_kill_all") {
+      // 2026-07-07 (A4): legacy one-click money buttons DISARMED. They lived on
+      // in old chat messages and executed +20% budget bumps / cross-account
+      // budget shifts / batch kills on stale data, without cooldown, cap or
+      // runWithMetaConfig. The handlers below are intentionally no longer wired.
+      await answerCallbackQuery(query.id, "Inaktiverad");
+      await editCallbackMessage(chatId, messageId, "⛔ Inaktiverad - använd Morning Brief i hubben istället.");
     } else if (data === "budget_skip") {
       await answerCallbackQuery(query.id, "Budget shifts skipped");
       await editMessageText(chatId, messageId, "⚡ Budget shifts — skipped.");
-    } else if (data === "graduate_all") {
-      await answerCallbackQuery(query.id, "Graduating winners...");
-      await graduateWinners(chatId, messageId);
     } else if (data === "graduate_skip") {
       await answerCallbackQuery(query.id, "Winner graduation skipped");
       await editMessageText(chatId, messageId, "⭐ Winner graduation — skipped.");
-    } else if (data === "strategy_kill_all") {
-      await answerCallbackQuery(query.id, "Killing weak ad sets...");
-      await killWeakAdSets(chatId, messageId);
     } else if (data === "strategy_skip") {
       await answerCallbackQuery(query.id, "Strategy action skipped");
       await editMessageText(chatId, messageId, "🛡️ Strategy kill — skipped.");
@@ -443,6 +441,16 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
 
   return NextResponse.json({ ok: true });
 }
+
+// ---------------------------------------------------------------------------
+// A4 (2026-07-07): The three handlers below are DISARMED — no callback trigger
+// routes to them anymore (see handleCallbackQuery). Kept for reference until a
+// safe replacement (cooldown + cap + runWithMetaConfig + staleness guard)
+// exists. Do NOT re-wire without those guards.
+// ---------------------------------------------------------------------------
+void applyBudgetShifts;
+void graduateWinners;
+void killWeakAdSets;
 
 async function applyBudgetShifts(chatId: number, messageId: number): Promise<void> {
   // Fetch current efficiency recommendations
@@ -652,6 +660,18 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
       results.push(`  🚀 ${w.campaign_name || "Unnamed"} (campaign): $${oldUsd}/d → $${newUsd}/d (+20%)`);
 
       const db = createServerSupabase();
+      // 2026-07-07: include workspace_id (resolved via campaign mapping) so the
+      // scale-cooldown in morning-brief/actions can attribute this event.
+      const { data: wsMapping, error: wsMappingErr } = await db
+        .from("meta_campaign_mappings")
+        .select("workspace_id")
+        .eq("meta_campaign_id", w.campaign_id)
+        .not("workspace_id", "is", null)
+        .limit(1)
+        .maybeSingle();
+      if (wsMappingErr) {
+        console.error("[Telegram] graduated_winner workspace lookup failed:", wsMappingErr.message);
+      }
       await db.from("ad_learnings").insert({
         meta_ad_id: w.campaign_id,
         ad_name: w.ad_name,
@@ -659,6 +679,7 @@ async function graduateWinners(chatId: number, messageId: number): Promise<void>
         event_type: "graduated_winner",
         detail: `Campaign budget +20% ($${oldUsd}/d → $${newUsd}/d) — CBO campaign with winning ad (${w.consistent_days}d streak, ${w.avg_roas.toFixed(1)}x ROAS)`,
         metrics: { consistent_days: w.consistent_days, avg_roas: w.avg_roas, old_budget: campBudget, new_budget: newBudget, level: "campaign" },
+        workspace_id: wsMapping?.workspace_id ?? null,
       });
 
       await new Promise((r) => setTimeout(r, 500));

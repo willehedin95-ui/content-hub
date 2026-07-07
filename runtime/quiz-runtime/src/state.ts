@@ -150,13 +150,24 @@ export function extractUTM(): UTMParams {
 // Event buffer
 // ---------------------------------------------------------------------------
 
+// The hub's /api/quiz/events endpoint caps events[] at 50 per request and
+// silently truncates larger batches. Always send in chunks of at most 50 so
+// an offline-accumulated buffer never loses its tail.
+const MAX_EVENTS_PER_REQUEST = 50;
+
 export class EventBuffer {
   private buf: QuizEvent[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private apiEventsUrl: string;
 
+  /**
+   * `sessionId` may be null at construction: the buffer is created
+   * synchronously at mount so events (first step_view, fast answers) are
+   * captured even while startSession is still in flight / retrying. Nothing
+   * is sent until setSessionId() provides the id - events just accumulate.
+   */
   constructor(
-    private sessionId: string,
+    private sessionId: string | null,
     private flushFn: (sessionId: string, events: QuizEvent[]) => Promise<void>,
     apiBaseUrl: string,
   ) {
@@ -172,22 +183,37 @@ export class EventBuffer {
     window.addEventListener("pagehide", () => this.flushBeacon());
   }
 
+  /** Attach the resolved session id and immediately flush buffered events. */
+  setSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+    void this.flush();
+  }
+
   push(event: Omit<QuizEvent, "ts">): void {
     this.buf.push({ ...event, ts: Date.now() });
   }
 
   /**
    * Normal flush via fetch+keepalive. Used by the 2s interval and
-   * explicit calls. Returns events to buffer on failure.
+   * explicit calls. Returns events to buffer on failure. No-op while the
+   * session id is still unknown - events keep buffering.
    */
   async flush(): Promise<void> {
+    if (!this.sessionId) return;
     if (this.buf.length === 0) return;
+    const sid = this.sessionId;
     const toSend = this.buf.splice(0);
-    try {
-      await this.flushFn(this.sessionId, toSend);
-    } catch {
-      // Put events back if flush fails - best effort
-      this.buf.unshift(...toSend);
+    // Chunked send: the server caps events[] per request, so oversized
+    // buffers go out as sequential batches instead of being truncated.
+    for (let i = 0; i < toSend.length; i += MAX_EVENTS_PER_REQUEST) {
+      const chunk = toSend.slice(i, i + MAX_EVENTS_PER_REQUEST);
+      try {
+        await this.flushFn(sid, chunk);
+      } catch {
+        // Put this chunk + all unsent chunks back - best effort
+        this.buf.unshift(...toSend.slice(i));
+        return;
+      }
     }
   }
 
@@ -196,41 +222,56 @@ export class EventBuffer {
    * which the browser guarantees to deliver even after tab close. Falls
    * back to fetch+keepalive if Beacon API is unavailable. Drains the
    * buffer immediately so unload isn't blocked.
+   *
+   * The beacon payload is sent as text/plain: application/json beacons
+   * trigger a CORS preflight, and at unload time the browser may kill the
+   * page before the OPTIONS round-trip completes - the event silently
+   * never arrives. text/plain is a "simple request" (no preflight); the
+   * hub API parses the body as JSON regardless of content type.
    */
   flushBeacon(): void {
+    if (!this.sessionId) return; // can't attribute events without a session
     if (this.buf.length === 0) return;
+    const sid = this.sessionId;
     const toSend = this.buf.splice(0);
-    const payload = JSON.stringify({
-      session_id: this.sessionId,
-      events: toSend.map((e) => ({
-        event_type: e.event_type,
-        step_id: e.step_id,
-        variant_group_id: e.variant_group_id,
-        option_id: e.option_id,
-        meta: e.meta,
-      })),
-    });
-    let sent = false;
-    try {
-      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-        const blob = new Blob([payload], { type: "application/json" });
-        sent = navigator.sendBeacon(this.apiEventsUrl, blob);
-      }
-    } catch {
-      sent = false;
-    }
-    if (!sent) {
-      // Last-resort: fire-and-forget keepalive fetch
+    // Chunked like flush(): multiple sendBeacon calls are fine - the browser
+    // queues them all for delivery even after tab close.
+    for (let i = 0; i < toSend.length; i += MAX_EVENTS_PER_REQUEST) {
+      const chunk = toSend.slice(i, i + MAX_EVENTS_PER_REQUEST);
+      const payload = JSON.stringify({
+        session_id: sid,
+        events: chunk.map((e) => ({
+          event_type: e.event_type,
+          step_id: e.step_id,
+          variant_group_id: e.variant_group_id,
+          option_id: e.option_id,
+          meta: e.meta,
+        })),
+      });
+      let sent = false;
       try {
-        void fetch(this.apiEventsUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: payload,
-          keepalive: true,
-        });
+        if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+          const blob = new Blob([payload], { type: "text/plain" });
+          sent = navigator.sendBeacon(this.apiEventsUrl, blob);
+        }
       } catch {
-        // give up - put events back so a future flush() still has a chance
-        this.buf.unshift(...toSend);
+        sent = false;
+      }
+      if (!sent) {
+        // Last-resort: fire-and-forget keepalive fetch
+        try {
+          void fetch(this.apiEventsUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+            keepalive: true,
+          });
+        } catch {
+          // give up - put remaining events back so a future flush() still
+          // has a chance
+          this.buf.unshift(...toSend.slice(i));
+          return;
+        }
       }
     }
   }

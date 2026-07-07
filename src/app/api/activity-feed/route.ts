@@ -39,7 +39,10 @@ export interface PendingItem {
 export async function GET(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
   const db = createServerSupabase();
-  const days = parseInt(req.nextUrl.searchParams.get("days") ?? "7");
+  // Guard against non-numeric input ("days=abc" made `since` an Invalid Date
+  // string and 500ed the whole feed).
+  const daysRaw = parseInt(req.nextUrl.searchParams.get("days") ?? "7", 10);
+  const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 7;
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   const [actionsRes, imageJobsRes, videoJobsRes, pendingConceptsRes, reviewConceptsRes] = await Promise.all([

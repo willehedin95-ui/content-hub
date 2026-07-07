@@ -338,8 +338,60 @@ export async function GET(req: NextRequest) {
           r.action_data?.new_budget
       );
 
+      // M6 (2026-07-07): the strategy engine's own budget cooldown depends on
+      // campaign_budget_snapshots from the sync cron — if sync is dead, the
+      // engine re-recommends +20% on EVERY run. Dedupe against our own executed
+      // increase_budget actions from the last 3 days as an independent guard.
+      const budgetDedupeSince = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentBudgetActions, error: recentBudgetErr } = await db
+        .from("autopilot_actions")
+        .select("target_id")
+        .eq("workspace_id", wsId)
+        .eq("action_type", "increase_budget")
+        .eq("success", true)
+        .gte("created_at", budgetDedupeSince);
+      if (recentBudgetErr) {
+        console.error(`[Autopilot Execute] ${label}budget dedupe query failed:`, recentBudgetErr.message);
+      }
+      const recentlyIncreasedIds = new Set((recentBudgetActions ?? []).map((a) => a.target_id));
+
+      // L3 (2026-07-07): cross-system dedupe — manual budget writes from the
+      // Morning Brief/Telegram land in ad_learnings, not autopilot_actions.
+      // Without this, a manual +20% and an autopilot +20% could both run the
+      // same day. No workspace filter (Telegram-era rows lack workspace_id).
+      const recCampaignIds = budgetRecs.map((r) => r.action_data!.campaign_id as string);
+      let learningsDedupeErr: { message: string } | null = null;
+      if (recCampaignIds.length > 0) {
+        const { data: learnRows, error: learnErr } = await db
+          .from("ad_learnings")
+          .select("meta_ad_id")
+          .in("meta_ad_id", recCampaignIds)
+          .in("event_type", [
+            "graduated_winner",
+            "budget_shifted",
+            "budget_increased_for_testing",
+            "budget_reduced_for_testing",
+          ])
+          .gte("created_at", budgetDedupeSince);
+        if (learnErr) {
+          console.error(`[Autopilot Execute] ${label}ad_learnings dedupe query failed:`, learnErr.message);
+          learningsDedupeErr = learnErr;
+        }
+        for (const r of learnRows ?? []) recentlyIncreasedIds.add(r.meta_ad_id as string);
+      }
+
       for (const rec of budgetRecs) {
         const campaignId = rec.action_data!.campaign_id as string;
+
+        // Fail closed: if we can't verify the dedupe window, don't write money.
+        if (recentBudgetErr || learningsDedupeErr) {
+          skippedActions.push(`${campaignId} (budget dedupe check unavailable — skipped)`);
+          continue;
+        }
+        if (recentlyIncreasedIds.has(campaignId)) {
+          skippedActions.push(`${campaignId} (budget already increased within 3d)`);
+          continue;
+        }
         const newBudgetCents = rec.action_data!.new_budget as number;
         const campInfo = campaignInfoMap.get(campaignId);
         const campName = campInfo?.campaign_name ?? campaignId;

@@ -105,15 +105,15 @@ const PAGE_CONTENT: Record<Language, AuthorContent> = {
     authorTitle: `${AUTHOR_NAME} - Redaktör`,
     authorRole: "Redaktör, Hälsobladet",
     authorBio: [
-      "Erik Lindberg är redaktör för Hälsobladet och ansvarar för redaktionsarbetet bakom guider, produkttester och hälsoartiklar. Han har en bakgrund inom hälsojournalistik och har skrivit om sömn, kost och välmående i över ett decennium.",
-      "Som redaktör samarbetar Erik med läkare, sömnforskare och produkttestare för att kvalitetssäkra det som publiceras. Alla artiklar bygger på publicerade studier och refererar till primärkällor när det är relevant.",
+      "Erik Lindberg är redaktör för Hälsobladet och ansvarar för redaktionsarbetet bakom guider, produktjämförelser och hälsoartiklar.",
+      "Innehållet bygger på publicerade studier, myndighetskällor och verifierade kundrecensioner, och refererar till primärkällor när det är relevant.",
       "Hälsobladet är en del av Swedish Balance, ett svenskt företag som specialiserar sig på sömnprodukter. Vi tar inte emot ersättning för att skriva positiva produktomdömen.",
     ],
     aboutPath: "om-oss",
     aboutTitle: "Om Hälsobladet",
     aboutBody: [
       "Hälsobladet drivs av Swedish Balance AB, ett svenskt företag som specialiserar sig på sömnprodukter och hälsoguider. Vi grundades med målet att hjälpa människor sova bättre och må bättre genom evidensbaserad information.",
-      "Vad vi gör: vi testar och jämför kuddar, sömntillskott och andra produkter, och vi skriver guider om sömn, hälsa och vardagsproblem som påverkar livskvaliteten. Vårt redaktionsarbete leds av Erik Lindberg, och vi konsulterar läkare och sömnforskare när vi skriver om medicinska ämnen.",
+      "Vad vi gör: vi granskar och jämför kuddar, sömntillskott och andra produkter utifrån publicerade studier, verifierade kundrecensioner och produktdata, och vi skriver guider om sömn, hälsa och vardagsproblem som påverkar livskvaliteten. Vårt redaktionsarbete leds av Erik Lindberg, och vi utgår från publicerade studier och myndighetskällor när vi skriver om medicinska ämnen.",
       "Vad vi inte gör: vi tar inte emot betalning från tillverkare för positiva produktomdömen. Vissa länkar till produkter är annonslänkar — det innebär att vi får en mindre ersättning om du handlar via dem, men det påverkar inte vilka produkter vi rekommenderar eller vad vi skriver. Detta står även i den specifika artikelns disclosure.",
       "Kontakt: redaktion@halsobladet.com",
     ],
@@ -123,15 +123,15 @@ const PAGE_CONTENT: Record<Language, AuthorContent> = {
     authorTitle: `${AUTHOR_NAME} - Redaktør`,
     authorRole: "Redaktør, SmartHelse",
     authorBio: [
-      "Erik Lindberg er redaktør for SmartHelse og ansvarlig for redaktionsarbejdet bag guides, produkttests og sundhedsartikler. Han har en baggrund inden for sundhedsjournalistik og har skrevet om søvn, kost og velvære i over et årti.",
-      "Som redaktør samarbejder Erik med læger, søvnforskere og produkttestere for at kvalitetssikre det, der publiceres. Alle artikler bygger på publicerede studier og refererer til primærkilder, når det er relevant.",
+      "Erik Lindberg er redaktør for SmartHelse og ansvarlig for redaktionsarbejdet bag guides, produktsammenligninger og sundhedsartikler.",
+      "Indholdet bygger på publicerede studier, myndighedskilder og verificerede kundeanmeldelser og refererer til primærkilder, når det er relevant.",
       "SmartHelse er en del af Swedish Balance, et svensk firma der specialiserer sig i søvnprodukter. Vi modtager ikke betaling for at skrive positive produktanmeldelser.",
     ],
     aboutPath: "om-os",
     aboutTitle: "Om SmartHelse",
     aboutBody: [
       "SmartHelse drives af Swedish Balance AB, et svensk firma der specialiserer sig i søvnprodukter og sundhedsguides. Vi blev grundlagt med målet at hjælpe folk med at sove bedre og have det bedre gennem evidensbaseret information.",
-      "Hvad vi gør: vi tester og sammenligner puder, søvntilskud og andre produkter, og vi skriver guides om søvn, sundhed og dagligdagsproblemer der påvirker livskvaliteten. Vores redaktionsarbejde ledes af Erik Lindberg, og vi konsulterer læger og søvnforskere, når vi skriver om medicinske emner.",
+      "Hvad vi gør: vi gennemgår og sammenligner puder, søvntilskud og andre produkter ud fra publicerede studier, verificerede kundeanmeldelser og produktdata, og vi skriver guides om søvn, sundhed og dagligdagsproblemer der påvirker livskvaliteten. Vores redaktionsarbejde ledes af Erik Lindberg, og vi tager udgangspunkt i publicerede studier og myndighedskilder, når vi skriver om medicinske emner.",
       "Hvad vi ikke gør: vi modtager ikke betaling fra producenter for positive produktanmeldelser. Visse links til produkter er annoncelinks — det betyder, at vi får en mindre kompensation, hvis du handler via dem, men det påvirker ikke, hvilke produkter vi anbefaler, eller hvad vi skriver. Dette står også i den enkelte artikels disclosure.",
       "Kontakt: redaktion@smarthelse.dk",
     ],
@@ -141,15 +141,15 @@ const PAGE_CONTENT: Record<Language, AuthorContent> = {
     authorTitle: `${AUTHOR_NAME} - Redaktør`,
     authorRole: "Redaktør, Helseguiden",
     authorBio: [
-      "Erik Lindberg er redaktør for Helseguiden og ansvarlig for redaksjonsarbeidet bak guider, produkttester og helseartikler. Han har en bakgrunn innen helsejournalistikk og har skrevet om søvn, kosthold og velvære i over et tiår.",
-      "Som redaktør samarbeider Erik med leger, søvnforskere og produkttestere for å kvalitetssikre det som publiseres. Alle artikler bygger på publiserte studier og refererer til primærkilder når det er relevant.",
+      "Erik Lindberg er redaktør for Helseguiden og ansvarlig for redaksjonsarbeidet bak guider, produktsammenligninger og helseartikler.",
+      "Innholdet bygger på publiserte studier, myndighetskilder og verifiserte kundeanmeldelser, og refererer til primærkilder når det er relevant.",
       "Helseguiden er en del av Swedish Balance, et svensk selskap som spesialiserer seg på søvnprodukter. Vi tar ikke imot betaling for å skrive positive produktanmeldelser.",
     ],
     aboutPath: "om-oss",
     aboutTitle: "Om Helseguiden",
     aboutBody: [
       "Helseguiden drives av Swedish Balance AB, et svensk selskap som spesialiserer seg på søvnprodukter og helseguider. Vi ble grunnlagt med målet om å hjelpe folk å sove bedre og ha det bedre gjennom evidensbasert informasjon.",
-      "Hva vi gjør: vi tester og sammenligner puter, søvntilskudd og andre produkter, og vi skriver guider om søvn, helse og hverdagsproblemer som påvirker livskvaliteten. Vårt redaksjonsarbeid ledes av Erik Lindberg, og vi konsulterer leger og søvnforskere når vi skriver om medisinske emner.",
+      "Hva vi gjør: vi gjennomgår og sammenligner puter, søvntilskudd og andre produkter ut fra publiserte studier, verifiserte kundeanmeldelser og produktdata, og vi skriver guider om søvn, helse og hverdagsproblemer som påvirker livskvaliteten. Vårt redaksjonsarbeid ledes av Erik Lindberg, og vi tar utgangspunkt i publiserte studier og myndighetskilder når vi skriver om medisinske emner.",
       "Hva vi ikke gjør: vi tar ikke imot betaling fra produsenter for positive produktanmeldelser. Enkelte lenker til produkter er annonselenker — det betyr at vi får en mindre kompensasjon hvis du handler via dem, men det påvirker ikke hvilke produkter vi anbefaler eller hva vi skriver. Dette står også i den enkelte artikkelens disclosure.",
       "Kontakt: redaksjon@helseguiden.com",
     ],
@@ -362,7 +362,7 @@ export function getDefaultBlogConfig(): BlogConfig {
         blog_name: "Hälsobladet",
         blog_tagline: "",
         about_text:
-          "Hälsobladet är en oberoende hälsosajt som testar och jämför produkter för bättre sömn och hälsa. Vi köper alla produkter själva och delar ärliga omdömen.",
+          "Hälsobladet är en oberoende hälsosajt som granskar och jämför produkter för bättre sömn och hälsa, baserat på studier, verifierade recensioner och produktdata.",
         affiliate_disclosure:
           "Denna artikel innehåller annonslänkar. Vi kan få ersättning om du köper via våra länkar, utan extra kostnad för dig.",
         nav_home_label: "Hem",
@@ -372,7 +372,7 @@ export function getDefaultBlogConfig(): BlogConfig {
         blog_name: "SmartHelse",
         blog_tagline: "",
         about_text:
-          "SmartHelse er en uafhængig sundhedsside, der tester og sammenligner produkter til bedre søvn og sundhed. Vi køber alle produkter selv og deler ærlige anmeldelser.",
+          "SmartHelse er en uafhængig sundhedsside, der gennemgår og sammenligner produkter til bedre søvn og sundhed, baseret på studier, verificerede anmeldelser og produktdata.",
         affiliate_disclosure:
           "Denne artikel indeholder annoncelinks. Vi kan modtage kompensation, hvis du køber via vores links, uden ekstra omkostninger for dig.",
         nav_home_label: "Hjem",
@@ -382,7 +382,7 @@ export function getDefaultBlogConfig(): BlogConfig {
         blog_name: "Helseguiden",
         blog_tagline: "",
         about_text:
-          "Helseguiden er en uavhengig helseside som tester og sammenligner produkter for bedre søvn og helse. Vi kjøper alle produkter selv og deler ærlige anmeldelser.",
+          "Helseguiden er en uavhengig helseside som gjennomgår og sammenligner produkter for bedre søvn og helse, basert på studier, verifiserte anmeldelser og produktdata.",
         affiliate_disclosure:
           "Denne artikkelen inneholder annonselenker. Vi kan motta kompensasjon hvis du kjøper via våre lenker, uten ekstra kostnad for deg.",
         nav_home_label: "Hjem",

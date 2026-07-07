@@ -71,6 +71,7 @@ export async function GET(
 
   // Completed — check if already restored
   if (job.rewritten_html && job.images) {
+    await finalizePageIfStuck(db, job.page_id, job.rewritten_html);
     return NextResponse.json({
       status: "completed",
       rewrittenHtml: job.rewritten_html,
@@ -117,15 +118,24 @@ export async function GET(
     }
   }
 
-  // Cache the restored result back to the row
-  await db
+  // Cache the restored result back to the row - CONDITIONAL on it still being
+  // unrestored, so a concurrent first poll can't double-log usage
+  // (audit 2026-07-07, P3 swipe idempotency on job_id).
+  const { data: cacheRows, error: cacheError } = await db
     .from("swipe_jobs")
     .update({ rewritten_html: rewrittenHtml, images })
-    .eq("id", jobId);
+    .eq("id", jobId)
+    .is("rewritten_html", null)
+    .select("id");
 
-  // Log usage
-  db.from("usage_logs")
-    .insert({
+  if (cacheError) {
+    console.error("[Swipe] Failed to cache restored HTML:", cacheError.message);
+  }
+  const wonRestoreRace = (cacheRows?.length ?? 0) > 0;
+
+  // Log usage exactly once (only by the request that won the restore race)
+  if (wonRestoreRace) {
+    const { error: logError } = await db.from("usage_logs").insert({
       type: "claude_rewrite",
       model: CLAUDE_MODEL,
       input_tokens: job.input_tokens,
@@ -140,8 +150,18 @@ export async function GET(
         angle: job.angle || "none",
         job_id: jobId,
       },
-    })
-    .then(() => {});
+    });
+    if (logError) {
+      console.error("[Swipe] usage_logs insert failed:", logError.message);
+    }
+  }
+
+  // Server-side finalize (audit 2026-07-07, L3): if the client tab was closed
+  // before its PATCH, the page stays 'importing' forever despite a paid
+  // Claude run. Write the restored HTML + status=ready here so the next
+  // visit (which triggers this GET) heals the page. The client's own PATCH
+  // (possibly with generated images) simply overwrites this afterwards.
+  await finalizePageIfStuck(db, job.page_id, rewrittenHtml);
 
   return NextResponse.json({
     status: "completed",
@@ -154,4 +174,21 @@ export async function GET(
     },
     pageId: job.page_id || null,
   });
+}
+
+/** Promote a page stuck in status='importing' to 'ready' with the restored HTML. */
+async function finalizePageIfStuck(
+  db: ReturnType<typeof createServerSupabase>,
+  pageId: string | null,
+  rewrittenHtml: string
+): Promise<void> {
+  if (!pageId || !rewrittenHtml) return;
+  const { error } = await db
+    .from("pages")
+    .update({ original_html: rewrittenHtml, status: "ready" })
+    .eq("id", pageId)
+    .eq("status", "importing");
+  if (error) {
+    console.error("[Swipe] finalizePageIfStuck failed:", error.message);
+  }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { createImageTask, pollTaskResult, createVeoTask, createKlingTask, callGeminiVideo } from "@/lib/kie";
+import { KIE_KEYFRAME_COST, KIE_VEO3_COST, KIE_VEO3_FAST_COST, KIE_KLING_COST } from "@/lib/pricing";
 import {
   buildVideoSwiperSystemPrompt,
   buildVideoSwiperUserPrompt,
@@ -133,6 +134,18 @@ export async function POST(req: NextRequest) {
         return;
       }
 
+      // Hard cap on scenes - every scene costs one Nano Banana keyframe plus
+      // one Veo/Kling clip, so an over-eager Gemini split gets expensive fast.
+      const MAX_SCENES = 4;
+      if (parsed.scenes.length > MAX_SCENES) {
+        console.warn(`[video-swiper] Gemini returned ${parsed.scenes.length} scenes - capping to first ${MAX_SCENES}`);
+        await emit({
+          step: "warning",
+          message: `Gemini identified ${parsed.scenes.length} scenes - capped to the first ${MAX_SCENES} to limit generation cost`,
+        });
+        parsed.scenes = parsed.scenes.slice(0, MAX_SCENES);
+      }
+
       // Log Gemini usage
       await db.from("usage_logs").insert({
         type: "video_swiper",
@@ -246,7 +259,7 @@ export async function POST(req: NextRequest) {
           await db.from("usage_logs").insert({
             type: "video_swiper_keyframe",
             model: "nano-banana-2",
-            cost_usd: 0,
+            cost_usd: KIE_KEYFRAME_COST,
             metadata: {
               product: productSlug || null,
               scene_number: scene.scene_number,
@@ -337,11 +350,15 @@ export async function POST(req: NextRequest) {
             task_id: taskId,
           });
 
-          // Log usage
+          // Log usage (flat per-clip estimates from pricing.ts - previously $0)
           await db.from("usage_logs").insert({
             type: selectedModel === "kling" ? "video_swiper_kling" : "video_swiper_veo",
             model: selectedModel === "kling" ? "kling-3.0" : selectedModel,
-            cost_usd: 0,
+            cost_usd: selectedModel === "kling"
+              ? KIE_KLING_COST
+              : selectedModel === "veo3_fast"
+                ? KIE_VEO3_FAST_COST
+                : KIE_VEO3_COST,
             metadata: {
               product: productSlug || null,
               scene_number: scene.scene_number,

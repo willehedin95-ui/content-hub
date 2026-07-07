@@ -5,6 +5,13 @@ import { updateAd, updateAdSet, runWithMetaConfig } from "@/lib/meta";
 
 export const maxDuration = 60;
 
+// H1 (2026-07-07): same staleness threshold as morning-brief/actions —
+// never auto-pause based on data older than this.
+const MAX_DATA_AGE_DAYS = 2;
+// H1: hard cap on auto-pauses per run — a bad baseline or data glitch can
+// flag many ads at once; anything beyond the cap stays a manual card.
+const MAX_AUTO_PAUSES_PER_RUN = 5;
+
 interface Bleeder {
   ad_id: string;
   ad_name: string | null;
@@ -28,6 +35,36 @@ export async function GET(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+
+  // H1 (2026-07-07): staleness guard — identical policy to morning-brief/actions.
+  // This cron writes money-pauses; acting on months-old data was the April
+  // incident class. Refuse (visibly, 409) when data is older than 2 days.
+  const { data: latestPerfRow, error: latestPerfErr } = await db
+    .from("meta_ad_performance")
+    .select("date")
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latestPerfErr) {
+    console.error("[auto-pause-bleeders] staleness lookup failed:", latestPerfErr.message);
+  }
+  const latestDataDate = (latestPerfRow?.date as string | undefined) ?? null;
+  const dataAgeDays = latestDataDate
+    ? Math.floor((Date.now() - new Date(`${latestDataDate}T00:00:00Z`).getTime()) / 86400000)
+    : Infinity;
+  if (latestPerfErr || dataAgeDays > MAX_DATA_AGE_DAYS) {
+    return NextResponse.json(
+      {
+        ok: false,
+        stale: true,
+        data_date: latestDataDate,
+        error: latestPerfErr
+          ? "Refusing to auto-pause: could not verify performance data freshness."
+          : `Refusing to auto-pause: performance data is stale (latest ${latestDataDate ?? "none"}, max ${MAX_DATA_AGE_DAYS} days). Run ad-performance-sync first.`,
+      },
+      { status: 409 }
+    );
+  }
 
   // Load workspace meta configs for proper API calls
   const { data: allWorkspaces } = await db
@@ -68,7 +105,20 @@ export async function GET(req: NextRequest) {
     .in("meta_ad_id", bleeders.map((b) => b.ad_id));
 
   const alreadyPausedIds = new Set((alreadyPaused ?? []).map((r) => r.meta_ad_id));
-  const toPause = bleeders.filter((b) => !alreadyPausedIds.has(b.ad_id));
+
+  // H1 (2026-07-07): only AUTO-pause bleeders that have a real CPA baseline
+  // (target_cpa > 0 = pipeline_settings row or campaign-avg fallback existed).
+  // Zero-purchase ads WITHOUT any baseline (e.g. doginwork lacks pipeline_settings,
+  // manually created ad sets lack meta_campaigns rows) may be in a normal test
+  // phase — they stay visible as manual cards in the Morning Brief instead.
+  const noBaseline = bleeders.filter((b) => !(Number(b.target_cpa) > 0));
+  const eligible = bleeders.filter(
+    (b) => !alreadyPausedIds.has(b.ad_id) && Number(b.target_cpa) > 0
+  );
+
+  // H1: cap auto-pauses per run — the rest stays for manual review.
+  const toPause = eligible.slice(0, MAX_AUTO_PAUSES_PER_RUN);
+  const overCap = eligible.length - toPause.length;
 
   // Build campaign_id -> workspace_id map for workspace scoping
   const campaignIds = [...new Set(toPause.map((b) => b.campaign_id).filter(Boolean))] as string[];
@@ -84,7 +134,14 @@ export async function GET(req: NextRequest) {
   }
 
   if (toPause.length === 0) {
-    return NextResponse.json({ ok: true, paused: 0, message: "All bleeders already paused" });
+    return NextResponse.json({
+      ok: true,
+      paused: 0,
+      skipped_no_baseline: noBaseline.length,
+      message: noBaseline.length > 0
+        ? "No auto-pausable bleeders (bleeders without CPA baseline left for manual review)"
+        : "All bleeders already paused",
+    });
   }
 
   const results: Array<{ ad_id: string; ad_name: string | null; success: boolean; error?: string }> = [];
@@ -102,9 +159,11 @@ export async function GET(req: NextRequest) {
       await runWithMetaConfig(bleederConfig, () => updateAd(bleeder.ad_id, { status: "PAUSED" }));
 
       // Record the pause in our tracking table
+      // 2026-07-07 (P3): adset_id filled from the bleeder signal — a null here
+      // made zero-spend-alert's auto-pause correlation permanently empty.
       await db.from("auto_paused_ads").insert({
         meta_ad_id: bleeder.ad_id,
-        adset_id: null,
+        adset_id: bleeder.adset_id ?? null,
         ad_name: bleeder.ad_name,
         campaign_name: bleeder.campaign_name,
         reason: `Bleeding ${bleeder.days_bleeding}d: ${money(bleeder.total_spend)} spent, CTR ${bleeder.avg_ctr}%, CPA ${bleeder.avg_cpa > 0 ? money(bleeder.avg_cpa) : "∞"} vs target ${money(bleeder.target_cpa)}`,
@@ -237,6 +296,8 @@ export async function GET(req: NextRequest) {
     ok: true,
     paused,
     failed,
+    skipped_no_baseline: noBaseline.length,
+    skipped_over_cap: overCap,
     results,
     killedZombieAdSets: killedAdSets.length,
   });

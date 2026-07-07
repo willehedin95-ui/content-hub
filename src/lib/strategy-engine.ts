@@ -396,12 +396,15 @@ function buildAdSetBreakdown(
     const purchases30d = adsetPurchases30d.get(a.adset_id) ?? 0;
 
     // Determine status
+    // 2026-07-07 (A5): testing check runs BEFORE zombie classification.
+    // A freshly pushed ad set ramps slowly (spend < 50 SEK the first days) and
+    // used to be classified "zombie" → auto-killed, bypassing the 4-day cooldown.
     let status: AdSetBreakdown["status"];
-    if (a.spend_7d < ZOMBIE_SPEND_THRESHOLD) {
-      status = "zombie";
-    } else if (daysRunning !== null && daysRunning <= CONCEPT_COOLDOWN_DAYS) {
+    if (daysRunning !== null && daysRunning <= CONCEPT_COOLDOWN_DAYS) {
       // Testing window: protect ALL ad sets for 4 days — give Meta time to find the right audience
       status = "testing";
+    } else if (a.spend_7d < ZOMBIE_SPEND_THRESHOLD) {
+      status = "zombie";
     } else if (
       a.spend_7d >= BLEEDER_SPEND_THRESHOLD &&
       a.purchases_7d === 0 &&

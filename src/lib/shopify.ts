@@ -388,63 +388,9 @@ export async function getOrdersByPage(
   return map;
 }
 
-export async function getConversionsForTest(
-  testId: string,
-  since: string,
-  workspaceId?: string
-): Promise<Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }>> {
-  const { createServerSupabase } = await import("./supabase-admin");
-  const db = createServerSupabase();
-
-  // Get the AB test slug - paths are always /{slug}/a/ and /{slug}/b/
-  let query = db.from("ab_tests").select("slug").eq("id", testId);
-  if (workspaceId) query = query.eq("workspace_id", workspaceId);
-  const { data: test } = await query.single();
-
-  if (!test?.slug) return [];
-
-  const controlPath = `/${test.slug}/a`;
-  const variantPath = `/${test.slug}/b`;
-
-  // Fetch orders and match landing_site path to variant
-  const creds = workspaceId ? await getShopifyCredsForWorkspace(workspaceId) : null;
-  const orders = await fetchOrdersSince(since, creds);
-  const conversions: Array<{ variant: string; shopifyOrderId: string; revenue: number; currency: string }> = [];
-
-  for (const order of orders) {
-    if (!order.landing_site) continue;
-    try {
-      const url = new URL(order.landing_site, "https://placeholder.com");
-      const orderPath = url.pathname.replace(/\/$/, "");
-
-      let variant: string | null = null;
-      if (orderPath === controlPath) variant = "a";
-      else if (orderPath === variantPath) variant = "b";
-
-      // Also check UTM params as fallback (utm_campaign=testId, utm_content=a|b)
-      if (!variant) {
-        const utmCampaign = url.searchParams.get("utm_campaign");
-        const utmContent = url.searchParams.get("utm_content");
-        if (utmCampaign === testId && (utmContent === "a" || utmContent === "b")) {
-          variant = utmContent;
-        }
-      }
-
-      if (variant) {
-        conversions.push({
-          variant,
-          shopifyOrderId: order.id,
-          revenue: parseFloat(order.total_price) || 0,
-          currency: order.currency,
-        });
-      }
-    } catch {
-      // Skip malformed URLs
-    }
-  }
-
-  return conversions;
-}
+// getConversionsForTest() removed 2026-07-07 (audit P2 ab_tests): publishABTest
+// no longer exists and this reader had zero callers. ab_tests DB archival is
+// handled separately by the orchestrator.
 
 // ---- Inventory ----
 

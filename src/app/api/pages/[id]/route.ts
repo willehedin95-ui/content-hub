@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
+import { cleanupTranslationStorage, removeAllUnderPrefix } from "@/lib/storage-cleanup";
 import type { PageAngle } from "@/types";
 
 export const maxDuration = 30;
@@ -107,6 +108,21 @@ export async function DELETE(
   }
   const db = createServerSupabase();
   const workspaceId = await getWorkspaceId();
+
+  // Clean up storage for ALL of this page's translations BEFORE the row
+  // delete - the DB cascade removes translation rows but left their storage
+  // files orphaned forever (audit 2026-07-07, P2 storage). Best-effort.
+  const { data: pageTranslations } = await db
+    .from("translations")
+    .select("id, pages!inner(workspace_id)")
+    .eq("page_id", id)
+    .eq("pages.workspace_id", workspaceId);
+
+  for (const t of pageTranslations ?? []) {
+    await cleanupTranslationStorage(db, t.id);
+  }
+  // upload-image also writes source-page uploads under source_<pageId>/
+  await removeAllUnderPrefix(db, `source_${id}`);
 
   const { error } = await db.from("pages").delete().eq("id", id).eq("workspace_id", workspaceId);
 

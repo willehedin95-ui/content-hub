@@ -23,6 +23,8 @@ interface AdRow {
   purchase_value: number;
   roas: number;
   cpa: number;
+  // Filled by ad-performance-sync from 2026-07-07; null on older rows.
+  ad_account_id?: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -101,6 +103,42 @@ export async function GET(req: NextRequest) {
   const previousRows = rows.filter((r) => r.date < sevenDaysAgoStr);
   const latestRows = rows.filter((r) => r.date === latestDate);
 
+  // ── Ad account scoping (2026-07-07) ──
+  // Two accounts spend in parallel (Renew + doginwork) — ROAS/efficiency shares
+  // must NEVER mix accounts (different currencies + budgets). Resolve each
+  // campaign to an account key: row.ad_account_id (new column) →
+  // meta_campaign_mappings.workspace_id → workspaces.meta_config.ad_account_id
+  // → env default.
+  const envAccountKey = process.env.META_AD_ACCOUNT_ID ?? "env";
+  const campaignAccountMap = new Map<string, string>();
+  {
+    const { data: acctMappings, error: acctMapErr } = await db
+      .from("meta_campaign_mappings")
+      .select("meta_campaign_id, workspace_id");
+    if (acctMapErr) {
+      console.error("[Morning Brief] meta_campaign_mappings query failed:", acctMapErr.message);
+    }
+    const { data: wsRows, error: wsErr } = await db
+      .from("workspaces")
+      .select("id, meta_config");
+    if (wsErr) {
+      console.error("[Morning Brief] workspaces query failed:", wsErr.message);
+    }
+    const wsAccount = new Map<string, string>();
+    for (const ws of wsRows ?? []) {
+      const acct = (ws.meta_config as { ad_account_id?: string } | null)?.ad_account_id;
+      if (acct) wsAccount.set(ws.id as string, acct);
+    }
+    for (const m of acctMappings ?? []) {
+      if (!m.meta_campaign_id) continue;
+      const acct = m.workspace_id ? wsAccount.get(m.workspace_id as string) : undefined;
+      campaignAccountMap.set(m.meta_campaign_id as string, acct ?? envAccountKey);
+    }
+  }
+  function accountForRow(r: AdRow): string {
+    return r.ad_account_id ?? (r.campaign_id ? campaignAccountMap.get(r.campaign_id) : undefined) ?? envAccountKey;
+  }
+
   // ── Q1: Spend Pacing ──
   const spendByCampaign = new Map<string, { name: string; spend: number; ads: number }>();
   for (const r of latestRows) {
@@ -111,12 +149,31 @@ export async function GET(req: NextRequest) {
     spendByCampaign.set(key, existing);
   }
 
+  // Per-account breakdown (P2 2026-07-07): blended_roas across accounts mixes
+  // currencies — expose the per-account numbers so consumers can read it right.
+  const pacingByAccount = new Map<string, { spend: number; purchases: number; revenue: number }>();
+  for (const r of latestRows) {
+    const key = accountForRow(r);
+    const acc = pacingByAccount.get(key) ?? { spend: 0, purchases: 0, revenue: 0 };
+    acc.spend += Number(r.spend);
+    acc.purchases += Number(r.purchases);
+    acc.revenue += Number(r.purchase_value);
+    pacingByAccount.set(key, acc);
+  }
+
   const spendPacing = {
     date: latestDate,
     total_spend: round(sum(latestRows, "spend")),
     total_purchases: sum(latestRows, "purchases"),
     total_revenue: round(sum(latestRows, "purchase_value")),
     blended_roas: safeDiv(sum(latestRows, "purchase_value"), sum(latestRows, "spend")),
+    by_account: [...pacingByAccount.entries()].map(([acct, d]) => ({
+      ad_account_id: acct,
+      spend: round(d.spend),
+      purchases: d.purchases,
+      revenue: round(d.revenue),
+      roas: safeDiv(d.revenue, d.spend),
+    })).sort((a, b) => b.spend - a.spend),
     campaigns: Array.from(spendByCampaign.entries()).map(([id, data]) => ({
       campaign_id: id,
       campaign_name: data.name,
@@ -393,8 +450,10 @@ export async function GET(req: NextRequest) {
     // Fall back to campaign avg CPA × 1.5 if no pipeline setting exists
     const campAvgCpa = campaignCpa.get(campId) ?? 0;
     const cpaThreshold = tCpa ?? (campAvgCpa > 0 ? campAvgCpa * 1.5 : 0);
-
-    if (cpaThreshold === 0) continue; // no baseline available at all
+    // 2026-07-07 (P2): no early `continue` when cpaThreshold is 0/missing —
+    // the zero-purchase branch must still apply (worst bleeders have 0 purchases,
+    // which previously made the whole ad skip evaluation when no baseline existed,
+    // e.g. doginwork with no pipeline_settings row).
 
     // Cooldown check: ad must have been running at least 4 days.
     // Use first date we have performance data for (proxy for first_seen).
@@ -413,9 +472,9 @@ export async function GET(req: NextRequest) {
     if (totalSpend < AD_BLEEDER_SPEND_THRESHOLD) continue;
 
     // Bleeder if EITHER: zero purchases over the whole window,
-    // OR CPA significantly above target (1.5× threshold)
+    // OR CPA significantly above target (1.5× threshold — only when a baseline exists)
     const zeroPurchases = totalPurchases === 0;
-    const badCpa = totalPurchases > 0 && avgCpa > cpaThreshold * AD_BAD_CPA_MULTIPLIER;
+    const badCpa = cpaThreshold > 0 && totalPurchases > 0 && avgCpa > cpaThreshold * AD_BAD_CPA_MULTIPLIER;
     if (!zeroPurchases && !badCpa) continue;
 
     bleeders.push({
@@ -616,6 +675,9 @@ export async function GET(req: NextRequest) {
   // Per-campaign ROAS-based efficiency + budget shift recommendations.
   // Campaigns with higher ROAS should get more budget — this measures actual profitability,
   // not just cheap clicks (the old CTR/CPC metric rewarded clicks, not sales).
+  // 2026-07-07 (P2): shares are computed WITHIN each ad account — never across.
+  // Mixing accounts (different currencies) produced nonsense shares and let
+  // apply_budget_shifts move budget between unrelated accounts.
   const efficiencyScores = Array.from(campaignIds).map((cid) => {
     const campRows = currentRows.filter((r) => r.campaign_id === cid);
     const name = campRows[0]?.campaign_name ?? "Unknown";
@@ -632,6 +694,7 @@ export async function GET(req: NextRequest) {
     return {
       campaign_id: cid,
       campaign_name: name,
+      ad_account_id: campRows[0] ? accountForRow(campRows[0]) : envAccountKey,
       spend_7d: round(campSpend),
       roas_7d: round(roas),
       avg_ctr: round(avgCtr, 2),
@@ -641,24 +704,32 @@ export async function GET(req: NextRequest) {
     };
   }).sort((a, b) => b.efficiency_score - a.efficiency_score);
 
-  // Compute budget recommendation tiers
-  const totalEfficiency = efficiencyScores.reduce((s, c) => s + c.efficiency_score, 0);
-  const efficiencyWithRecommendation = efficiencyScores.map((c, i) => {
-    const share = totalEfficiency > 0 ? c.efficiency_score / totalEfficiency : 1 / efficiencyScores.length;
-    // Cap recommendations at 30% max shift from current
-    const currentShare = c.spend_7d / Math.max(efficiencyScores.reduce((s, x) => s + x.spend_7d, 0), 1);
-    const rawRecommended = share;
-    const cappedRecommended = Math.min(rawRecommended, currentShare + 0.30);
-    const finalRecommended = Math.max(cappedRecommended, currentShare - 0.30);
+  // Compute budget recommendation tiers — per ad account group
+  const efficiencyByAccount = new Map<string, typeof efficiencyScores>();
+  for (const c of efficiencyScores) {
+    if (!efficiencyByAccount.has(c.ad_account_id)) efficiencyByAccount.set(c.ad_account_id, []);
+    efficiencyByAccount.get(c.ad_account_id)!.push(c);
+  }
+  const efficiencyWithRecommendation = [...efficiencyByAccount.values()].flatMap((group) => {
+    const totalEfficiency = group.reduce((s, c) => s + c.efficiency_score, 0);
+    const totalSpend = Math.max(group.reduce((s, x) => s + x.spend_7d, 0), 1);
+    return group.map((c) => {
+      const share = totalEfficiency > 0 ? c.efficiency_score / totalEfficiency : 1 / group.length;
+      // Cap recommendations at 30% max shift from current
+      const currentShare = c.spend_7d / totalSpend;
+      const rawRecommended = share;
+      const cappedRecommended = Math.min(rawRecommended, currentShare + 0.30);
+      const finalRecommended = Math.max(cappedRecommended, currentShare - 0.30);
 
-    return {
-      ...c,
-      current_budget_share: round(currentShare * 100, 1),
-      recommended_budget_share: round(finalRecommended * 100, 1),
-      recommendation: finalRecommended > currentShare + 0.02 ? "increase" as const :
-                       finalRecommended < currentShare - 0.02 ? "decrease" as const :
-                       "maintain" as const,
-    };
+      return {
+        ...c,
+        current_budget_share: round(currentShare * 100, 1),
+        recommended_budget_share: round(finalRecommended * 100, 1),
+        recommendation: finalRecommended > currentShare + 0.02 ? "increase" as const :
+                         finalRecommended < currentShare - 0.02 ? "decrease" as const :
+                         "maintain" as const,
+      };
+    });
   });
 
   // ── Ad Set Enrichment: concept context ──
@@ -880,22 +951,31 @@ export async function GET(req: NextRequest) {
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const sevenDaysAgo_auto = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Ads auto-paused in the last 7 days (for filtering action cards)
-  const { data: autoPausedRows } = await db
+  // Ads auto-paused in the last 7 days (for filtering action cards).
+  // 2026-07-07 (M1): the table's timestamp column is paused_at, NOT created_at —
+  // the old query errored silently and already-paused bleeders resurfaced as cards.
+  const { data: autoPausedRows, error: autoPausedErr } = await db
     .from("auto_paused_ads")
-    .select("meta_ad_id, ad_name, campaign_name, reason, days_bleeding, total_spend, created_at")
-    .gte("created_at", sevenDaysAgo_auto)
-    .order("created_at", { ascending: false });
+    .select("meta_ad_id, ad_name, campaign_name, reason, days_bleeding, total_spend, paused_at")
+    .gte("paused_at", sevenDaysAgo_auto)
+    .order("paused_at", { ascending: false });
+  if (autoPausedErr) {
+    console.error("[Morning Brief] auto_paused_ads query failed:", autoPausedErr.message);
+  }
 
   const autoPausedAdIds = new Set((autoPausedRows ?? []).map((r: { meta_ad_id: string }) => r.meta_ad_id));
 
-  // Concepts killed by pipeline (for filtering action cards)
-  const { data: killedConcepts } = await db
+  // Concepts killed by pipeline (for filtering action cards).
+  // 2026-07-07 (M2): column is entered_at, NOT created_at (same silent-error class as M1).
+  const { data: killedConcepts, error: killedConceptsErr } = await db
     .from("concept_lifecycle")
-    .select("image_job_market_id, signal, created_at")
+    .select("image_job_market_id, signal, entered_at")
     .eq("stage", "killed")
-    .gte("created_at", sevenDaysAgo_auto)
-    .order("created_at", { ascending: false });
+    .gte("entered_at", sevenDaysAgo_auto)
+    .order("entered_at", { ascending: false });
+  if (killedConceptsErr) {
+    console.error("[Morning Brief] concept_lifecycle query failed:", killedConceptsErr.message);
+  }
 
   // Map killed concept IDs to their ad set IDs via meta_campaigns
   const killedMarketIds = new Set((killedConcepts ?? []).map((r: { image_job_market_id: string }) => r.image_job_market_id));
@@ -911,10 +991,10 @@ export async function GET(req: NextRequest) {
 
   // Build automation summary (last 24h for the banner)
   const recentAutoPaused = (autoPausedRows ?? []).filter(
-    (r: { created_at: string }) => r.created_at >= oneDayAgo
+    (r: { paused_at: string }) => r.paused_at >= oneDayAgo
   );
   const recentKills = (killedConcepts ?? []).filter(
-    (r: { created_at: string }) => r.created_at >= oneDayAgo
+    (r: { entered_at: string }) => r.entered_at >= oneDayAgo
   );
   const automationSummary = {
     auto_paused_count: recentAutoPaused.length,
@@ -1052,6 +1132,7 @@ export async function GET(req: NextRequest) {
           bleeders: adsetBleeders.map((b) => ({
             ad_id: b.ad_id,
             ad_name: b.ad_name,
+            adset_id: b.adset_id,
             campaign_name: b.campaign_name,
             days_bleeding: b.days_bleeding,
             total_spend: b.total_spend,
@@ -1394,11 +1475,16 @@ export async function GET(req: NextRequest) {
     // "everything_problem" — no separate action card; these are caught by bleeders
   }
 
-  // Budget rebalance — single card if any campaign has >5% difference (priority 4)
-  const significantShifts = efficiencyWithRecommendation.filter(
-    (c) => Math.abs(c.recommended_budget_share - c.current_budget_share) > 5
-  );
-  if (significantShifts.length > 0) {
+  // Budget rebalance — one card per ad account if any campaign has >5% difference
+  // (priority 4). Shifts are strictly per-account: apply_budget_shifts must only
+  // redistribute within ONE account.
+  for (const [acctId] of efficiencyByAccount) {
+    const acctRecs = efficiencyWithRecommendation.filter((c) => c.ad_account_id === acctId);
+    const significantShifts = acctRecs.filter(
+      (c) => Math.abs(c.recommended_budget_share - c.current_budget_share) > 5
+    );
+    if (significantShifts.length === 0) continue;
+
     const increaseNames = significantShifts
       .filter((c) => c.recommendation === "increase")
       .map((c) => c.campaign_name);
@@ -1406,14 +1492,14 @@ export async function GET(req: NextRequest) {
       .filter((c) => c.recommendation === "decrease")
       .map((c) => c.campaign_name);
     actionCards.push({
-      id: "budget_rebalance",
+      id: `budget_rebalance_${acctId}`,
       type: "budget",
       category: "Budget",
       title: "Move budget to your best campaigns",
       why: `${increaseNames.length > 0 ? `Give more to: ${increaseNames.join(", ")}` : ""}${increaseNames.length > 0 && decreaseNames.length > 0 ? ". " : ""}${decreaseNames.length > 0 ? `Reduce: ${decreaseNames.join(", ")}` : ""}`,
       guidance: `Some campaigns are more efficient at turning ad spend into sales. By shifting budget from underperforming campaigns to your best ones, you get more sales for the same total spend. This doesn't change your total budget — just redistributes it smarter.`,
       expected_impact: "Better ROAS at same total spend",
-      action_data: { action: "apply_budget_shifts", shifts: efficiencyWithRecommendation },
+      action_data: { action: "apply_budget_shifts", ad_account_id: acctId, shifts: acctRecs },
       priority: 4,
     });
   }

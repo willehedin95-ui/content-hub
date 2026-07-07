@@ -24,6 +24,8 @@ interface PerfRow {
   purchase_value: number;
   roas: number;
   cpa: number;
+  // Filled by ad-performance-sync from 2026-07-07; null on older rows.
+  ad_account_id?: string | null;
 }
 
 interface MetaAdCreative {
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const days = Math.max(1, Math.min(90, parseInt(searchParams.get("days") ?? "7") || 7));
   const country = (searchParams.get("country") ?? "all").toUpperCase();
+  const requestedAccount = searchParams.get("account");
 
   const db = createServerSupabase();
 
@@ -55,6 +58,11 @@ export async function GET(req: NextRequest) {
       kpis: null,
       campaigns: [],
       creative_breakdown: { headlines: [], copies: [], images: [] },
+      accounts: [],
+      selected_account: null,
+      data_date: null,
+      data_age_days: null,
+      stale: true,
     });
   }
 
@@ -86,6 +94,64 @@ export async function GET(req: NextRequest) {
   }
 
   let rows = (allRows ?? []) as PerfRow[];
+
+  // ── Account scoping (P2 2026-07-07) ──
+  // Multiple ad accounts (different currencies) must never be blended into one
+  // set of KPIs/ROAS. Resolve each row to an account key, then scope the whole
+  // dashboard to ONE account (selectable via ?account=, default = top spender).
+  const envAccountKey = process.env.META_AD_ACCOUNT_ID ?? "env";
+  const campaignAccountMap = new Map<string, string>();
+  {
+    const { data: acctMappings, error: acctMapErr } = await db
+      .from("meta_campaign_mappings")
+      .select("meta_campaign_id, workspace_id");
+    if (acctMapErr) {
+      console.error("[meta-ads/dashboard] meta_campaign_mappings query failed:", acctMapErr.message);
+    }
+    const { data: wsRows, error: wsErr } = await db
+      .from("workspaces")
+      .select("id, meta_config");
+    if (wsErr) {
+      console.error("[meta-ads/dashboard] workspaces query failed:", wsErr.message);
+    }
+    const wsAccount = new Map<string, string>();
+    for (const ws of wsRows ?? []) {
+      const acct = (ws.meta_config as { ad_account_id?: string } | null)?.ad_account_id;
+      if (acct) wsAccount.set(ws.id as string, acct);
+    }
+    for (const m of acctMappings ?? []) {
+      if (!m.meta_campaign_id) continue;
+      const acct = m.workspace_id ? wsAccount.get(m.workspace_id as string) : undefined;
+      campaignAccountMap.set(m.meta_campaign_id as string, acct ?? envAccountKey);
+    }
+  }
+  const accountOf = (r: PerfRow): string =>
+    r.ad_account_id ?? (r.campaign_id ? campaignAccountMap.get(r.campaign_id) : undefined) ?? envAccountKey;
+
+  // Spend per account (over the whole fetched window) to pick a sane default
+  const accountSpend = new Map<string, number>();
+  for (const r of rows) {
+    const key = accountOf(r);
+    accountSpend.set(key, (accountSpend.get(key) ?? 0) + Number(r.spend));
+  }
+  const accounts = [...accountSpend.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([key]) => key);
+
+  let selectedAccount: string | null = null;
+  if (accounts.length > 0) {
+    selectedAccount =
+      requestedAccount && accounts.includes(requestedAccount)
+        ? requestedAccount
+        : accounts[0]; // top spender
+    rows = rows.filter((r) => accountOf(r) === selectedAccount);
+  }
+
+  // ── Staleness (A2 2026-07-07) ──
+  const dataAgeDays = Math.floor(
+    (Date.now() - new Date(`${latestDate}T00:00:00Z`).getTime()) / 86400000
+  );
+  const stale = dataAgeDays > 2;
 
   // Country filter: match campaign_name prefix (e.g. "SE ", "NO ", "DK ")
   if (country !== "ALL") {
@@ -317,7 +383,16 @@ export async function GET(req: NextRequest) {
     images: formatBreakdown(imageAgg, "image_url"),
   };
 
-  return NextResponse.json({ kpis, campaigns, creative_breakdown });
+  return NextResponse.json({
+    kpis,
+    campaigns,
+    creative_breakdown,
+    accounts,
+    selected_account: selectedAccount,
+    data_date: latestDate,
+    data_age_days: dataAgeDays,
+    stale,
+  });
 }
 
 // ── Helpers ──

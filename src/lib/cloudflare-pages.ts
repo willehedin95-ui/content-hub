@@ -126,6 +126,62 @@ export async function upsertHashes(jwt: string, hashes: string[]): Promise<void>
   }
 }
 
+/**
+ * Ask Cloudflare which of the given asset hashes are NOT yet uploaded.
+ * This replaces the old dedupe that trusted the DB manifest's hash set
+ * blindly - if the DB manifest ever drifted from CF's actual asset store
+ * (manifest wipe class of incident), deploys would reference hashes CF
+ * doesn't have. check-missing is the same endpoint wrangler uses.
+ * (audit 2026-07-07, P2 CF-dedupe)
+ */
+export async function checkMissingAssets(jwt: string, hashes: string[]): Promise<Set<string>> {
+  if (hashes.length === 0) return new Set();
+  const res = await fetchWithRetry(`${CF_API}/pages/assets/check-missing`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ hashes }),
+  });
+  if (!res.ok) {
+    throw new Error(`CF check-missing failed: ${await res.text()}`);
+  }
+  const json = (await res.json()) as { result: string[] };
+  return new Set(json.result ?? []);
+}
+
+/**
+ * Determine which of the new files must be uploaded. Prefers CF's own
+ * check-missing endpoint; falls back to "upload everything" if the call
+ * fails (safe: uploading an existing hash is a no-op on CF's side).
+ */
+async function resolveFilesToUpload<T extends { hash: string }>(
+  jwt: string,
+  newFiles: T[]
+): Promise<T[]> {
+  const uniqueHashes = Array.from(new Set(newFiles.map((f) => f.hash)));
+  let missing: Set<string>;
+  try {
+    missing = await checkMissingAssets(jwt, uniqueHashes);
+  } catch (err) {
+    console.warn(
+      `[cloudflare-pages] check-missing failed - falling back to full upload:`,
+      err instanceof Error ? err.message : err
+    );
+    missing = new Set(uniqueHashes);
+  }
+  // Dedupe by hash so the same content isn't uploaded twice in one deploy
+  const seen = new Set<string>();
+  const toUpload: T[] = [];
+  for (const f of newFiles) {
+    if (!missing.has(f.hash) || seen.has(f.hash)) continue;
+    seen.add(f.hash);
+    toUpload.push(f);
+  }
+  return toUpload;
+}
+
 export async function createDeployment(
   accountId: string,
   apiToken: string,
@@ -156,6 +212,60 @@ export async function createDeployment(
 export function getProjectCustomDomain(language: Language): string | undefined {
   const key = `CF_PAGES_DOMAIN_${language.toUpperCase()}`;
   return process.env[key]?.trim() || undefined;
+}
+
+// ---------------------------------------------------------------------------
+// CF project → workspace mapping (audit 2026-07-07, E1)
+//
+// The CF Pages projects are per-LANGUAGE (env CF_PAGES_PROJECT_SV/DA/NO) but
+// pages/translations are per-WORKSPACE. Sitemaps, blog homepages, RSS and
+// internal-link targets must only include content belonging to the workspace
+// that owns the CF project - otherwise doginwork/hydro13 articles leak into
+// halsobladet's sitemap (live SEO damage, verified 2026-07-07).
+//
+// Mapping is configurable per workspace via `workspaces.settings.cf_pages_projects`
+// (string array of CF project names). The constant below is the fallback for
+// the current setup: all three CF blog projects belong to happysleep;
+// hydro13 publishes its blog via Shopify (get-renew.com) and doginwork has
+// no CF blog project at all.
+// ---------------------------------------------------------------------------
+
+const CF_PROJECT_WORKSPACE_SLUGS: Record<string, string> = {
+  "halsobladet-blog": "happysleep",
+  smarthelse: "happysleep",
+  helseguiden: "happysleep",
+};
+
+/**
+ * Resolve the workspace ID that owns a CF Pages project.
+ * Checks workspaces.settings.cf_pages_projects first (configurable),
+ * then falls back to the constant map above. Returns null if unmapped.
+ */
+export async function getWorkspaceIdForCfProject(projectName: string): Promise<string | null> {
+  const db = createServerSupabase();
+  const { data: workspaces, error } = await db
+    .from("workspaces")
+    .select("id, slug, settings");
+  if (error) {
+    throw new Error(
+      `[getWorkspaceIdForCfProject] Failed to fetch workspaces: ${error.message}`
+    );
+  }
+
+  // 1. Explicit settings override
+  for (const ws of workspaces ?? []) {
+    const settings = (ws.settings ?? {}) as Record<string, unknown>;
+    const projects = settings.cf_pages_projects;
+    if (Array.isArray(projects) && projects.includes(projectName)) {
+      return ws.id as string;
+    }
+  }
+
+  // 2. Constant fallback
+  const slug = CF_PROJECT_WORKSPACE_SLUGS[projectName];
+  if (!slug) return null;
+  const match = (workspaces ?? []).find((w) => w.slug === slug);
+  return (match?.id as string | undefined) ?? null;
 }
 
 async function getProjectBaseUrl(
@@ -253,6 +363,28 @@ export async function mergeManifest(
     );
   }
   return (data as Record<string, string> | null) ?? {};
+}
+
+/**
+ * Merge new paths into the DB manifest and return a manifest that is safe to
+ * deploy. Trusts the RPC's post-merge return value, but guards against a
+ * null/incomplete result (deploying an empty manifest = manifest-wipe class
+ * incident) by falling back to a fresh load + local merge.
+ */
+export async function mergeManifestForDeploy(
+  projectName: string,
+  newPaths: Record<string, string>
+): Promise<Record<string, string>> {
+  const merged = await mergeManifest(projectName, newPaths);
+  const hasAllNewPaths = Object.keys(newPaths).every((p) => merged[p] === newPaths[p]);
+  if (Object.keys(merged).length > 0 && hasAllNewPaths) {
+    return merged;
+  }
+  console.warn(
+    `[mergeManifestForDeploy] RPC returned incomplete manifest for ${projectName} - falling back to fresh load + local merge`
+  );
+  const fresh = await loadManifest(projectName);
+  return { ...fresh, ...newPaths };
 }
 
 /**
@@ -358,42 +490,33 @@ export async function publishPage(
     }
   }
 
-  // Load existing manifest and merge
-  const existingManifest = await loadManifest(projectName);
-  const manifest: Record<string, string> = { ...existingManifest };
-  for (const f of newFiles) {
-    manifest[f.path] = f.hash;
-  }
-
-  // Only upload files whose hash is not already in the existing manifest
-  const existingHashes = new Set(Object.values(existingManifest));
-  const filesToUpload = newFiles.filter((f) => !existingHashes.has(f.hash));
-
-  // Get upload JWT and upload new files
+  // Get upload JWT, then ask CF which hashes are actually missing
+  // (replaces blind trust in the DB manifest's hash set - see checkMissingAssets)
   const jwt = await getUploadToken(accountId, apiToken, projectName);
+  const filesToUpload = await resolveFilesToUpload(jwt, newFiles);
 
   if (filesToUpload.length > 0) {
     await uploadFiles(jwt, filesToUpload);
-    await upsertHashes(
-      jwt,
-      filesToUpload.map((f) => f.hash)
-    );
     onProgress?.(filesToUpload.length, filesToUpload.length);
   }
+  // Upsert ALL hashes (not just uploaded ones) to keep CF's asset registry fresh
+  await upsertHashes(jwt, Array.from(new Set(newFiles.map((f) => f.hash))));
 
-  // Create deployment with full manifest (existing + new)
+  // Merge new paths into the DB manifest FIRST (atomic RPC), then deploy with
+  // the post-merge manifest the RPC returns. This closes the race where two
+  // concurrent publishes each deployed a manifest missing the other's paths
+  // (→ 404 until next deploy). (audit 2026-07-07, P2 manifest-race)
+  const newPathsOnly: Record<string, string> = {};
+  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
+  const mergedManifest = await mergeManifestForDeploy(projectName, newPathsOnly);
+
+  // Create deployment with the fresh post-merge manifest (existing + new)
   const deploy = await createDeployment(
     accountId,
     apiToken,
     projectName,
-    manifest
+    mergedManifest
   );
-
-  // Atomically merge JUST the new paths into the DB manifest. This is race-safe:
-  // concurrent deploys that added other paths won't be wiped.
-  const newPathsOnly: Record<string, string> = {};
-  for (const f of newFiles) newPathsOnly[f.path] = f.hash;
-  await mergeManifest(projectName, newPathsOnly);
 
   // Get base URL (prefer custom domain)
   const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
@@ -847,14 +970,32 @@ export async function deploySitemapAndRobots(
   if (!domain) throw new Error(`No custom domain configured for language: ${language}`);
   const baseUrl = `https://${domain}`;
 
-  // Fetch all published translations for this language (with content_type)
+  // Resolve the workspace that owns this CF project - the sitemap must only
+  // contain that workspace's pages. Refuse to build a cross-workspace sitemap.
+  // (audit 2026-07-07, E1: doginwork/hydro13 articles leaked into halsobladet's sitemap)
+  const workspaceId = await getWorkspaceIdForCfProject(projectName);
+  if (!workspaceId) {
+    throw new Error(
+      `[deploySitemapAndRobots] No workspace mapping for CF project "${projectName}". ` +
+        `Add it to CF_PROJECT_WORKSPACE_SLUGS or workspaces.settings.cf_pages_projects.`
+    );
+  }
+
+  // Fetch all published translations for this language + workspace (with content_type)
   const db = createServerSupabase();
-  const { data: translations } = await db
+  const { data: translations, error: tError } = await db
     .from("translations")
-    .select("slug, updated_at, seo_title, pages!inner(content_type, blog_category)")
+    .select("slug, updated_at, published_at, seo_title, pages!inner(content_type, blog_category, workspace_id)")
     .eq("language", language)
     .eq("status", "published")
+    .eq("pages.workspace_id", workspaceId)
     .not("slug", "is", null);
+
+  if (tError) {
+    throw new Error(
+      `[deploySitemapAndRobots] Failed to fetch published translations: ${tError.message}`
+    );
+  }
 
   const pages = (translations ?? []).filter((t) => t.slug);
   const hasBlogPages = pages.some(
@@ -873,6 +1014,9 @@ export async function deploySitemapAndRobots(
 
   // Collect unique category slugs for category pages
   const categorySlugs = new Set<string>();
+  // Dedupe: multiple published translations can share a slug (legacy data);
+  // the sitemap must list each URL exactly once. (audit 2026-07-07, E1)
+  const seenLocs = new Set<string>();
 
   for (const t of pages) {
     const pageInfo = t.pages as unknown as { content_type?: string; blog_category?: string };
@@ -884,8 +1028,14 @@ export async function deploySitemapAndRobots(
     // match what the server actually serves and what we declare as canonical;
     // mismatched URLs caused crawled-but-not-indexed verdicts in GSC.
     const loc = isBlog ? `${baseUrl}/${urlPath}/` : `${baseUrl}/${urlPath}`;
-    const lastmod = t.updated_at
-      ? new Date(t.updated_at).toISOString().split("T")[0]
+    if (seenLocs.has(loc)) continue;
+    seenLocs.add(loc);
+    // lastmod = when the page was last PUBLISHED, not last edited - updated_at
+    // bumps on unsaved/unpublished edits and made lastmod lie to Google.
+    // Fallback to updated_at for rows published before published_at existed.
+    const lastmodSource = (t as { published_at?: string | null }).published_at || t.updated_at;
+    const lastmod = lastmodSource
+      ? new Date(lastmodSource).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0];
     const priority = isBlog ? "0.8" : "0.6";
     const changefreq = isBlog ? "weekly" : "monthly";
@@ -970,29 +1120,20 @@ Sitemap: ${baseUrl}/sitemap.xml
     },
   ];
 
-  // Load existing manifest and merge
-  const existingManifest = await loadManifest(projectName);
-  const manifest: Record<string, string> = { ...existingManifest };
-  for (const f of newFiles) {
-    manifest[f.path] = f.hash;
-  }
-
-  // Upload and deploy
-  const existingHashes = new Set(Object.values(existingManifest));
-  const filesToUpload = newFiles.filter((f) => !existingHashes.has(f.hash));
-
+  // Upload (CF check-missing based dedupe) and deploy with post-merge manifest
   const jwt = await getUploadToken(accountId, apiToken, projectName);
+  const filesToUpload = await resolveFilesToUpload(jwt, newFiles);
 
   if (filesToUpload.length > 0) {
     await uploadFiles(jwt, filesToUpload);
-    await upsertHashes(jwt, filesToUpload.map((f) => f.hash));
   }
-
-  const deploy = await createDeployment(accountId, apiToken, projectName, manifest);
+  await upsertHashes(jwt, Array.from(new Set(newFiles.map((f) => f.hash))));
 
   const newPathsOnly: Record<string, string> = {};
   for (const f of newFiles) newPathsOnly[f.path] = f.hash;
-  await mergeManifest(projectName, newPathsOnly);
+  const mergedManifest = await mergeManifestForDeploy(projectName, newPathsOnly);
+
+  const deploy = await createDeployment(accountId, apiToken, projectName, mergedManifest);
 
   return {
     sitemapUrl: `${baseUrl}/sitemap.xml`,

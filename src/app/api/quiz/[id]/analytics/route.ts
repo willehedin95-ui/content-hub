@@ -7,6 +7,47 @@ import type { QuizData } from "@/types/quiz";
 
 type DateRange = "today" | "last_7d" | "last_30d" | "last_90d" | "custom";
 
+// ---------------------------------------------------------------------------
+// Pagination helper: PostgREST caps responses at 1000 rows. Without paging,
+// analytics silently computed KPIs on a random 1000-row subset once a quiz
+// passed ~1000 sessions/answers. Loops .range() batches until a short batch.
+// Queries MUST have a stable .order() for range paging to be gap/dup-free.
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  makeQuery: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await makeQuery(from, from + PAGE_SIZE - 1);
+    if (error) return { data: all, error };
+    const batch = data ?? [];
+    all.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return { data: all, error: null };
+}
+
+/** Belt-and-braces dedupe: concurrent inserts during range paging can still
+ *  shift offsets; ordering on a monotonic column minimizes it and this
+ *  removes any duplicate rows that slip through. */
+function uniqueBy<T>(rows: T[], key: (r: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    const k = key(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+
 function resolveRange(
   range: DateRange,
   since?: string | null,
@@ -92,12 +133,19 @@ export async function GET(
     purchase_currency: string | null;
   };
 
-  const sessionsPromise = db
-    .from("quiz_sessions")
-    .select("id, started_at, completed_at, exit_clicked, device_type, utm, purchased, purchase_value, purchase_currency")
-    .eq("quiz_id", id)
-    .gte("started_at", sinceIso)
-    .lte("started_at", untilIso);
+  // Ordered on started_at ASC (monotonic - concurrent inserts land after
+  // already-fetched offsets) with id as stable tiebreak; deduped after fetch.
+  const sessionsPromise = fetchAllRows<SessionRow>((from, to) =>
+    db
+      .from("quiz_sessions")
+      .select("id, started_at, completed_at, exit_clicked, device_type, utm, purchased, purchase_value, purchase_currency")
+      .eq("quiz_id", id)
+      .gte("started_at", sinceIso)
+      .lte("started_at", untilIso)
+      .order("started_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
 
   // Quiz data needed to resolve option_id -> {variable, value, label} so we
   // can cohort by primary_pain, breed, age, time_per_day without storing
@@ -108,13 +156,19 @@ export async function GET(
   // quiz_option_distribution RPC, which returned only one row per step in
   // production (suspected DISTINCT ON bug). Raw aggregation here is more
   // reliable and lets us include question label + option label inline.
-  const allAnswersPromise = db
-    .from("quiz_events")
-    .select("session_id, step_id, option_id, meta")
-    .eq("quiz_id", id)
-    .eq("event_type", "answer")
-    .gte("created_at", sinceIso)
-    .lte("created_at", untilIso);
+  type AnswerRow = { id: string; session_id: string; step_id: string; option_id: string; meta?: Record<string, unknown> | null };
+  const allAnswersPromise = fetchAllRows<AnswerRow>((from, to) =>
+    db
+      .from("quiz_events")
+      .select("id, session_id, step_id, option_id, meta")
+      .eq("quiz_id", id)
+      .eq("event_type", "answer")
+      .gte("created_at", sinceIso)
+      .lte("created_at", untilIso)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
 
   const [summaryRes, funnelRes, variantsRes, sessionsRes, quizDataRes, allAnswersRes] = await Promise.all([
     db.rpc("quiz_summary", { quiz_id_in: id, since: sinceIso, until: untilIso }),
@@ -128,9 +182,12 @@ export async function GET(
   if (summaryRes.error) return safeError(summaryRes.error, "Failed to load summary");
   if (funnelRes.error) return safeError(funnelRes.error, "Failed to load funnel");
   if (variantsRes.error) return safeError(variantsRes.error, "Failed to load variants");
+  // Paged fetches: fail loudly instead of computing KPIs on truncated data
+  if (sessionsRes.error) return safeError(sessionsRes.error, "Failed to load sessions");
+  if (allAnswersRes.error) return safeError(allAnswersRes.error, "Failed to load answers");
 
   const summaryRow = Array.isArray(summaryRes.data) ? summaryRes.data[0] : summaryRes.data;
-  const sessions: SessionRow[] = (sessionsRes.data as SessionRow[] | null) ?? [];
+  const sessions: SessionRow[] = uniqueBy(sessionsRes.data ?? [], (r) => r.id);
 
   // Type for option distribution rows (computed below from raw answer events)
   type EnrichedOptionRow = {
@@ -189,7 +246,7 @@ export async function GET(
   // quiz steps and aggregate counts per (step_id, option_id). Multi-select
   // questions naturally produce multiple events per session - we count each
   // option pick once.
-  const allAnswers = (allAnswersRes.data as Array<{ session_id: string; step_id: string; option_id: string; meta?: Record<string, unknown> | null }> | null) ?? [];
+  const allAnswers = uniqueBy(allAnswersRes.data ?? [], (r) => r.id);
   const optionCounts = new Map<string, Map<string, number>>(); // step_id -> Map(option_id -> count)
   for (const a of allAnswers) {
     if (!a.step_id || !a.option_id) continue;
@@ -293,34 +350,44 @@ export async function GET(
   // Sessions that fired step_view for any offer-page step. This is the
   // FP-style "completion" - reached offer page, regardless of CTA click.
   const offerReachedRes = offerStepIds.length
-    ? await db
-        .from("quiz_events")
-        .select("session_id")
-        .eq("quiz_id", id)
-        .eq("event_type", "step_view")
-        .in("step_id", offerStepIds)
-        .gte("created_at", sinceIso)
-        .lte("created_at", untilIso)
-    : { data: [] as Array<{ session_id: string }> };
+    ? await fetchAllRows<{ session_id: string }>((from, to) =>
+        db
+          .from("quiz_events")
+          .select("session_id")
+          .eq("quiz_id", id)
+          .eq("event_type", "step_view")
+          .in("step_id", offerStepIds)
+          .gte("created_at", sinceIso)
+          .lte("created_at", untilIso)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
+    : { data: [] as Array<{ session_id: string }>, error: null };
+  if (offerReachedRes.error) return safeError(offerReachedRes.error, "Failed to load offer views");
   const offerReachedSet = new Set(
-    ((offerReachedRes.data as Array<{ session_id: string }> | null) ?? []).map((r) => r.session_id),
+    (offerReachedRes.data ?? []).map((r) => r.session_id),
   );
 
   // Fetch answer events for cohort attributes + commit-gate analytics.
   const cohortStepIds = [painStepId, breedStepId, ageStepId, timeStepId].filter(Boolean);
   const cohortAnswersRes = cohortStepIds.length
-    ? await db
-        .from("quiz_events")
-        .select("session_id, step_id, option_id")
-        .eq("quiz_id", id)
-        .eq("event_type", "answer")
-        .in("step_id", cohortStepIds)
-        .gte("created_at", sinceIso)
-        .lte("created_at", untilIso)
+    ? await fetchAllRows<{ session_id: string; step_id: string; option_id: string }>((from, to) =>
+        db
+          .from("quiz_events")
+          .select("session_id, step_id, option_id")
+          .eq("quiz_id", id)
+          .eq("event_type", "answer")
+          .in("step_id", cohortStepIds)
+          .gte("created_at", sinceIso)
+          .lte("created_at", untilIso)
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
     : { data: [] as Array<{ session_id: string; step_id: string; option_id: string }> };
 
   const sessionAttr = new Map<string, { pain?: string; breed?: string; age?: string; time?: string }>();
-  for (const e of (cohortAnswersRes.data as Array<{ session_id: string; step_id: string; option_id: string }> | null) ?? []) {
+  for (const e of cohortAnswersRes.data ?? []) {
     const meta = optionMeta.get(e.option_id);
     if (!meta) continue;
     const cur = sessionAttr.get(e.session_id) ?? {};
@@ -381,15 +448,19 @@ export async function GET(
   };
 
   // Commit-gate analytics
-  const gateRes = await db
-    .from("quiz_events")
-    .select("session_id, option_id, meta")
-    .eq("quiz_id", id)
-    .eq("event_type", "answer")
-    .in("option_id", ["commit_redo_yes", "commit_redo_no", "commit_time_yes", "commit_time_no"])
-    .gte("created_at", sinceIso)
-    .lte("created_at", untilIso);
-  const gateRows = (gateRes.data as Array<{ session_id: string; option_id: string }> | null) ?? [];
+  const gateRes = await fetchAllRows<{ session_id: string; option_id: string }>((from, to) =>
+    db
+      .from("quiz_events")
+      .select("session_id, option_id, meta")
+      .eq("quiz_id", id)
+      .eq("event_type", "answer")
+      .in("option_id", ["commit_redo_yes", "commit_redo_no", "commit_time_yes", "commit_time_no"])
+      .gte("created_at", sinceIso)
+      .lte("created_at", untilIso)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+  const gateRows = gateRes.data ?? [];
   const gateCounts: Record<string, number> = {
     commit_redo_yes: 0, commit_redo_no: 0, commit_time_yes: 0, commit_time_no: 0,
   };

@@ -17,6 +17,28 @@ function csvRow(fields: unknown[]): string {
   return fields.map(csvField).join(",");
 }
 
+// PostgREST caps responses at 1000 rows; without paging the CSV silently
+// exported a 1000-row subset. Loops .range() batches until a short batch.
+// Queries must carry a stable .order() so pages don't overlap or skip rows.
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  makeQuery: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await makeQuery(from, from + PAGE_SIZE - 1);
+    if (error) return { data: all, error };
+    const batch = data ?? [];
+    all.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return { data: all, error: null };
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -42,10 +64,47 @@ export async function GET(
     return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
   }
 
-  // Load all sessions + answer events for this quiz
+  // Load all sessions + answer events for this quiz (paged past the 1000-row cap)
+  type SessionRecord = Record<string, unknown> & {
+    id: string;
+    started_at: string;
+    completed_at: string | null;
+    exit_clicked: boolean | null;
+    purchased: boolean | null;
+    purchase_value: number | null;
+    device_type: string | null;
+    market: string | null;
+    utm: Record<string, string> | null;
+    referrer: string | null;
+    email: string | null;
+  };
+  type AnswerRecord = {
+    session_id: string;
+    step_id: string | null;
+    option_id: string | null;
+    meta: Record<string, unknown> | null;
+  };
   const [sessionsRes, answersRes] = await Promise.all([
-    db.from("quiz_sessions").select("*").eq("quiz_id", id).order("started_at", { ascending: false }),
-    db.from("quiz_events").select("session_id, step_id, option_id, meta").eq("quiz_id", id).eq("event_type", "answer"),
+    fetchAllRows<SessionRecord>((from, to) =>
+      db
+        .from("quiz_sessions")
+        .select("*")
+        .eq("quiz_id", id)
+        // ASC: sessions created mid-export append at the END instead of
+        // shifting every offset (DESC duplicated rows at page borders)
+        .order("started_at", { ascending: true })
+        .order("id", { ascending: true }) // stable tiebreak for range paging
+        .range(from, to),
+    ),
+    fetchAllRows<AnswerRecord>((from, to) =>
+      db
+        .from("quiz_events")
+        .select("session_id, step_id, option_id, meta")
+        .eq("quiz_id", id)
+        .eq("event_type", "answer")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   if (sessionsRes.error) return safeError(sessionsRes.error, "Failed to export sessions");

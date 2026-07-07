@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 import { isValidUUID } from "@/lib/validation";
 
 /**
@@ -14,6 +15,30 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createServerSupabase();
+  const workspaceId = await getWorkspaceId();
+
+  // Workspace scoping via the job's product (same check as the status GET) -
+  // this route could previously reset any workspace's job (audit P3).
+  const { data: job, error: jobErr } = await db
+    .from("swipe_jobs")
+    .select("id, product_id")
+    .eq("id", jobId)
+    .single();
+
+  if (jobErr || !job) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
+  if (job.product_id) {
+    const { data: product } = await db
+      .from("products")
+      .select("id")
+      .eq("id", job.product_id)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (!product) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+  }
 
   // Reset the job
   const { error } = await db

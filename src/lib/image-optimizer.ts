@@ -2,7 +2,10 @@ import { createHash } from "crypto";
 import sharp from "sharp";
 import * as cheerio from "cheerio";
 
-const MAX_IMAGES = 30;
+// Raised 30→60 (audit 2026-07-07, P3): long listicles exceeded 30 and the
+// overflow silently deployed with UNoptimized origin URLs. Overflow is now
+// also surfaced via stats.truncated → publish warning.
+const MAX_IMAGES = 60;
 const CONCURRENCY = 5;
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -34,6 +37,8 @@ export interface OptimizationResult {
     skipped: number;
     savedBytes: number;
     errors: string[];
+    /** Images beyond the MAX_IMAGES cap that were NOT optimized */
+    truncated: number;
   };
 }
 
@@ -59,8 +64,9 @@ function shouldSkipUrl(url: string): boolean {
 
 /**
  * Extract unique image URLs from HTML (img src and srcset attributes).
+ * Returns the capped list plus how many were dropped by the cap.
  */
-function extractImageUrls(html: string): string[] {
+function extractImageUrls(html: string): { urls: string[]; truncated: number } {
   const $ = cheerio.load(html);
   const urls = new Set<string>();
 
@@ -77,7 +83,8 @@ function extractImageUrls(html: string): string[] {
     }
   });
 
-  return Array.from(urls).slice(0, MAX_IMAGES);
+  const all = Array.from(urls);
+  return { urls: all.slice(0, MAX_IMAGES), truncated: Math.max(0, all.length - MAX_IMAGES) };
 }
 
 /**
@@ -180,7 +187,7 @@ export async function optimizeImages(
   slugPrefix: string,
   onProgress?: (current: number, total: number, detail: string) => void
 ): Promise<OptimizationResult> {
-  const urls = extractImageUrls(html);
+  const { urls, truncated } = extractImageUrls(html);
   const urlMap = new Map<string, string>();
   const images: OptimizedImage[] = [];
   const stats = {
@@ -189,7 +196,14 @@ export async function optimizeImages(
     skipped: 0,
     savedBytes: 0,
     errors: [] as string[],
+    truncated,
   };
+
+  if (truncated > 0) {
+    console.warn(
+      `[image-optimizer] ${truncated} image(s) beyond the ${MAX_IMAGES}-image cap will NOT be optimized`
+    );
+  }
 
   if (urls.length === 0) {
     return { urlMap, images, stats };

@@ -7,9 +7,22 @@ import { Language } from "@/types";
 import { getWorkspaceId, getWorkspaceSettings } from "@/lib/workspace";
 import { extractArticleBody, extractFirstImage, extractMetaDescription, autoFillAltText, wrapInBlogShell, getDefaultBlogConfig, slugifyCategory, injectBlogUTMs, type BlogConfig } from "@/lib/blog-shell";
 import { getPublishedBlogArticles, deployBlogHomepage, deployBlogRssFeed } from "@/lib/blog-deploy";
+import { publishToShopify } from "@/lib/shopify-blog-publish";
 import { runDeployStep } from "@/lib/deploy-failures";
 
-export const maxDuration = 120;
+// 300 (was 120): the Shopify blog path uploads inline images to Shopify's
+// Files API which can take minutes; CF path unaffected. Vercel PRO cap 800.
+export const maxDuration = 300;
+
+interface PublishPageData {
+  slug: string;
+  source_url: string;
+  custom_head_code?: string;
+  workspace_id?: string;
+  content_type?: string;
+  blog_category?: string;
+  blog_featured_image_url?: string;
+}
 
 export async function POST(req: NextRequest) {
   const { translation_id } = await req.json();
@@ -18,13 +31,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "translation_id is required" },
       { status: 400 }
-    );
-  }
-
-  if (!process.env.CF_PAGES_ACCOUNT_ID || !process.env.CF_PAGES_API_TOKEN) {
-    return NextResponse.json(
-      { error: "Cloudflare Pages not configured. Set CF_PAGES_ACCOUNT_ID and CF_PAGES_API_TOKEN." },
-      { status: 500 }
     );
   }
 
@@ -46,7 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify workspace access through parent page
-  const publishPages = translation.pages as { slug: string; source_url: string; custom_head_code?: string; workspace_id?: string; content_type?: string; blog_category?: string; blog_featured_image_url?: string } | null;
+  const publishPages = translation.pages as PublishPageData | null;
   if (publishPages?.workspace_id && publishPages.workspace_id !== workspaceId) {
     return NextResponse.json(
       { error: "Translation not found" },
@@ -61,12 +67,49 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const projectKey = `CF_PAGES_PROJECT_${translation.language.toUpperCase()}`;
-  if (!process.env[projectKey]) {
-    return NextResponse.json(
-      { error: `Cloudflare Pages project not configured for language: ${translation.language}. Set ${projectKey}.` },
-      { status: 500 }
-    );
+  // ---------------------------------------------------------------------
+  // Routing decision (audit 2026-07-07, E3): seo_blog pages in workspaces
+  // with blog_publish_target="shopify" (hydro13/Renew) must go through the
+  // Shopify publisher - the manual publish button used to ignore the target
+  // and deploy hydro13 articles to halsobladet.com (duplicate content).
+  // ---------------------------------------------------------------------
+  const wsSettings = await getWorkspaceSettings();
+  const publishTarget = (wsSettings.blog_publish_target as string) || "cf_pages";
+  const isBlogPage = publishPages?.content_type === "seo_blog";
+  const useShopify = isBlogPage && publishTarget === "shopify";
+
+  if (!useShopify) {
+    if (publishTarget === "shopify") {
+      // Non-blog page in a Shopify-target workspace: landing pages still go
+      // to CF, but make the routing explicit rather than silent.
+      console.warn(
+        `[publish] workspace has blog_publish_target=shopify but page is ${publishPages?.content_type || "landing_page"} - using CF Pages`
+      );
+    }
+
+    if (!process.env.CF_PAGES_ACCOUNT_ID || !process.env.CF_PAGES_API_TOKEN) {
+      return NextResponse.json(
+        { error: "Cloudflare Pages not configured. Set CF_PAGES_ACCOUNT_ID and CF_PAGES_API_TOKEN." },
+        { status: 500 }
+      );
+    }
+
+    const projectKey = `CF_PAGES_PROJECT_${translation.language.toUpperCase()}`;
+    if (!process.env[projectKey]) {
+      return NextResponse.json(
+        { error: `Cloudflare Pages project not configured for language: ${translation.language}. Set ${projectKey}.` },
+        { status: 500 }
+      );
+    }
+
+    // Slug-collision guard (audit E2): refuse to deploy onto a CF path that
+    // another PUBLISHED translation already owns on the same (language,
+    // CF project) - the last deploy used to silently overwrite the other
+    // page and leave its published_url lying.
+    const conflict = await findPublishedSlugConflict(db, translation, publishPages);
+    if (conflict) {
+      return NextResponse.json({ error: conflict }, { status: 409 });
+    }
   }
 
   // Mark as publishing + clear any previous error
@@ -82,13 +125,180 @@ export async function POST(req: NextRequest) {
   // Run publish after response is sent — keeps Vercel function alive until done
   after(async () => {
     try {
-      await doPublish(translation_id, translation, db);
+      if (useShopify) {
+        await doShopifyPublish(translation_id, translation, db, publishPages?.workspace_id || workspaceId);
+      } else {
+        await doPublish(translation_id, translation, db);
+      }
     } catch (err) {
       console.error("[publish] Background publish failed:", err);
     }
   });
 
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Returns an error message if the effective CF deploy path for this
+ * translation is already occupied by a DIFFERENT published translation in
+ * the same language (= same CF Pages project). Shopify-published rows
+ * (published_url on another domain) don't block the CF path.
+ */
+async function findPublishedSlugConflict(
+  db: ReturnType<typeof createServerSupabase>,
+  translation: Record<string, unknown>,
+  publishPages: PublishPageData | null
+): Promise<string | null> {
+  const language = translation.language as Language;
+  const slug = (translation.slug as string) || publishPages?.slug;
+  if (!slug) return null;
+
+  const myCatSlug =
+    publishPages?.content_type === "seo_blog" && publishPages?.blog_category
+      ? slugifyCategory(publishPages.blog_category)
+      : undefined;
+  const myDeployPath = myCatSlug ? `${myCatSlug}/${slug}` : slug;
+
+  const { data: others, error } = await db
+    .from("translations")
+    .select("id, slug, published_url, pages!inner(id, name, slug, content_type, blog_category, workspace_id)")
+    .eq("language", language)
+    .eq("status", "published")
+    .neq("id", translation.id as string);
+
+  if (error) {
+    // Fail open with a log - blocking every publish on a check error would
+    // be worse than the (rare) collision.
+    console.error("[publish] slug-conflict check failed:", error.message);
+    return null;
+  }
+
+  const cfDomain = getProjectCustomDomain(language);
+  const myWorkspaceId = publishPages?.workspace_id;
+  const myUrl = ((translation.published_url as string | null) || "").replace(/\/+$/, "");
+
+  for (const other of others ?? []) {
+    const oPage = other.pages as unknown as {
+      id: string;
+      name?: string;
+      slug?: string;
+      content_type?: string;
+      blog_category?: string;
+      workspace_id?: string;
+    } | null;
+    const oSlug = (other.slug as string) || oPage?.slug;
+    if (!oSlug) continue;
+    const oCatSlug =
+      oPage?.content_type === "seo_blog" && oPage?.blog_category
+        ? slugifyCategory(oPage.blog_category)
+        : undefined;
+    const oDeployPath = oCatSlug ? `${oCatSlug}/${oSlug}` : oSlug;
+    if (oDeployPath !== myDeployPath) continue;
+
+    // Same page family (variant of the same page) republishing over itself
+    // is allowed only when it IS the same translation - different translation
+    // rows with the same path are exactly the overwrite bug.
+    // Skip rows that were published to a non-CF surface (e.g. Shopify).
+    const url = (other.published_url as string | null) || "";
+    const onCf = !url || (cfDomain ? url.includes(cfDomain) : true);
+    if (!onCf) continue;
+
+    // Zombie duplicates (audit follow-up F1): a row in ANOTHER workspace
+    // whose published_url is identical to OUR live URL is a leftover
+    // duplicate row of the same article, not a foreign occupation - it
+    // must not block a republish. Genuine foreign pages on the same path
+    // (different or missing URL) still block.
+    const normUrl = url.replace(/\/+$/, "");
+    if (
+      myUrl &&
+      normUrl === myUrl &&
+      myWorkspaceId &&
+      oPage?.workspace_id &&
+      oPage.workspace_id !== myWorkspaceId
+    ) {
+      continue;
+    }
+
+    return (
+      `Slug "${myDeployPath}" is already live on this domain for another page` +
+      `${oPage?.name ? ` ("${oPage.name}")` : ""}${url ? ` at ${url}` : ""}. ` +
+      `Publishing would overwrite it - change the slug first.`
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Shopify blog publish path (audit E3) - same flow the review/approve route
+ * uses, adapted for the manual publish button. Runs in after().
+ */
+async function doShopifyPublish(
+  translationId: string,
+  translation: Record<string, unknown>,
+  db: ReturnType<typeof createServerSupabase>,
+  workspaceId: string
+) {
+  try {
+    const pageData = translation.pages as PublishPageData;
+    const language = translation.language as Language;
+    const slug = (translation.slug as string) || pageData.slug;
+
+    await db
+      .from("translations")
+      .update({ publish_step: "deploying" })
+      .eq("id", translationId);
+
+    // Known published slugs on the target blog (for internal-link rewriting)
+    const { data: others } = await db
+      .from("translations")
+      .select("slug, pages!inner(workspace_id, content_type)")
+      .eq("language", language)
+      .eq("status", "published")
+      .eq("pages.content_type", "seo_blog")
+      .eq("pages.workspace_id", workspaceId);
+    const knownSlugs = (others ?? []).map((t) => t.slug as string).filter(Boolean);
+
+    const sourceBlogDomain =
+      process.env[`CF_PAGES_DOMAIN_${language.toUpperCase()}`]?.trim() || "halsobladet.com";
+
+    const result = await publishToShopify({
+      articleHtml: translation.translated_html as string,
+      slug,
+      category: pageData.blog_category || "Kollagen",
+      seoTitle: (translation.seo_title as string) || slug,
+      seoDescription: (translation.seo_description as string) || "",
+      language,
+      workspaceId,
+      sourceBlogDomain,
+      createdAt: translation.created_at as string,
+      knownSlugs,
+    });
+
+    await db
+      .from("translations")
+      .update({
+        status: "published",
+        published_url: result.url.trim(),
+        published_at: new Date().toISOString(),
+        publish_error: null,
+        publish_step: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", translationId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Shopify publish failed";
+    console.error(`[publish] Shopify publish failed for translation ${translationId}:`, message);
+    await db
+      .from("translations")
+      .update({
+        status: "error",
+        publish_error: message,
+        publish_step: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", translationId);
+  }
 }
 
 /** Background publish work — runs after response is sent */
@@ -103,6 +313,25 @@ async function doPublish(
     const pages = translation.pages as { slug: string; source_url: string };
     const slug = (translation.slug as string) || pages.slug;
     const slugPrefix = slug;
+
+    // Defense in depth (audit E3): never CF-deploy a blog page whose
+    // workspace publishes its blog via Shopify. The POST handler routes
+    // these to doShopifyPublish; if we still end up here, fail loudly
+    // instead of shipping duplicate content to halsobladet.com.
+    const guardPage = translation.pages as PublishPageData | null;
+    if (guardPage?.content_type === "seo_blog" && guardPage.workspace_id) {
+      const { data: ws } = await db
+        .from("workspaces")
+        .select("settings")
+        .eq("id", guardPage.workspace_id)
+        .maybeSingle();
+      const target = ((ws?.settings ?? {}) as Record<string, unknown>).blog_publish_target;
+      if (target === "shopify") {
+        throw new Error(
+          "This workspace publishes blog articles to Shopify (blog_publish_target=shopify) - CF Pages deploy blocked."
+        );
+      }
+    }
 
     // Compute deploy path (includes category prefix for blog pages)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -137,11 +366,19 @@ async function doPublish(
     // Optimize images
     const imageResult = await optimizeImages(html, slugPrefix);
 
-    let imageWarnings = "";
+    const imageWarningParts: string[] = [];
     if (imageResult.stats.errors.length > 0) {
       console.warn(`[publish] Image optimization errors:`, imageResult.stats.errors);
-      imageWarnings = `${imageResult.stats.errors.length} image(s) failed to optimize`;
+      imageWarningParts.push(`${imageResult.stats.errors.length} image(s) failed to optimize`);
     }
+    if (imageResult.stats.truncated > 0) {
+      // Overflow beyond the optimizer cap ships UNoptimized origin URLs -
+      // surface it instead of deploying silently (audit 2026-07-07, P3).
+      imageWarningParts.push(
+        `${imageResult.stats.truncated} image(s) exceeded the optimizer cap and were deployed unoptimized`
+      );
+    }
+    const imageWarnings = imageWarningParts.join(" | ");
 
     // Replace image URLs in HTML with optimized deploy paths
     if (imageResult.urlMap.size > 0) {
@@ -269,6 +506,7 @@ async function doPublish(
       .update({
         status: "published",
         published_url: result.url.trim(),
+        published_at: new Date().toISOString(),
         publish_error: combinedWarning || null,
         publish_step: null,
         updated_at: new Date().toISOString(),

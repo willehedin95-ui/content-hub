@@ -245,12 +245,45 @@ async function writeOneArticle(
 
   console.log(`[blog-autopilot] Generated ${article.wordCount} words, cost: $${article.cost.toFixed(4)}`);
 
+  // Log LLM cost IMMEDIATELY after generation — the money is spent now,
+  // regardless of whether the gate or the publish step fails later. The old
+  // placement (after publish) meant gate-fails and publish-fails burned
+  // $0.5/run invisibly. Images are logged separately in blog-images.ts.
+  {
+    const { count: planCount } = await db
+      .from("blog_content_plan")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .eq("language", language)
+      .eq("slug", nextArticle.slug);
+    const articleSource = (planCount ?? 0) > 0 ? "content_plan" : "keyword_research";
+    const { error: usageErr } = await db.from("usage_logs").insert({
+      type: "blog_autopilot",
+      model: "claude-sonnet",
+      cost_usd: article.cost,
+      metadata: {
+        slug: nextArticle.slug,
+        word_count: article.wordCount,
+        source: articleSource,
+        workspace_id: workspaceId,
+        language,
+      },
+    });
+    if (usageErr) {
+      console.warn("[blog-autopilot] usage_logs insert failed (non-critical):", usageErr.message);
+    }
+  }
+
   // Post-process: fix any hallucinated URLs that Claude might still produce
   article.html = fixHallucinatedUrls(article.html);
 
   // Post-process: inject internal links that Claude may have missed
   try {
-    const linkTargets = await buildLinkTargetsFromDB(language, nextArticle.slug);
+    const linkTargets = await buildLinkTargetsFromDB(
+      language,
+      nextArticle.slug,
+      workspaceId
+    );
     if (linkTargets.length > 0) {
       const { html: linkedHtml, linksInjected } = injectInternalLinks(
         article.html,
@@ -347,7 +380,12 @@ async function writeOneArticle(
   // `blog_soft_gate_enabled` — default off to preserve backward-compat.
   if (settings.blog_soft_gate_enabled === true) {
     const { runSoftGate } = await import("./soft-gate");
-    const { VERIFIED_EXTERNAL_LINKS, PRODUCT_ALLOWED_DOMAINS } = await import("./blog-writer");
+    const {
+      VERIFIED_EXTERNAL_LINKS,
+      PRODUCT_ALLOWED_DOMAINS,
+      getCompetitorProducts,
+      getCompetitorProductsFromDB,
+    } = await import("./blog-writer");
     const linksForLang = VERIFIED_EXTERNAL_LINKS[language as "sv" | "da" | "no"] ?? {};
     const verifiedDomains = Object.values(linksForLang)
       .map((link) => {
@@ -363,6 +401,51 @@ async function writeOneArticle(
     const productExtras = PRODUCT_ALLOWED_DOMAINS[nextArticle.productSlug] ?? [];
     verifiedDomains.push(...productExtras);
 
+    // BL1: The allowlist must be built from the SAME sources the writer
+    // prompt hands out, otherwise comparison articles fail by definition.
+    // (a) Competitor product URLs — the prompt instructs the writer to link
+    //     these. Union of DB list (operator-editable) + hardcoded fallback
+    //     (what the prompt currently uses).
+    try {
+      const competitorLists = [
+        ...(await getCompetitorProductsFromDB(nextArticle.productSlug, language)),
+        ...getCompetitorProducts(nextArticle.productSlug, language),
+      ];
+      for (const c of competitorLists) {
+        try {
+          verifiedDomains.push(new URL(c.url).hostname.replace(/^www\./, ""));
+        } catch {
+          // Skip malformed competitor URL
+        }
+      }
+    } catch (err) {
+      console.warn("[blog-autopilot] Competitor domain allowlist build failed (non-critical):", err);
+    }
+    // (b) Affiliate network tracking domains — injectAffiliateLinks runs
+    //     before the gate and rewrites brand mentions to awin1.com /
+    //     adtraction-family deep links. Also allow domains from the actual
+    //     joined programs' cached deep links.
+    verifiedDomains.push("awin1.com", "adtraction.com", "adtr.co", "adservice.com");
+    try {
+      const { data: affPrograms } = await db
+        .from("affiliate_programs")
+        .select("deep_link_template, default_landing_url")
+        .eq("status", "joined");
+      for (const p of affPrograms ?? []) {
+        for (const u of [p.deep_link_template, p.default_landing_url]) {
+          if (typeof u === "string" && u.startsWith("http")) {
+            try {
+              verifiedDomains.push(new URL(u).hostname.replace(/^www\./, ""));
+            } catch {
+              // Skip malformed URL
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[blog-autopilot] Affiliate domain allowlist build failed (non-critical):", err);
+    }
+
     // Known slugs on the target blog — for internal link resolvability check
     const { data: allTrans } = await db
       .from("translations")
@@ -373,20 +456,50 @@ async function writeOneArticle(
       .eq("pages.workspace_id", workspaceId);
     const knownSlugs = (allTrans ?? []).map((t) => t.slug as string);
 
-    // Re-fetch the verified PubMed URLs from the writer. We don't have them
-    // here directly, so the gate checks citation count against whatever
-    // pubmed.ncbi.nlm.nih.gov URLs appear (can't tell hallucinated vs real
-    // without the verified list). Good enough for the common case.
+    // BL2/H3: the gate needs to know THIS blog's own domains to evaluate
+    // internal links. The gate runs BEFORE Shopify link-rewriting, so the
+    // article's links still point at the source CF domain (blogDomain) even
+    // for Shopify-target workspaces — always include it. For Shopify targets
+    // we ALSO include the workspace's store domain(s), derived from the
+    // workspace's own shopify_config/settings — never a hardcoded brand
+    // fallback (doginwork != get-renew.com).
+    const gatePublishTarget = (settings.blog_publish_target as string) || "cf_pages";
+    const gateBlogDomains: string[] = [];
+    if (blogDomain) gateBlogDomains.push(blogDomain);
+    if (gatePublishTarget === "shopify") {
+      const explicitStoreDomain = (settings.shopify_store_domain as string | undefined)?.trim();
+      if (explicitStoreDomain) gateBlogDomains.push(explicitStoreDomain);
+      try {
+        const { getShopifyCredsForWorkspace } = await import("./shopify");
+        const shopifyCredsForGate = await getShopifyCredsForWorkspace(workspaceId);
+        if (shopifyCredsForGate?.storeUrl) {
+          try {
+            gateBlogDomains.push(new URL(shopifyCredsForGate.storeUrl).hostname);
+          } catch {
+            // Malformed store URL — skip
+          }
+        }
+        if (shopifyCredsForGate?.storefrontHost) {
+          gateBlogDomains.push(shopifyCredsForGate.storefrontHost);
+        }
+      } catch (err) {
+        console.warn("[blog-autopilot] Shopify store domain lookup for gate failed (non-critical):", err);
+      }
+    }
+
+    // The writer returns the verified PubMed URLs it was given, so the gate
+    // can check both citation count AND flag hallucinated PubMed links.
     const gate = runSoftGate({
       html: finalHtml,
       slug: nextArticle.slug,
       seoTitle: article.seoTitle,
       seoDescription: article.seoDescription,
       templateId: nextArticle.templateId,
-      verifiedCitationUrls: [],
+      verifiedCitationUrls: article.verifiedCitationUrls ?? [],
       requireResearchCitations: enableResearchCitations,
       knownSlugs,
       allowedExternalDomains: verifiedDomains,
+      blogDomains: gateBlogDomains,
     });
 
     if (!gate.pass) {
@@ -394,7 +507,7 @@ async function writeOneArticle(
         `[blog-autopilot] Soft gate FAILED for ${nextArticle.slug}: ${gate.reasons.join("; ")}`
       );
       // Park in pending_review instead of publishing
-      await db
+      const { error: parkErr } = await db
         .from("translations")
         .update({
           status: "pending_review",
@@ -402,6 +515,29 @@ async function writeOneArticle(
           updated_at: new Date().toISOString(),
         })
         .eq("id", translation.id);
+      if (parkErr) {
+        console.error("[blog-autopilot] Failed to park translation as pending_review:", parkErr.message);
+      }
+
+      // D3: park the plan row as "deferred" and attach page_id. Leaving it
+      // in "writing" meant stale-recovery flipped it back to "planned" after
+      // 10 min → the next cron regenerated the same article ($0.5/run) and
+      // created duplicate pages. "deferred" + page_id breaks that loop; the
+      // review approve/reject flow decides what happens next.
+      const { error: deferErr } = await db
+        .from("blog_content_plan")
+        .update({
+          status: "deferred",
+          page_id: page.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("workspace_id", workspaceId)
+        .eq("language", language)
+        .eq("slug", nextArticle.slug)
+        .eq("status", "writing");
+      if (deferErr) {
+        console.error("[blog-autopilot] Failed to defer plan row after gate fail:", deferErr.message);
+      }
 
       // Telegram ping with reasons + review URL
       try {
@@ -422,8 +558,8 @@ async function writeOneArticle(
         console.warn("[blog-autopilot] Telegram review notice failed (non-critical):", err);
       }
 
-      // Leave plan in "writing" state? No — revert to planned so a future
-      // manual action (approve + republish, or regen) handles it.
+      // Plan row is now "deferred" with page_id set (see above) — a manual
+      // action (approve/reject in review UI) handles it from here.
       return {
         action: "skipped",
         message: `Soft gate failed: ${gate.reasons.join("; ")}`,
@@ -454,6 +590,7 @@ async function writeOneArticle(
       workspaceId,
       translation.id,
       translation.created_at,
+      nextArticle.templateId,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Publish failed";
@@ -493,27 +630,7 @@ async function writeOneArticle(
     })
     .eq("id", translation.id);
 
-  // Determine source for usage log: check if a blog_content_plan row exists for this slug
-  const { count: planCount } = await db
-    .from("blog_content_plan")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId)
-    .eq("language", language)
-    .eq("slug", nextArticle.slug);
-
-  const articleSource = (planCount ?? 0) > 0 ? "content_plan" : "keyword_research";
-
-  // Log cost (article generation only — images logged separately in blog-images.ts)
-  await db.from("usage_logs").insert({
-    type: "blog_autopilot",
-    model: "claude-sonnet",
-    cost_usd: article.cost,
-    metadata: {
-      slug: nextArticle.slug,
-      word_count: article.wordCount,
-      source: articleSource,
-    },
-  });
+  // (Cost logging happens right after generateBlogArticle above — see P2 fix.)
 
   // 2026-04-16: These used to be fire-and-forget with silent .catch() — if any
   // failed, the blog homepage/RSS/sitemap silently went stale. Now awaited via
@@ -804,14 +921,23 @@ async function pickNextArticle(
   // Also skip slugs we've already failed on in this retry loop
   for (const s of excludeSlugs) existingSlugs.add(s);
 
+  // D2: seeds are per-WORKSPACE (workspaces.settings.blog_keyword_seeds),
+  // never per-language. Hardcoded language seeds caused cross-brand articles
+  // (pillow/sleep articles published on the Renew collagen blog with Hydro13
+  // CTAs). No seeds configured → skip DataForSEO entirely, no fallback.
+  const seedsRaw = wsSettings?.blog_keyword_seeds;
+  const seeds = Array.isArray(seedsRaw)
+    ? seedsRaw.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    : [];
+  if (seeds.length === 0) {
+    console.log(
+      `[blog-autopilot] No blog_keyword_seeds configured for workspace ${workspaceId} — skipping DataForSEO keyword research`
+    );
+    return null;
+  }
+
   try {
     const market = language === "sv" ? "SE" : language === "da" ? "DK" : "NO";
-    const seeds =
-      language === "sv"
-        ? ["sömn tips", "bästa kudden", "kollagen hud", "sömnproblem"]
-        : language === "da"
-          ? ["bedste pude", "kollagen tilskud", "søvn tips"]
-          : ["beste pute", "kollagen tilskudd", "søvn tips"];
 
     const { suggestions } = await getKeywordSuggestions(seeds, market);
 
@@ -842,7 +968,7 @@ async function pickNextArticle(
     const collagenFallbackSlug = language === "da" ? "kollagentilskud-guide" : language === "no" ? "kollagentilskudd-guide" : "kollagentillskott-guide";
 
     return {
-      title: capitalizeFirst(kw.keyword) + " 2026",
+      title: `${capitalizeFirst(kw.keyword)} ${new Date().getFullYear()}`,
       slug,
       category: isCollagen ? healthCategory : isSleep ? sleepCategory : healthCategory,
       templateId: "problem-solution",
@@ -850,7 +976,10 @@ async function pickNextArticle(
       secondaryKeywords: [],
       wordCount: "2000-3000",
       contentBrief: `Write a comprehensive article about "${kw.keyword}". This keyword has ${kw.searchVolume} monthly searches with ${kw.competition || "unknown"} competition. Cover the topic thoroughly with practical advice, scientific backing, and product recommendations where relevant.`,
-      productSlug: isCollagen ? "hydro13" : (wsProductSlug || "happysleep"),
+      // Always the workspace's own product — never keyword-guess a product
+      // from another brand/workspace (that's how Hydro13 CTAs ended up on
+      // sleep articles).
+      productSlug: wsProductSlug || "happysleep",
       internalLinkSlugs: [isCollagen ? collagenFallbackSlug : fallbackSlug],
       language,
       blogDomain,
@@ -874,7 +1003,14 @@ export async function publishBlogArticle(
   language: Language,
   workspaceId: string,
   translationId: string,
-  createdAt: string
+  createdAt: string,
+  /**
+   * Template ID from blog-templates.ts (e.g. "listicle"). Used to decide
+   * whether Product+aggregateRating schema applies. When omitted we look it
+   * up from the blog_content_plan row; if unknown, NO template-based schema
+   * is emitted (never a hardcoded "listicle" default).
+   */
+  templateId?: string
 ): Promise<string> {
   const db = createServerSupabase();
 
@@ -970,21 +1106,25 @@ export async function publishBlogArticle(
   let productRatingSchema: string | undefined;
   try {
     const { isProductRecommendationArticle, getCachedBusinessInfo, buildProductRatingSchema } = await import("./trustpilot");
-    const templateForCheck = (settings.blog_publish_target as string) === "shopify" ? "comparison" : "listicle";
-    // Best-effort template detection from category since we don't have it on this code path
-    if (isProductRecommendationArticle(category, templateForCheck)) {
-      const tpDomain = settings.trustpilot_domain as string | undefined;
-      if (tpDomain) {
+    const tpDomain = settings.trustpilot_domain as string | undefined;
+    if (tpDomain) {
+      // Resolve the REAL template for this article: explicit param first,
+      // else the plan row. No hardcoded fallback — the old code defaulted to
+      // "listicle"/"comparison" which slapped Product schema (with the
+      // STORE's Trustpilot rating as a PRODUCT rating) on every article.
+      const { data: planRow } = await db
+        .from("blog_content_plan")
+        .select("product_slug, template_id")
+        .eq("workspace_id", workspaceId)
+        .eq("slug", slug)
+        .eq("language", language)
+        .maybeSingle();
+      const templateForCheck = templateId || (planRow?.template_id as string) || "";
+      if (isProductRecommendationArticle(category, templateForCheck)) {
         const info = await getCachedBusinessInfo(tpDomain);
         if (info && info.stars > 0 && info.numberOfReviews > 0) {
           // Resolve product info from product bank via slug stored in plan row
-          const { data: productRows } = await db
-            .from("blog_content_plan")
-            .select("product_slug")
-            .eq("slug", slug)
-            .eq("language", language)
-            .maybeSingle();
-          const productSlug = (productRows?.product_slug as string) || (settings.default_product as string) || "";
+          const productSlug = (planRow?.product_slug as string) || (settings.default_product as string) || "";
           const productUrl = (settings.shopify_domains as string)?.split(",")[0]?.trim()
             ? `https://${(settings.shopify_domains as string).split(",")[0].trim()}/products/${productSlug}`
             : "";
@@ -1134,7 +1274,12 @@ async function resumeOrphanedPublishes(
   workspaceId: string,
   language: Language
 ): Promise<void> {
-  const { data: orphans } = await db
+  // D1 HARD RULE: only "draft" (killed mid-first-publish) and "published"
+  // (URL update lost) rows may EVER be auto-resumed. pending_review /
+  // rejected / unpublished / archived / error are deliberate human states —
+  // auto-republishing them bypasses both the gate and the operator (32 live
+  // hydro13 rows would have been mass-republished without this filter).
+  const { data: orphans, error: orphanErr } = await db
     .from("translations")
     .select(
       "id, slug, seo_title, seo_description, translated_html, created_at, pages!inner(id, blog_category, content_type, workspace_id, source_language)"
@@ -1143,8 +1288,13 @@ async function resumeOrphanedPublishes(
     .eq("pages.workspace_id", workspaceId)
     .eq("pages.content_type", "seo_blog")
     .eq("pages.source_language", language)
+    .in("status", ["draft", "published"])
     .is("published_url", null)
     .not("translated_html", "is", null);
+  if (orphanErr) {
+    console.error("[blog-autopilot] Orphan-resume query failed:", orphanErr.message);
+    return;
+  }
 
   if (!orphans?.length) return;
 
@@ -1315,7 +1465,7 @@ async function retroactivelyUpdateLinks(
   if (!translations?.length || translations.length < 2) return;
 
   // Build link targets for ALL published articles
-  const allTargets = await buildLinkTargetsFromDB(language);
+  const allTargets = await buildLinkTargetsFromDB(language, undefined, workspaceId);
   if (!allTargets.length) return;
 
   let updated = 0;
@@ -1413,6 +1563,8 @@ export async function generateBlogImagesAndRepublish(job: NonNullable<AutopilotR
       articleHtml: job.articleHtml,
       slug: job.slug,
       productSlug: job.productSlug,
+      language: job.language,
+      workspaceId: job.workspaceId,
     });
 
     if (imageResult.generated === 0) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { getWorkspaceId } from "@/lib/workspace";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
+import { KIE_IMAGE_COST } from "@/lib/pricing";
 
 export const maxDuration = 800;
 
@@ -24,10 +26,13 @@ export async function POST(req: NextRequest) {
   let productHeroUrls: string[] = [];
   if (product) {
     const db = createServerSupabase();
+    // Workspace-scoped: product slugs are only unique per workspace.
+    const workspaceId = await getWorkspaceId();
     const { data: productData } = await db
       .from("products")
       .select("id")
       .eq("slug", product)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (productData) {
@@ -49,18 +54,14 @@ export async function POST(req: NextRequest) {
       : productHeroUrls;
 
     const taskId = await createImageTask(prompt, referenceImages, ratio, "2K");
-    const result = await pollTaskResult(taskId);
 
-    if (result.urls.length === 0) {
-      return NextResponse.json({ error: "No image generated" }, { status: 500 });
-    }
-
-    // Log usage
+    // Log the Kie cost IMMEDIATELY after task creation - the image is paid
+    // for once the task exists, so a poll timeout must not hide the spend.
     const db = createServerSupabase();
     await db.from("usage_logs").insert({
       type: "image_swiper",
       model: "nano-banana-2",
-      cost_usd: 0,
+      cost_usd: KIE_IMAGE_COST,
       metadata: {
         product: product || null,
         task_id: taskId,
@@ -69,6 +70,12 @@ export async function POST(req: NextRequest) {
         is_retry: true,
       },
     });
+
+    const result = await pollTaskResult(taskId);
+
+    if (result.urls.length === 0) {
+      return NextResponse.json({ error: "No image generated" }, { status: 500 });
+    }
 
     return NextResponse.json({ image_url: result.urls[0] });
   } catch (err) {

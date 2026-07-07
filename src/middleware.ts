@@ -32,32 +32,46 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Allow public API endpoints (called from external sources)
-  if (
-    request.nextUrl.pathname.startsWith("/api/pixel") ||
-    request.nextUrl.pathname.startsWith("/api/telegram/webhook") ||
-    request.nextUrl.pathname.startsWith("/api/cron") ||
-    request.nextUrl.pathname.startsWith("/api/morning-brief") ||
-    request.nextUrl.pathname.startsWith("/api/research/sources/bulk-import") ||
-    request.nextUrl.pathname.startsWith("/api/fillout-to-freshdesk") ||
+  // Allow public API endpoints (called from external sources).
+  // Boundary-matched (exact path or path + "/") — a bare startsWith over-matches
+  // sibling routes (e.g. "/api/cron" caught /api/cron-status, "/api/pixel"
+  // caught /api/pixel/stats which leaks revenue aggregates).
+  const publicExact = [
+    // Tracking POST only — /api/pixel/stats must stay session-gated
+    "/api/pixel",
+  ];
+  const publicPrefixes = [
+    "/api/telegram/webhook",
+    // Cron routes verify CRON_SECRET themselves; /api/cron-status is NOT public
+    "/api/cron",
+    // Route accepts CRON_SECRET bearer or Supabase session inline
+    "/api/morning-brief",
+    // Token-gated inline (x-import-token) — called from Chrome extension
+    "/api/research/sources/bulk-import",
+    "/api/fillout-to-freshdesk",
     // Gömd publik brand-checker (mobil) - token-skyddad i sidan + API:t
-    request.nextUrl.pathname.startsWith("/bcheck") ||
-    request.nextUrl.pathname.startsWith("/api/bcheck") ||
-    request.nextUrl.pathname.startsWith("/api/bcheck-shortlist") ||
+    "/bcheck",
+    "/api/bcheck",
+    "/api/bcheck-ideas",
+    "/api/bcheck-shortlist",
     // Quiz runtime bundle (content-hashed JS served to published + preview quizzes)
-    request.nextUrl.pathname.startsWith("/_runtime/") ||
+    "/_runtime",
     // Preview iframe loads the runtime bundle from /quiz-bundle/[filename]
-    request.nextUrl.pathname.startsWith("/quiz-bundle/") ||
+    "/quiz-bundle",
     // Quiz runtime API endpoints (hit from published quizzes on external domains)
-    request.nextUrl.pathname.startsWith("/api/quiz/session") ||
-    request.nextUrl.pathname.startsWith("/api/quiz/events") ||
-    request.nextUrl.pathname.startsWith("/api/quiz/klaviyo-subscribe") ||
+    "/api/quiz/session",
+    "/api/quiz/events",
+    "/api/quiz/klaviyo-subscribe",
     // Shopify webhook: HMAC-authenticated, called by Shopify servers
-    request.nextUrl.pathname.startsWith("/api/quiz/shopify-webhook") ||
-    // Hydro13 iOS app subscription lookup (auth via x-api-key header)
-    request.nextUrl.pathname.startsWith("/api/loop/") ||
-    // Hydro13 iOS app customer lookup (auth via x-api-key header)
-    request.nextUrl.pathname.startsWith("/api/shopify/customer")
+    "/api/quiz/shopify-webhook",
+    // Hydro13 iOS app lookups (auth via x-api-key header)
+    "/api/loop",
+    "/api/shopify/customer",
+  ];
+  const path = request.nextUrl.pathname;
+  if (
+    publicExact.includes(path) ||
+    publicPrefixes.some((p) => path === p || path.startsWith(p + "/"))
   ) {
     return supabaseResponse;
   }
