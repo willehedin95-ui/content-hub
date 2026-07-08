@@ -235,7 +235,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     }
   }, [job.ad_copy_primary, job.ad_copy_headline, job.landing_page_id, job.landing_page_id_b]);
 
-  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null; isPublished?: boolean }>>([]);
+  const [landingPages, setLandingPages] = useState<Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null; isPublished?: boolean; url?: string | null }>>([]);
   const [deployments, setDeployments] = useState<MetaCampaign[]>([]);
   const [previewData, setPreviewData] = useState<{
     landingPageUrls: Record<string, string>;
@@ -407,12 +407,16 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         // Deduplicate pages across languages, track published status
         const seenPages = new Set<string>();
         const publishedPageIds = new Set<string>();
-        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null; isPublished?: boolean }> = [];
-        // First pass: collect published page IDs
+        const urlByPage = new Map<string, string>();
+        const pages: Array<{ id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null; isPublished?: boolean; url?: string | null }> = [];
+        // First pass: collect published page IDs + their destination URLs
         for (const data of results) {
           for (const t of data.pages ?? []) {
             const page = t.pages as { id: string };
-            if (t.published_url) publishedPageIds.add(page.id);
+            if (t.published_url) {
+              publishedPageIds.add(page.id);
+              if (!urlByPage.has(page.id)) urlByPage.set(page.id, t.published_url);
+            }
           }
         }
         // Second pass: deduplicate and add isPublished flag
@@ -421,7 +425,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
             const page = t.pages as { id: string; name: string; slug: string; product: string; tags?: string[]; page_type?: string; angle?: string; thumbnail_url?: string | null };
             if (!seenPages.has(page.id)) {
               seenPages.add(page.id);
-              pages.push({ ...page, isPublished: publishedPageIds.has(page.id) });
+              pages.push({ ...page, isPublished: publishedPageIds.has(page.id), url: urlByPage.get(page.id) ?? null });
             }
           }
         }

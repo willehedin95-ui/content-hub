@@ -757,7 +757,7 @@ async function pushConceptToMetaInner(
         // which route 4:5→feed and 9:16→stories/reels. DCO rejects rules (subcode 1885702).
         // Non-DCO allows multiple ads per ad set — one per image variation.
         // Titles limited to 1 when using rules (subcode 1885878).
-        const urlTags = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`;
+        const urlTags = `utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl!).pathname.replace(/^\/|\/$/g, ""))}`;
 
         // Helper: create ads for all image pairs in an ad set
         async function createAdsForImages(
@@ -895,7 +895,7 @@ async function pushConceptToMetaInner(
           if (!newCampaignB) throw new Error("Failed to create campaign record for page B");
           rowToFail = newCampaignB.id;
 
-          const urlTagsB = `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrlB).pathname.replace(/^\/|\/$/g, ""))}`;
+          const urlTagsB = `utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrlB).pathname.replace(/^\/|\/$/g, ""))}`;
 
           // Create ads for page B using same uploaded images
           await createAdsForImages(newAdSetB.id, newCampaignB.id, landingUrlB, adSetNameB, urlTagsB);

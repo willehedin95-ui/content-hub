@@ -702,7 +702,7 @@ async function pushVideoToMetaInner(
           adSetId,
           creativeId,
           status: "ACTIVE",
-          urlTags: `utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl).pathname.replace(/^\/|\/$/g, ""))}`,
+          urlTags: `utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_adset={{adset.name}}&utm_content={{ad.name}}&utm_term=${encodeURIComponent(new URL(landingUrl).pathname.replace(/^\/|\/$/g, ""))}`,
         });
 
         // Step 6: Record in meta_ads

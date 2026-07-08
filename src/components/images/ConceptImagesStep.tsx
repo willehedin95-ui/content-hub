@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Check,
   CheckCircle2,
@@ -353,20 +353,42 @@ export default function ConceptImagesStep({
   const [editOpenId, setEditOpenId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editRunningId, setEditRunningId] = useState<string | null>(null);
-  // After an edit starts, the render runs server-side (~2-3 min). Poll the concept
-  // so the edited image swaps in automatically - no blocking spinner to sit and watch.
-  const [editPollUntil, setEditPollUntil] = useState<number>(0);
+  // Images being edited server-side (~2-3 min): pre-edit url + start time. We poll,
+  // swap the new image in once the url changes, and surface a failure on timeout - so
+  // the edit is non-blocking (leave the page freely) yet still reports its result.
+  const [editingImages, setEditingImages] = useState<Record<string, { url: string; startedAt: number; translationId?: string }>>({});
+  const sourceImagesRef = useRef(sourceImages);
+  sourceImagesRef.current = sourceImages;
+  const EDIT_TIMEOUT_MS = 4 * 60 * 1000;
   useEffect(() => {
-    if (editPollUntil <= Date.now()) return;
-    const iv = setInterval(() => {
-      if (Date.now() >= editPollUntil) {
-        clearInterval(iv);
-        return;
-      }
-      onRefresh?.();
+    if (Object.keys(editingImages).length === 0) return;
+    const iv = setInterval(async () => {
+      await onRefresh?.();
+      const done: Record<string, string> = {};
+      setEditingImages((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const [siId, info] of Object.entries(prev)) {
+          const si = sourceImagesRef.current.find((s) => s.id === siId);
+          const freshUrl = info.translationId
+            ? si?.image_translations?.find((t) => t.id === info.translationId)?.translated_url
+            : si?.original_url;
+          if (freshUrl && freshUrl !== info.url) {
+            delete next[siId];
+            changed = true;
+            done[siId] = "Bilden uppdaterad.";
+          } else if (Date.now() - info.startedAt > EDIT_TIMEOUT_MS) {
+            delete next[siId];
+            changed = true;
+            done[siId] = "Redigeringen blev inte klar - försök igen eller omformulera.";
+          }
+        }
+        return changed ? next : prev;
+      });
+      if (Object.keys(done).length) setQaMessages((m) => ({ ...m, ...done }));
     }, 8000);
     return () => clearInterval(iv);
-  }, [editPollUntil, onRefresh]);
+  }, [editingImages, onRefresh]);
 
   // Resolve which file the user is LOOKING at: a translated version (language tab or 9:16
   // ratio active) or the source original. Mirrors the thumbnail-selection logic in the grid.
@@ -401,7 +423,16 @@ export default function ConceptImagesStep({
       if (data.status === "processing" || data.status === "edited") {
         setEditOpenId(null);
         setEditText("");
-        if (data.status === "processing") setEditPollUntil(Date.now() + 4 * 60 * 1000);
+        if (data.status === "processing") {
+          const si = sourceImages.find((s) => s.id === siId);
+          const preUrl = target?.translation_id
+            ? si?.image_translations?.find((t) => t.id === target.translation_id)?.translated_url ?? ""
+            : si?.original_url ?? "";
+          setEditingImages((prev) => ({
+            ...prev,
+            [siId]: { url: preUrl, startedAt: Date.now(), translationId: target?.translation_id },
+          }));
+        }
         onRefresh?.();
       }
     } catch {

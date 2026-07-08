@@ -14,6 +14,7 @@ interface LandingPageItem {
   angle?: string;
   thumbnail_url?: string | null;
   isPublished?: boolean;
+  url?: string | null;
 }
 
 interface PageRecommendation {
@@ -249,7 +250,9 @@ export default function LandingPageModal({
                   {/* Name + metrics */}
                   <div className="p-2">
                     <div className="text-xs font-medium text-gray-900 truncate">{page.name}</div>
-                    <div className="text-[10px] text-gray-400 truncate">/{page.slug}</div>
+                    <div className="text-[10px] text-gray-400 truncate" title={page.url ?? `/${page.slug}`}>
+                      {page.url ? page.url.replace(/^https?:\/\//, "") : `/${page.slug}`}
+                    </div>
                     {hasData && rec && (
                       <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                         <span
