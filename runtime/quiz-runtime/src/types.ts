@@ -79,6 +79,15 @@ export type StepNode = {
   subEls: SubEl[];
   variantGroupId?: string;
   trafficPct?: number;
+  // Navigation gates (additive; default undefined = normal step). Evaluated in
+  // resolveNextNode: a step the flow resolves to is transparently skipped
+  // (its default edge is followed) when either gate says so.
+  //   skipAlways   - never render; used as an invisible variant-group member so
+  //                  a variant can "opt out" of a slot (e.g. name-position A/B).
+  //   skipIfVarSet - skip only when the named variable already has a value; lets
+  //                  the same question sit at two positions and fire once.
+  skipAlways?: boolean;
+  skipIfVarSet?: string;
 };
 export type ExitNode = {
   id: string;

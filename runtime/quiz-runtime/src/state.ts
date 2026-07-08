@@ -88,25 +88,60 @@ export function resolveNextNode(
   answerId: string | null,
   questionElId: string | null,
   variantAssignments: Record<string, string>,
+  variables: Record<string, string> = {},
 ): QuizNode | null {
   const outgoing = getOutgoingEdges(data, fromId);
   if (outgoing.length === 0) return null;
 
-  // Try conditional match first
+  // Resolve the immediate target: a matching conditional edge wins, else the
+  // default edge.
+  let toId: string | null = null;
   if (answerId !== null) {
     const match = outgoing.find((e) =>
       conditionMatches(e.condition, answerId, questionElId),
     );
-    if (match) {
-      return resolveNode(data, match.to, variantAssignments);
-    }
+    if (match) toId = match.to;
+  }
+  if (toId === null) {
+    const defaultEdge =
+      outgoing.find((e) => !e.condition || e.condition.kind === "default") ??
+      outgoing[0];
+    toId = defaultEdge.to;
   }
 
-  // Fall back to default edge
-  const defaultEdge =
-    outgoing.find((e) => !e.condition || e.condition.kind === "default") ??
-    outgoing[0];
-  return resolveNode(data, defaultEdge.to, variantAssignments);
+  // Transparently step over gated nodes (skipAlways / skipIfVarSet) by
+  // following their default edge, so a variant can opt out of a slot or a
+  // question placed at two positions fires exactly once. Cycle-guarded.
+  let target = resolveNode(data, toId, variantAssignments);
+  const seen = new Set<string>();
+  while (
+    target &&
+    target.kind === "step" &&
+    shouldSkipStep(target as StepNode, variables) &&
+    !seen.has(target.id)
+  ) {
+    seen.add(target.id);
+    const outs = getOutgoingEdges(data, target.id);
+    if (outs.length === 0) break;
+    const def =
+      outs.find((e) => !e.condition || e.condition.kind === "default") ??
+      outs[0];
+    target = resolveNode(data, def.to, variantAssignments);
+  }
+  return target;
+}
+
+/** A step the flow resolves to is skipped when it opts out of its slot
+ *  (skipAlways) or when its captured variable is already set (skipIfVarSet). */
+function shouldSkipStep(
+  node: StepNode,
+  variables: Record<string, string>,
+): boolean {
+  if (node.skipAlways) return true;
+  if (node.skipIfVarSet && (variables[node.skipIfVarSet] ?? "") !== "") {
+    return true;
+  }
+  return false;
 }
 
 function resolveNode(

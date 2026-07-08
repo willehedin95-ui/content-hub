@@ -180,7 +180,7 @@ export function App({ data, settings, config }: AppProps) {
       return;
     }
 
-    let firstNode = resolveNextNode(data, startNode.id, null, null, assignments);
+    let firstNode = resolveNextNode(data, startNode.id, null, null, assignments, {});
 
     // Dev-shortcut: ?goto=<keyword> hoppar direkt till första step vars
     // node.name (case-insensitive) innehåller keyword. Förfyller också
@@ -395,12 +395,13 @@ export function App({ data, settings, config }: AppProps) {
         null,
         null,
         variantAssignments,
+        variables,
       );
       if (next) navigateTo(next);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [currentNode, data, variantAssignments, config.preview, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentNode, data, variantAssignments, variables, config.preview, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Defensive auto-advance: if we ever land on a step with no subEls
   // (e.g. persisted data from before pruneEmptySteps was introduced),
@@ -409,12 +410,12 @@ export function App({ data, settings, config }: AppProps) {
     if (!currentNode || currentNode.kind !== "step") return;
     const step = currentNode as StepNode;
     if (step.subEls.length === 0) {
-      const next = resolveNextNode(data, step.id, null, null, variantAssignments);
+      const next = resolveNextNode(data, step.id, null, null, variantAssignments, variables);
       if (next && next.id !== currentNode.id) {
         navigateTo(next, false);
       }
     }
-  }, [currentNode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentNode, variables]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navigateTo = useCallback(
     (node: QuizNode, addToHistory = true) => {
@@ -495,10 +496,11 @@ export function App({ data, settings, config }: AppProps) {
         optionId,
         questionElId,
         variantAssignments,
+        variables,
       );
       if (next) navigateTo(next);
     },
-    [currentNode, data, variantAssignments, navigateTo],
+    [currentNode, data, variantAssignments, variables, navigateTo],
   );
 
   // Capture a free-text / numeric / range value without navigating — useful
@@ -516,9 +518,10 @@ export function App({ data, settings, config }: AppProps) {
       null,
       null,
       variantAssignments,
+      variables,
     );
     if (next) navigateTo(next);
-  }, [currentNode, data, variantAssignments, navigateTo]);
+  }, [currentNode, data, variantAssignments, variables, navigateTo]);
 
   const handleContinue = useCallback(() => {
     if (!currentNode || currentNode.kind !== "step") return;
@@ -528,9 +531,10 @@ export function App({ data, settings, config }: AppProps) {
       null,
       null,
       variantAssignments,
+      variables,
     );
     if (next) navigateTo(next);
-  }, [currentNode, data, variantAssignments, navigateTo]);
+  }, [currentNode, data, variantAssignments, variables, navigateTo]);
 
   const handleEmailSubmit = useCallback(
     async (email: string) => {
@@ -571,11 +575,12 @@ export function App({ data, settings, config }: AppProps) {
           null,
           null,
           variantAssignments,
+          variables,
         );
         if (next) navigateTo(next);
       }
     },
-    [currentNode, data, variantAssignments, navigateTo, sessionId, settings, config],
+    [currentNode, data, variantAssignments, variables, navigateTo, sessionId, settings, config],
   );
 
   const handleBack = useCallback(() => {
