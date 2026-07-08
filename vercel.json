@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cron/invoice-check",
-      "schedule": "0 7 * * *"
-    },
-    {
       "path": "/api/cron/gsc-sync",
       "schedule": "0 5 * * 1"
     },
