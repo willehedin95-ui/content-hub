@@ -10,6 +10,52 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { safeError } from "@/lib/api-error";
 import { getWorkspaceId } from "@/lib/workspace";
+import { resolveExperiment } from "@/lib/ab-test";
+
+/** GET - the A/B experiment status for this quiz (or { role: "none" }). */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const workspaceId = await getWorkspaceId().catch(() => null);
+  if (!workspaceId) {
+    return NextResponse.json({ error: "No active workspace" }, { status: 401 });
+  }
+  const db = createServerSupabase();
+  const exp = await resolveExperiment(db, workspaceId, id);
+  return NextResponse.json(exp ?? { role: "none" });
+}
+
+/** PATCH - update the traffic split (percent shown Variant A). */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const workspaceId = await getWorkspaceId().catch(() => null);
+  if (!workspaceId) {
+    return NextResponse.json({ error: "No active workspace" }, { status: 401 });
+  }
+  const body = (await req.json().catch(() => null)) as { split_a?: number } | null;
+  const splitA = Math.round(Number(body?.split_a));
+  if (!Number.isFinite(splitA) || splitA < 1 || splitA > 99) {
+    return NextResponse.json({ error: "split_a must be 1-99" }, { status: 400 });
+  }
+  const db = createServerSupabase();
+  const exp = await resolveExperiment(db, workspaceId, id);
+  if (!exp) {
+    return NextResponse.json({ error: "Not an A/B test" }, { status: 404 });
+  }
+  // Split lives on the owner (Variant A) row.
+  const { error } = await db
+    .from("quizzes")
+    .update({ ab_split_a: splitA })
+    .eq("id", exp.ownerId)
+    .eq("workspace_id", workspaceId);
+  if (error) return safeError(error, "Failed to update split");
+  return NextResponse.json({ ok: true, split_a: splitA });
+}
 
 export async function POST(
   _req: NextRequest,

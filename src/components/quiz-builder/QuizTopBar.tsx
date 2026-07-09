@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3, Sparkles, X, Eye, EyeOff } from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { useQuizAnalytics } from "./QuizAnalyticsContext";
+import { AbTestControl } from "./AbTestControl";
 import { AdaptPanel } from "./AdaptPanel";
 import { usePreviewToggle } from "./usePreviewToggle";
 import type { ActiveTab } from "./QuizShell";
@@ -87,6 +88,9 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
           </button>
         ))}
       </div>
+
+      {/* Whole-quiz A/B test control (create / switch A|B / results) */}
+      <AbTestControl />
 
       <div className="flex-1" />
 

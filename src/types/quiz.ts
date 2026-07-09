@@ -149,4 +149,9 @@ export type QuizRow = {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Whole-quiz A/B test: this quiz (Variant A) links a Variant-B quiz.
+   *  Publishing bakes both specs into one page; the runtime coin-flips. */
+  ab_variant_quiz_id?: string | null;
+  /** Percent of visitors shown Variant A (rest see B). Default 50. */
+  ab_split_a?: number | null;
 };
