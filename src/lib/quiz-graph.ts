@@ -1,5 +1,5 @@
 // src/lib/quiz-graph.ts
-import type { QuizData, StepNode, QuizEdge, RouteCondition, SubEl, QuestionOption } from "@/types/quiz";
+import type { QuizData, QuizNode, StepNode, QuizEdge, RouteCondition, SubEl, QuestionOption } from "@/types/quiz";
 
 export function newId(prefix: "step" | "edge" | "exit" | "start" | "el" | "opt" | "vg"): string {
   const ts = Date.now();
@@ -103,6 +103,128 @@ export function topoOrderSteps(q: QuizData): StepNode[] {
   }
   for (const s of steps) if (!visited.has(s.id)) order.push(s);
   return order;
+}
+
+// ---------------------------------------------------------------------------
+// computeAutoLayout — derive tidy node positions from the graph
+// ---------------------------------------------------------------------------
+
+export type NodePositions = Record<string, { x: number; y: number }>;
+
+/** Layout spacing (grid units). Exported so the canvas can reuse them. */
+export const AUTO_LAYOUT = { ROW_H: 280, COL_W: 340 } as const;
+
+/**
+ * Computes a clean top-to-bottom layered layout from the quiz graph so the
+ * canvas always mirrors the real flow order and can never drift into a mess.
+ *
+ *  - The default-edge spine (start → … → exit) runs dead straight down column 0.
+ *  - Branch targets (conditional edges) and A/B variant siblings fork out to
+ *    the right on the same row, then rejoin lower down.
+ *  - Truly detached nodes (unreachable, no variant group) are parked in a
+ *    left-side lane so they never disturb the main flow.
+ *
+ * Positions are DERIVED, not persisted — the editor recomputes on every change,
+ * which is what makes the layout impossible to mess up by dragging.
+ */
+export function computeAutoLayout(q: QuizData): NodePositions {
+  const { ROW_H, COL_W } = AUTO_LAYOUT;
+  const DETACHED_X = -COL_W * 2; // parking lane, left of the spine
+
+  const nodes = Object.values(q.nodes);
+  const edges = Object.values(q.edges);
+  const start = nodes.find((n) => n.kind === "start");
+
+  // First default (non-option) edge out of each node = the main-flow successor.
+  const defaultTarget: Record<string, string> = {};
+  for (const e of edges) {
+    const isDefault = !e.condition || e.condition.kind === "default";
+    if (isDefault && defaultTarget[e.from] === undefined) defaultTarget[e.from] = e.to;
+  }
+
+  // rank = longest path from start (Bellman-Ford style relaxation; the
+  // iteration cap doubles as a cycle guard so a stray loop can't spin forever).
+  const rank: Record<string, number> = {};
+  if (start) rank[start.id] = 0;
+  const maxPasses = nodes.length + 2;
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
+    for (const e of edges) {
+      const rf = rank[e.from];
+      if (rf === undefined) continue;
+      if (rank[e.to] === undefined || rank[e.to] < rf + 1) {
+        rank[e.to] = rf + 1;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  // A/B variant siblings are only "reached" via runtime swap, not a graph edge.
+  // Pin each unranked sibling onto its group's earliest ranked member so the
+  // whole group sits on one row, side by side.
+  const groups = new Map<string, StepNode[]>();
+  for (const n of nodes) {
+    if (n.kind !== "step" || !n.variantGroupId) continue;
+    const arr = groups.get(n.variantGroupId) ?? [];
+    arr.push(n);
+    groups.set(n.variantGroupId, arr);
+  }
+  for (const members of groups.values()) {
+    const ranks = members
+      .map((m) => rank[m.id])
+      .filter((r): r is number => r !== undefined);
+    if (ranks.length === 0) continue;
+    const groupRank = Math.min(...ranks);
+    for (const m of members) if (rank[m.id] === undefined) rank[m.id] = groupRank;
+  }
+
+  // spine = the default-edge chain from start, kept dead straight at column 0.
+  const spine = new Set<string>();
+  if (start) {
+    let cur: string | undefined = start.id;
+    const guard = new Set<string>();
+    while (cur && !guard.has(cur)) {
+      guard.add(cur);
+      spine.add(cur);
+      cur = defaultTarget[cur];
+    }
+  }
+
+  const byRank = new Map<number, QuizNode[]>();
+  const detached: QuizNode[] = [];
+  for (const n of nodes) {
+    const r = rank[n.id];
+    if (r === undefined) {
+      detached.push(n);
+      continue;
+    }
+    const arr = byRank.get(r) ?? [];
+    arr.push(n);
+    byRank.set(r, arr);
+  }
+
+  const positions: NodePositions = {};
+  for (const [r, group] of byRank) {
+    // Column 0 is reserved for the spine so the main line stays dead straight.
+    // Everything else (branch targets, variant siblings) fans out to columns
+    // 1, 2, … on the right — even when no spine node shares their row — so a
+    // fork is always visibly off the central axis.
+    const spineNodes = group.filter((n) => spine.has(n.id));
+    const others = group.filter((n) => !spine.has(n.id));
+    spineNodes.forEach((n, i) => {
+      positions[n.id] = { x: i * COL_W, y: r * ROW_H };
+    });
+    others.forEach((n, i) => {
+      positions[n.id] = { x: (i + 1) * COL_W, y: r * ROW_H };
+    });
+  }
+  // detached / unreachable nodes: stack vertically in the left parking lane.
+  detached.forEach((n, i) => {
+    positions[n.id] = { x: DETACHED_X, y: i * ROW_H };
+  });
+
+  return positions;
 }
 
 export function createVariant(q: QuizData, originalId: string): QuizData {

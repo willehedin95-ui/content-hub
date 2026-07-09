@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant, setOptionRoute, ensureDefaultEdge, validateQuizForPublish } from "./quiz-graph";
+import { newId, addStepNode, removeNode, connectNodes, setEdgeCondition, topoOrderSteps, createVariant, getVariantGroup, setTrafficSplit, addSubEl, updateStepSubEls, updateSubEl, removeSubEl, addOption, updateOption, removeOption, duplicateStep, promoteVariant, deleteVariant, setOptionRoute, ensureDefaultEdge, validateQuizForPublish, computeAutoLayout } from "./quiz-graph";
 import type { QuizData, QuizNode, StepNode } from "@/types/quiz";
 
 describe("newId", () => {
@@ -1032,5 +1032,79 @@ describe("removeOption", () => {
     const resultQ = resultStep.subEls.find((e) => e.kind === "question");
     if (!resultQ || resultQ.kind !== "question") throw new Error("not question");
     expect(resultQ.options).toHaveLength(2);
+  });
+});
+
+describe("computeAutoLayout", () => {
+  const size = { width: 280, height: 360 };
+  const step = (id: string, extra: Partial<StepNode> = {}): StepNode => ({
+    id,
+    kind: "step",
+    name: id,
+    size,
+    position: { x: 0, y: 0 },
+    rotation: 0,
+    subEls: [],
+    ...extra,
+  });
+
+  // start → A → B → exit, with A also branching to C which rejoins B.
+  // D is fully detached (no edges).
+  function branchingQuiz(): QuizData {
+    const nodes: Record<string, QuizNode> = {
+      start: { id: "start", kind: "start", size, position: { x: 0, y: 0 } },
+      A: step("A"),
+      B: step("B"),
+      C: step("C"),
+      D: step("D"),
+      exit: { id: "exit", kind: "exit", name: "Exit", size, position: { x: 0, y: 0 }, redirectUrl: "" },
+    };
+    const edges: Record<string, QuizData["edges"][string]> = {
+      e1: { id: "e1", from: "start", to: "A", condition: { kind: "default" } },
+      e2: { id: "e2", from: "A", to: "B", condition: { kind: "default" } },
+      e3: { id: "e3", from: "A", to: "C", condition: { kind: "option", questionElId: "q", optionId: "o" } },
+      e4: { id: "e4", from: "C", to: "B", condition: { kind: "default" } },
+      e5: { id: "e5", from: "B", to: "exit", condition: { kind: "default" } },
+    };
+    return { id: "q", nodes, edges, camera: { x: 0, y: 0, z: 1 } };
+  }
+
+  it("lays the default spine straight down column 0 in flow order", () => {
+    const pos = computeAutoLayout(branchingQuiz());
+    expect(pos.start.x).toBe(0);
+    expect(pos.A.x).toBe(0);
+    expect(pos.B.x).toBe(0);
+    expect(pos.exit.x).toBe(0);
+    expect(pos.start.y).toBeLessThan(pos.A.y);
+    expect(pos.A.y).toBeLessThan(pos.B.y);
+    expect(pos.B.y).toBeLessThan(pos.exit.y);
+  });
+
+  it("forks branch targets off the central axis, between their source and rejoin", () => {
+    const pos = computeAutoLayout(branchingQuiz());
+    expect(pos.C.x).toBeGreaterThan(0); // never on the spine axis
+    expect(pos.C.y).toBeGreaterThan(pos.A.y);
+    expect(pos.C.y).toBeLessThan(pos.B.y);
+  });
+
+  it("parks fully detached nodes in the left lane, clear of the flow", () => {
+    const pos = computeAutoLayout(branchingQuiz());
+    expect(pos.D.x).toBeLessThan(0);
+  });
+
+  it("aligns A/B variant siblings onto the same row, offset sideways", () => {
+    const nodes: Record<string, QuizNode> = {
+      start: { id: "start", kind: "start", size, position: { x: 0, y: 0 } },
+      P: step("P", { variantGroupId: "g", trafficPct: 50 }),
+      P2: step("P2", { variantGroupId: "g", trafficPct: 50 }), // no inbound edge
+      exit: { id: "exit", kind: "exit", name: "Exit", size, position: { x: 0, y: 0 }, redirectUrl: "" },
+    };
+    const edges: Record<string, QuizData["edges"][string]> = {
+      e1: { id: "e1", from: "start", to: "P", condition: { kind: "default" } },
+      e2: { id: "e2", from: "P", to: "exit", condition: { kind: "default" } },
+    };
+    const pos = computeAutoLayout({ id: "q", nodes, edges, camera: { x: 0, y: 0, z: 1 } });
+    expect(pos.P2.y).toBe(pos.P.y); // same row as its ranked sibling
+    expect(pos.P2.x).not.toBe(pos.P.x); // fanned to the side, not stacked on top
   });
 });

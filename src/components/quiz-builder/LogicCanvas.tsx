@@ -17,7 +17,7 @@ import { useQuizAnalytics } from "./QuizAnalyticsContext";
 import { StartNode } from "./nodes/StartNode";
 import { StepNode } from "./nodes/StepNode";
 import { ExitNode } from "./nodes/ExitNode";
-import { addStepNode, connectNodes, removeNode } from "@/lib/quiz-graph";
+import { addStepNode, connectNodes, removeNode, computeAutoLayout } from "@/lib/quiz-graph";
 import type { QuizNode } from "@/types/quiz";
 
 const nodeTypes = {
@@ -31,19 +31,22 @@ function Inner() {
   const { enabled: analyticsEnabled, funnelFor } = useQuizAnalytics();
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Node positions are DERIVED from the graph, never free-dragged. This keeps
+  // the canvas mirroring the real flow order so it can't drift into a mess.
+  const layout = useMemo(() => computeAutoLayout(data), [data]);
+
   // Local ReactFlow node state so measurement/dimension changes propagate
   // (ReactFlow v12 keeps nodes visibility:hidden until measured via onNodesChange).
-  // We mirror positions from `data.nodes` into this local state and sync drags back.
   const [rfNodes, setRfNodes] = useState<Node[]>(() =>
     Object.values(data.nodes).map((n: QuizNode) => ({
       id: n.id,
       type: n.kind,
-      position: n.position,
+      position: layout[n.id] ?? n.position,
       data: { node: n },
     })),
   );
 
-  // Keep rfNodes in sync with quiz data (add/remove/update from outside the canvas).
+  // Keep rfNodes in sync with quiz data + recomputed layout (add/remove/reorder).
   // Preserves ReactFlow-managed fields (measured, selected) when id still exists.
   useEffect(() => {
     setRfNodes((prev) => {
@@ -54,12 +57,12 @@ function Inner() {
           ...(existing ?? {}),
           id: n.id,
           type: n.kind,
-          position: n.position,
+          position: layout[n.id] ?? n.position,
           data: { node: n },
         } as Node;
       });
     });
-  }, [data.nodes]);
+  }, [data.nodes, layout]);
 
   // Build a lookup: { stepId -> { optionId -> letter } } for option→letter labeling
   const optionLetterMap = useMemo(() => {
@@ -100,6 +103,7 @@ function Inner() {
           source: e.from,
           target: e.to,
           label,
+          type: "smoothstep",
         };
       }),
     [data.edges, analyticsEnabled, funnelFor, optionLetterMap],
@@ -107,28 +111,12 @@ function Inner() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Apply ALL changes (dimensions/measurement/position/select) to local state
+      // Apply dimension/measurement/select changes to local state only.
+      // Positions are derived from computeAutoLayout and never persisted, so
+      // there is nothing to sync back to the quiz data here.
       setRfNodes((prev) => applyNodeChanges(changes, prev));
-
-      // Only persist position changes (after drag ends) back to the quiz data.
-      const positionChanges = changes.filter(
-        (c): c is Extract<NodeChange, { type: "position" }> =>
-          c.type === "position" && !c.dragging && !!c.position,
-      );
-      if (positionChanges.length === 0) return;
-
-      setData((prev) => {
-        const nodes = { ...prev.nodes };
-        for (const c of positionChanges) {
-          const existing = nodes[c.id];
-          if (existing && c.position) {
-            nodes[c.id] = { ...existing, position: c.position };
-          }
-        }
-        return { ...prev, nodes };
-      });
     },
-    [setData],
+    [],
   );
 
   const onConnect = useCallback(
@@ -198,6 +186,7 @@ function Inner() {
         onConnect={onConnect}
         onNodeClick={(_, n) => setSelectedNodeId(n.id)}
         onPaneClick={() => setSelectedNodeId(null)}
+        nodesDraggable={false}
         fitView
       >
         <Background />

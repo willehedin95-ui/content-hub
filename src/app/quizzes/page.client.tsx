@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Globe, Copy, Archive, BarChart3, Download } from "lucide-react";
+import { Plus, Globe, Copy, Archive, BarChart3, Download, FlaskConical } from "lucide-react";
 import type { QuizRow } from "@/types/quiz";
 
 const MARKET_LABELS: Record<string, string> = {
@@ -98,6 +98,25 @@ export function QuizzesClient({
     return kpis.find((k) => k.quiz_id === quizId);
   }
 
+  // A/B variants live *inside* their owner funnel, not as loose top-level cards.
+  // Any quiz referenced by another quiz's ab_variant_quiz_id is a variant → hide
+  // it from the list; it's reached via the A/B nav inside the owner's editor.
+  const variantIds = useMemo(
+    () =>
+      new Set(
+        rows.map((r) => r.ab_variant_quiz_id).filter((id): id is string => !!id),
+      ),
+    [rows],
+  );
+  const visibleRows = useMemo(
+    () => rows.filter((r) => !variantIds.has(r.id)),
+    [rows, variantIds],
+  );
+  function variantNameFor(row: QuizRow): string | undefined {
+    if (!row.ab_variant_quiz_id) return undefined;
+    return rows.find((r) => r.id === row.ab_variant_quiz_id)?.name;
+  }
+
   async function createQuiz(market: "se" | "dk" | "no") {
     setCreating(market);
     try {
@@ -188,7 +207,7 @@ export function QuizzesClient({
       </div>
 
       {/* KPI range selector */}
-      {rows.length > 0 && (
+      {visibleRows.length > 0 && (
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs text-gray-500">Show KPIs for:</span>
           <select
@@ -207,14 +226,14 @@ export function QuizzesClient({
       )}
 
       {/* Grid */}
-      {rows.length === 0 ? (
+      {visibleRows.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <Globe className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p className="text-sm">No quizzes yet. Create one above.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {rows.map((row) => (
+          {visibleRows.map((row) => (
             <div
               key={row.id}
               className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-3 hover:border-indigo-300 transition-colors group"
@@ -229,6 +248,15 @@ export function QuizzesClient({
                 >
                   {row.status}
                 </span>
+                {row.ab_variant_quiz_id && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700"
+                    title="A/B-test aktivt — öppna för att se varianterna"
+                  >
+                    <FlaskConical className="w-3 h-3" />
+                    A/B
+                  </span>
+                )}
               </div>
 
               {/* Name */}
@@ -241,6 +269,15 @@ export function QuizzesClient({
 
               {/* KPI row */}
               <KpiRow kpi={kpiFor(row.id)} />
+
+              {/* A/B test info */}
+              {row.ab_variant_quiz_id && (
+                <p className="text-xs text-purple-600 truncate" title={variantNameFor(row) ?? "Variant B"}>
+                  A/B mot: {variantNameFor(row) ?? "Variant B"}
+                  {" · "}
+                  {row.ab_split_a ?? 50}/{100 - (row.ab_split_a ?? 50)}
+                </p>
+              )}
 
               {/* Updated date */}
               <p className="text-xs text-gray-400 mt-auto">

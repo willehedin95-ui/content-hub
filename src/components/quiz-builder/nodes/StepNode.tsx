@@ -75,7 +75,7 @@ export function StepNode({ data }: NodeProps<StepNodeType>) {
       className="relative bg-white border border-gray-200 rounded-lg shadow-md overflow-visible"
       style={{ width: 280 }}
     >
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={Position.Top} />
 
       {/* Floating toolbar — shown only when selected */}
       {isSelected && (
@@ -214,7 +214,7 @@ export function StepNode({ data }: NodeProps<StepNodeType>) {
         )}
       </div>
 
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Bottom} />
 
       {/* VariantControls popover — anchored below the A/B badge */}
       {variantControlsOpen && node.variantGroupId && (
