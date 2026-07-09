@@ -182,12 +182,27 @@ export type QuizEvent = {
   ts: number;
 };
 
+/** Whole-quiz A/B experiment baked into the shell. When present, the runtime
+ *  coin-flips (sticky per visitor) between the primary quiz (__QUIZ_DATA__) and
+ *  this variant, renders the chosen full spec, and tags the session so results
+ *  split A vs B - one URL, one ad set, even split, no redirect. */
+export type QuizAbConfig = {
+  /** Experiment id (the variant-B quiz id). Used as the localStorage + session
+   *  variant-assignment key. */
+  id: string;
+  /** Percent of visitors shown variant A (the rest see B). Default 50. */
+  splitA: number;
+  /** Full spec for variant B. */
+  dataB: QuizData;
+};
+
 // Globals injected by the HTML shell
 declare global {
   interface Window {
     __QUIZ_DATA__: QuizData;
     __QUIZ_SETTINGS__: QuizSettings;
     __QUIZ_CONFIG__: QuizConfig;
+    __QUIZ_AB__?: QuizAbConfig;
     fbq?: (...args: unknown[]) => void;
   }
 }

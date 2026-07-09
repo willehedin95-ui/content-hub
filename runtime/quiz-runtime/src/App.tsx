@@ -61,9 +61,13 @@ type AppProps = {
   data: QuizData;
   settings: QuizSettings;
   config: QuizConfig;
+  /** Whole-quiz A/B: which variant this visitor was flipped into ('a'|'b'),
+   *  and the experiment id. Undefined for a normal single-variant quiz. */
+  abVariant?: "a" | "b";
+  abExperimentId?: string;
 };
 
-export function App({ data, settings, config }: AppProps) {
+export function App({ data, settings, config, abVariant, abExperimentId }: AppProps) {
   const [currentNode, setCurrentNode] = useState<QuizNode | null>(null);
   const [history, setHistory] = useState<QuizNode[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -171,6 +175,11 @@ export function App({ data, settings, config }: AppProps) {
     } catch { /* swallow */ }
 
     const assignments = resolveVariants(data, config.quizId);
+    // Whole-quiz A/B: stamp the flipped variant onto the session's assignments
+    // so analytics can split A vs B (rides the existing variant_assignments map).
+    if (abExperimentId && abVariant) {
+      assignments[`ab_${abExperimentId}`] = abVariant;
+    }
     setVariantAssignments(assignments);
 
     // Find start node and navigate to first step

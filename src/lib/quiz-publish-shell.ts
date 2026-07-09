@@ -4,7 +4,11 @@
 
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
-import type { QuizRow } from "@/types/quiz";
+import type { QuizRow, QuizData } from "@/types/quiz";
+
+/** Whole-quiz A/B variant baked alongside the primary spec. The runtime
+ *  coin-flips between them and tags the session. */
+export type ShellAbVariant = { id: string; splitA: number; data: QuizData };
 
 // ---------------------------------------------------------------------------
 // Bundle discovery
@@ -68,6 +72,7 @@ export function generateQuizShell(
   bundleHash: string,
   apiBaseUrl: string,
   runtimeScriptBase: string = "/_runtime/",
+  ab: ShellAbVariant | null = null,
 ): string {
   const { settings, data, id, slug, market } = quiz;
   const { metadata, providers, customCode } = settings;
@@ -104,6 +109,11 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
     quizSlug: slug,
     market,
   });
+  // Whole-quiz A/B: bake variant B's full spec so the runtime can coin-flip
+  // between it and the primary spec on one URL (no redirect, one ad set).
+  const abScript = ab
+    ? `\n      window.__QUIZ_AB__ = ${serializeForInlineScript({ id: ab.id, splitA: ab.splitA, dataB: ab.data })};`
+    : "";
 
   return `<!doctype html>
 <html lang="${langAttr}">
@@ -124,7 +134,7 @@ fbq('init',${JSON.stringify(providers.metaPixel.pixelId)});
     <script>
       window.__QUIZ_DATA__ = ${quizDataJson};
       window.__QUIZ_SETTINGS__ = ${settingsJson};
-      window.__QUIZ_CONFIG__ = ${configJson};
+      window.__QUIZ_CONFIG__ = ${configJson};${abScript}
     </script>
     <script src="${runtimeScriptBase}quiz-runtime.${bundleHash}.js" defer></script>
     ${customCode?.bodyEnd ?? ""}

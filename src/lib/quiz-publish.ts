@@ -13,7 +13,8 @@ import {
   md5hex,
 } from "@/lib/cloudflare-pages";
 import { getRuntimeBundle, generateQuizShell } from "@/lib/quiz-publish-shell";
-import type { QuizRow } from "@/types/quiz";
+import type { ShellAbVariant } from "@/lib/quiz-publish-shell";
+import type { QuizRow, QuizData } from "@/types/quiz";
 
 // ---------------------------------------------------------------------------
 // Publish target resolution
@@ -243,8 +244,26 @@ export async function publishQuiz(
   // every session/event POST 404s and zero data lands in quiz_sessions.
   await verifyApiBaseUrl(apiBaseUrl);
 
+  // 5c. Whole-quiz A/B: if this quiz has a linked variant B, load B's spec and
+  //     bake it alongside so the runtime can coin-flip between them on ONE URL
+  //     (even split, one ad set, no redirect). Variant B is a normal quiz row,
+  //     edited in the builder like any other; only its `data` is baked here.
+  let abVariant: ShellAbVariant | null = null;
+  const abVariantQuizId = (quiz as { ab_variant_quiz_id?: string | null }).ab_variant_quiz_id;
+  if (abVariantQuizId) {
+    const { data: variantB } = await db
+      .from("quizzes")
+      .select("id, data")
+      .eq("id", abVariantQuizId)
+      .maybeSingle();
+    if (variantB?.data) {
+      const splitA = (quiz as { ab_split_a?: number | null }).ab_split_a ?? 50;
+      abVariant = { id: variantB.id as string, splitA, data: variantB.data as QuizData };
+    }
+  }
+
   // 6. Generate HTML shell
-  const html = generateQuizShell(typedQuiz, bundle.hash, apiBaseUrl);
+  const html = generateQuizShell(typedQuiz, bundle.hash, apiBaseUrl, "/_runtime/", abVariant);
 
   // 7. Upload quiz HTML
   const htmlPath = `${pathPrefix}${typedQuiz.slug}/index.html`;
