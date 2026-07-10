@@ -1069,30 +1069,30 @@ describe("computeAutoLayout", () => {
     return { id: "q", nodes, edges, camera: { x: 0, y: 0, z: 1 } };
   }
 
-  it("lays the default spine straight down column 0 in flow order", () => {
+  it("lays the default spine straight across row 0 in flow order", () => {
     const pos = computeAutoLayout(branchingQuiz());
-    expect(pos.start.x).toBe(0);
-    expect(pos.A.x).toBe(0);
-    expect(pos.B.x).toBe(0);
-    expect(pos.exit.x).toBe(0);
-    expect(pos.start.y).toBeLessThan(pos.A.y);
-    expect(pos.A.y).toBeLessThan(pos.B.y);
-    expect(pos.B.y).toBeLessThan(pos.exit.y);
+    expect(pos.start.y).toBe(0);
+    expect(pos.A.y).toBe(0);
+    expect(pos.B.y).toBe(0);
+    expect(pos.exit.y).toBe(0);
+    expect(pos.start.x).toBeLessThan(pos.A.x);
+    expect(pos.A.x).toBeLessThan(pos.B.x);
+    expect(pos.B.x).toBeLessThan(pos.exit.x);
   });
 
   it("forks branch targets off the central axis, between their source and rejoin", () => {
     const pos = computeAutoLayout(branchingQuiz());
-    expect(pos.C.x).toBeGreaterThan(0); // never on the spine axis
-    expect(pos.C.y).toBeGreaterThan(pos.A.y);
-    expect(pos.C.y).toBeLessThan(pos.B.y);
+    expect(pos.C.y).toBeGreaterThan(0); // never on the spine axis
+    expect(pos.C.x).toBeGreaterThan(pos.A.x);
+    expect(pos.C.x).toBeLessThan(pos.B.x);
   });
 
-  it("parks fully detached nodes in the left lane, clear of the flow", () => {
+  it("parks fully detached nodes above the spine, clear of the flow", () => {
     const pos = computeAutoLayout(branchingQuiz());
-    expect(pos.D.x).toBeLessThan(0);
+    expect(pos.D.y).toBeLessThan(0);
   });
 
-  it("aligns A/B variant siblings onto the same row, offset sideways", () => {
+  it("aligns A/B variant siblings into the same column, offset sideways", () => {
     const nodes: Record<string, QuizNode> = {
       start: { id: "start", kind: "start", size, position: { x: 0, y: 0 } },
       P: step("P", { variantGroupId: "g", trafficPct: 50 }),
@@ -1104,7 +1104,7 @@ describe("computeAutoLayout", () => {
       e2: { id: "e2", from: "P", to: "exit", condition: { kind: "default" } },
     };
     const pos = computeAutoLayout({ id: "q", nodes, edges, camera: { x: 0, y: 0, z: 1 } });
-    expect(pos.P2.y).toBe(pos.P.y); // same row as its ranked sibling
-    expect(pos.P2.x).not.toBe(pos.P.x); // fanned to the side, not stacked on top
+    expect(pos.P2.x).toBe(pos.P.x); // same column as its ranked sibling
+    expect(pos.P2.y).not.toBe(pos.P.y); // fanned to the side, not stacked on top
   });
 });

@@ -15,7 +15,7 @@ export function ExitNode({ data }: NodeProps<ExitNodeType>) {
 
   return (
     <div className="flex flex-col items-center justify-center px-5 py-3 rounded-full bg-orange-500 text-white font-semibold text-sm shadow-md min-w-[140px]">
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Left} />
       <span>{node.name || "EXIT"}</span>
       <span className="text-xs font-normal opacity-80 mt-0.5 max-w-[160px] truncate">{url}</span>
     </div>

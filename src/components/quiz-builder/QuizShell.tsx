@@ -11,6 +11,7 @@ export type ActiveTab = "editor" | "preview" | "settings";
 
 export function QuizShell() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("editor");
+  const [stepsPanelOpen, setStepsPanelOpen] = useState(true);
   const { quiz } = useQuiz();
 
   // Clarflow-style: the two editing panels (Funnel Steps + element editor) stay
@@ -20,12 +21,19 @@ export function QuizShell() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
-      <QuizTopBar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <QuizTopBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        stepsPanelOpen={stepsPanelOpen}
+        onToggleStepsPanel={() => setStepsPanelOpen((v) => !v)}
+      />
       <div className="flex-1 flex min-h-0">
         {showPanels && (
           <>
-            {/* Zone 1 — Funnel Steps accordion */}
-            <FunnelStepsPanel />
+            {/* Zone 1 — Funnel Steps accordion (collapsible via X / topbar toggle) */}
+            {stepsPanelOpen && (
+              <FunnelStepsPanel onClose={() => setStepsPanelOpen(false)} />
+            )}
             {/* Zone 2 — contextual element editor */}
             <aside className="w-[360px] border-r border-gray-200 bg-white flex flex-col min-h-0 shrink-0">
               <StepEditor />

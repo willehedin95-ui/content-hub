@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, AlertCircle, Globe, Copy, Loader2, BarChart3, Sparkles, X, PanelLeft } from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { useQuizAnalytics } from "./QuizAnalyticsContext";
 import { AbTestControl } from "./AbTestControl";
@@ -11,9 +11,11 @@ import type { ActiveTab } from "./QuizShell";
 type QuizTopBarProps = {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
+  stepsPanelOpen: boolean;
+  onToggleStepsPanel: () => void;
 };
 
-export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
+export function QuizTopBar({ activeTab, setActiveTab, stepsPanelOpen, onToggleStepsPanel }: QuizTopBarProps) {
   const { quiz, saveState, setName } = useQuiz();
   const { enabled: analyticsEnabled, setEnabled: setAnalyticsEnabled, loading: analyticsLoading } =
     useQuizAnalytics();
@@ -63,6 +65,19 @@ export function QuizTopBar({ activeTab, setActiveTab }: QuizTopBarProps) {
       <Link href="/quizzes" className="p-1.5 hover:bg-gray-100 rounded" aria-label="Back">
         <ArrowLeft size={18} />
       </Link>
+      {activeTab !== "settings" && (
+        <button
+          type="button"
+          onClick={onToggleStepsPanel}
+          title={stepsPanelOpen ? "Hide Funnel Steps" : "Show Funnel Steps"}
+          aria-label="Toggle Funnel Steps panel"
+          className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${
+            stepsPanelOpen ? "text-indigo-600" : "text-gray-400"
+          }`}
+        >
+          <PanelLeft size={18} />
+        </button>
+      )}
       <input
         value={quiz.name}
         onChange={(e) => setName(e.target.value)}

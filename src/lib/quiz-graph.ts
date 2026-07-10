@@ -115,21 +115,21 @@ export type NodePositions = Record<string, { x: number; y: number }>;
 export const AUTO_LAYOUT = { ROW_H: 280, COL_W: 340 } as const;
 
 /**
- * Computes a clean top-to-bottom layered layout from the quiz graph so the
+ * Computes a clean left-to-right layered layout from the quiz graph so the
  * canvas always mirrors the real flow order and can never drift into a mess.
  *
- *  - The default-edge spine (start → … → exit) runs dead straight down column 0.
- *  - Branch targets (conditional edges) and A/B variant siblings fork out to
- *    the right on the same row, then rejoin lower down.
- *  - Truly detached nodes (unreachable, no variant group) are parked in a
- *    left-side lane so they never disturb the main flow.
+ *  - The default-edge spine (start → … → exit) runs dead straight across row 0.
+ *  - Branch targets (conditional edges) and A/B variant siblings fork downward
+ *    in the same column, then rejoin further right.
+ *  - Truly detached nodes (unreachable, no variant group) are parked in a row
+ *    above the spine so they never disturb the main flow.
  *
  * Positions are DERIVED, not persisted — the editor recomputes on every change,
  * which is what makes the layout impossible to mess up by dragging.
  */
 export function computeAutoLayout(q: QuizData): NodePositions {
   const { ROW_H, COL_W } = AUTO_LAYOUT;
-  const DETACHED_X = -COL_W * 2; // parking lane, left of the spine
+  const DETACHED_Y = -ROW_H * 2; // parking lane, above the spine
 
   const nodes = Object.values(q.nodes);
   const edges = Object.values(q.edges);
@@ -179,7 +179,7 @@ export function computeAutoLayout(q: QuizData): NodePositions {
     for (const m of members) if (rank[m.id] === undefined) rank[m.id] = groupRank;
   }
 
-  // spine = the default-edge chain from start, kept dead straight at column 0.
+  // spine = the default-edge chain from start, kept dead straight along row 0.
   const spine = new Set<string>();
   if (start) {
     let cur: string | undefined = start.id;
@@ -206,22 +206,22 @@ export function computeAutoLayout(q: QuizData): NodePositions {
 
   const positions: NodePositions = {};
   for (const [r, group] of byRank) {
-    // Column 0 is reserved for the spine so the main line stays dead straight.
-    // Everything else (branch targets, variant siblings) fans out to columns
-    // 1, 2, … on the right — even when no spine node shares their row — so a
-    // fork is always visibly off the central axis.
+    // Row 0 is reserved for the spine so the main line stays dead straight.
+    // Everything else (branch targets, variant siblings) fans out to rows
+    // 1, 2, … below — even when no spine node shares their column — so a fork
+    // is always visibly off the central axis. Rank advances left-to-right (x).
     const spineNodes = group.filter((n) => spine.has(n.id));
     const others = group.filter((n) => !spine.has(n.id));
     spineNodes.forEach((n, i) => {
-      positions[n.id] = { x: i * COL_W, y: r * ROW_H };
+      positions[n.id] = { x: r * COL_W, y: i * ROW_H };
     });
     others.forEach((n, i) => {
-      positions[n.id] = { x: (i + 1) * COL_W, y: r * ROW_H };
+      positions[n.id] = { x: r * COL_W, y: (i + 1) * ROW_H };
     });
   }
-  // detached / unreachable nodes: stack vertically in the left parking lane.
+  // detached / unreachable nodes: stack horizontally in the row above the spine.
   detached.forEach((n, i) => {
-    positions[n.id] = { x: DETACHED_X, y: i * ROW_H };
+    positions[n.id] = { x: i * COL_W, y: DETACHED_Y };
   });
 
   return positions;

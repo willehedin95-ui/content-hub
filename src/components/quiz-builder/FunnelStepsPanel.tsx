@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChevronRight, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, Trash2, X } from "lucide-react";
 import { useQuiz } from "./QuizContext";
 import { topoOrderSteps, addSubEl, removeSubEl } from "@/lib/quiz-graph";
 import { PALETTE_ITEMS, type PaletteItem } from "./ElementPalette";
@@ -48,7 +48,7 @@ function kindLabel(kind: SubEl["kind"]): string {
   return ITEM_BY_KIND[kind]?.label ?? kind;
 }
 
-export function FunnelStepsPanel() {
+export function FunnelStepsPanel({ onClose }: { onClose?: () => void }) {
   const {
     data,
     selectedNodeId,
@@ -116,8 +116,18 @@ export function FunnelStepsPanel() {
 
   return (
     <aside className="w-[280px] border-r border-gray-200 bg-white shrink-0 flex flex-col min-h-0">
-      <div className="h-10 px-4 flex items-center border-b border-gray-200 shrink-0">
+      <div className="h-10 pl-4 pr-2 flex items-center justify-between border-b border-gray-200 shrink-0">
         <span className="text-sm font-semibold text-gray-800">Funnel Steps</span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100 transition-colors"
+            aria-label="Close Funnel Steps panel"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
