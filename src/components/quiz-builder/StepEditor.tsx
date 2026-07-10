@@ -1,10 +1,21 @@
 "use client";
 import { useQuiz } from "./QuizContext";
-import { ElementPalette } from "./ElementPalette";
 import { ImagePicker } from "./ImagePicker";
 import { updateSubEl, removeSubEl, addOption, updateOption, removeOption, setOptionRoute, ensureDefaultEdge, topoOrderSteps } from "@/lib/quiz-graph";
 import type { SubEl } from "@/types/quiz";
 import { Trash2, PlusCircle, X, GitBranch } from "lucide-react";
+
+const KIND_LABELS: Record<SubEl["kind"], string> = {
+  title: "Title",
+  text: "Text",
+  question: "Question",
+  image: "Image",
+  custom_html: "Custom HTML",
+  loading: "Loading",
+  range_slider: "Range slider",
+  text_input: "Input",
+  testimonial_slider: "Reviews",
+};
 
 // ---------------------------------------------------------------------------
 // Shared style atoms
@@ -644,70 +655,69 @@ function SubElEditor({ el, stepId }: EditorProps) {
 // StepEditor — main panel rendered in the right column
 // ---------------------------------------------------------------------------
 
-export function StepEditor() {
-  const { selectedNodeId, data } = useQuiz();
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="h-full flex items-center justify-center px-4">
+      <p className="text-sm text-gray-400 text-center">{text}</p>
+    </div>
+  );
+}
 
-  if (!selectedNodeId) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-gray-400">Select a step to edit</p>
-      </div>
-    );
-  }
+export function StepEditor() {
+  const { selectedNodeId, selectedElId, data, setSelectedElId } = useQuiz();
+
+  if (!selectedNodeId) return <EmptyState text="Select a step on the left" />;
 
   const node = data.nodes[selectedNodeId];
+  if (!node) return <EmptyState text="Step not found" />;
+  if (node.kind === "start") return <EmptyState text="Start node - no content to edit" />;
+  if (node.kind === "exit") return <EmptyState text="Exit node - configure redirect in Settings" />;
 
-  if (!node) {
+  // node.kind === "step" - render the ONE selected element (Clarflow-style
+  // contextual editor). If nothing is selected yet, show a hint.
+  const el = selectedElId ? node.subEls.find((e) => e.id === selectedElId) ?? null : null;
+
+  if (!el) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-gray-400">Node not found</p>
+      <div className="flex flex-col h-full min-h-0">
+        <div className="px-4 py-3 border-b border-gray-200 bg-white shrink-0">
+          <h2 className="text-sm font-semibold text-gray-800 truncate">{node.name}</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {node.subEls.length} element{node.subEls.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <EmptyState
+          text={
+            node.subEls.length === 0
+              ? "No elements yet. Add one with + New element on the left."
+              : "Select an element on the left to edit it."
+          }
+        />
       </div>
     );
   }
 
-  if (node.kind === "start") {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-gray-400">Start node - no content to edit</p>
-      </div>
-    );
-  }
-
-  if (node.kind === "exit") {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-gray-400">Exit node - configure redirect in settings</p>
-      </div>
-    );
-  }
-
-  // node.kind === "step"
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Step name header */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-white shrink-0">
-        <h2 className="text-sm font-semibold text-gray-800 truncate">{node.name}</h2>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {node.subEls.length} element{node.subEls.length !== 1 ? "s" : ""}
-        </p>
+      {/* Contextual element header */}
+      <div className="px-4 py-3 border-b border-gray-200 bg-white shrink-0 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-gray-800">Edit {KIND_LABELS[el.kind]}</h2>
+          <p className="text-xs text-gray-400 mt-0.5 truncate">{node.name}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSelectedElId(null)}
+          className="p-1 -mr-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100 transition-colors shrink-0"
+          aria-label="Close element editor"
+        >
+          <X size={16} />
+        </button>
       </div>
 
-      {/* Scrollable subEl editors */}
+      {/* Single element editor */}
       <div className="flex-1 overflow-y-auto p-4 min-h-0">
-        {node.subEls.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center mt-8">
-            No elements yet. Add one from the palette below.
-          </p>
-        ) : (
-          node.subEls.map((el) => (
-            <SubElEditor key={el.id} el={el} stepId={selectedNodeId} />
-          ))
-        )}
-      </div>
-
-      {/* Element palette pinned at bottom */}
-      <div className="shrink-0">
-        <ElementPalette />
+        <SubElEditor el={el} stepId={selectedNodeId} />
       </div>
     </div>
   );

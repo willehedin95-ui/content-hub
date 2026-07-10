@@ -6,7 +6,7 @@ import {
 import { useQuiz } from "./QuizContext";
 import { addSubEl } from "@/lib/quiz-graph";
 
-type PaletteItem = {
+export type PaletteItem = {
   kind:
     | "title" | "text" | "question" | "image" | "custom_html" | "loading"
     | "range_slider" | "text_input" | "testimonial_slider";
@@ -14,7 +14,7 @@ type PaletteItem = {
   Icon: React.ComponentType<{ size?: number; className?: string }>;
 };
 
-const PALETTE_ITEMS: PaletteItem[] = [
+export const PALETTE_ITEMS: PaletteItem[] = [
   { kind: "title", label: "Title", Icon: Type },
   { kind: "text", label: "Text", Icon: AlignLeft },
   { kind: "question", label: "Question", Icon: HelpCircle },

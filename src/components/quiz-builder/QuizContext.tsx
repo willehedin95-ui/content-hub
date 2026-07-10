@@ -8,11 +8,14 @@ export type QuizContextValue = {
   data: QuizData;
   settings: QuizSettings;
   selectedNodeId: string | null;
+  /** The element (subEl) being edited in the middle panel, if any. */
+  selectedElId: string | null;
   saveState: SaveState;
   setData: (next: QuizData | ((prev: QuizData) => QuizData)) => void;
   setSettings: (next: QuizSettings | ((prev: QuizSettings) => QuizSettings)) => void;
   setName: (name: string) => void;
   setSelectedNodeId: (id: string | null) => void;
+  setSelectedElId: (id: string | null) => void;
 };
 
 const Ctx = createContext<QuizContextValue | null>(null);
@@ -51,8 +54,17 @@ export function QuizProvider({
   const [quiz, setQuiz] = useState<QuizRow>(initialQuiz);
   const [data, setDataState] = useState<QuizData>(initialQuiz.data);
   const [settings, setSettingsState] = useState<QuizSettings>(initialQuiz.settings);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeIdState] = useState<string | null>(null);
+  const [selectedElId, setSelectedElId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  // Selecting a step clears the element selection. Call sites that want a
+  // specific element (the Funnel Steps accordion) set it right after, in the
+  // same batched event, so the final state is node + element together.
+  const setSelectedNodeId = useCallback((id: string | null) => {
+    setSelectedNodeIdState(id);
+    setSelectedElId(null);
+  }, []);
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<{ data: QuizData; settings: QuizSettings; name: string }>({
     data: initialQuiz.data,
@@ -183,8 +195,8 @@ export function QuizProvider({
   }, []);
 
   const value = useMemo<QuizContextValue>(
-    () => ({ quiz, data, settings, selectedNodeId, saveState, setData, setSettings, setName, setSelectedNodeId }),
-    [quiz, data, settings, selectedNodeId, saveState, setData, setSettings, setName],
+    () => ({ quiz, data, settings, selectedNodeId, selectedElId, saveState, setData, setSettings, setName, setSelectedNodeId, setSelectedElId }),
+    [quiz, data, settings, selectedNodeId, selectedElId, saveState, setData, setSettings, setName],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -2,50 +2,46 @@
 import { useState } from "react";
 import { QuizTopBar } from "./QuizTopBar";
 import { LogicCanvas } from "./LogicCanvas";
-import { StepsTree } from "./StepsTree";
+import { FunnelStepsPanel } from "./FunnelStepsPanel";
 import { StepEditor } from "./StepEditor";
 import { SettingsPanel } from "./SettingsPanel";
-import { PreviewPane as SplitPreviewPane } from "./PreviewPane";
-import { useQuiz } from "./QuizContext";
-import { usePreviewToggle } from "./usePreviewToggle";
+import { useQuiz, useSaveStateChange } from "./QuizContext";
 
 export type ActiveTab = "editor" | "preview" | "settings";
 
 export function QuizShell() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("editor");
   const { quiz } = useQuiz();
-  const { showPreview } = usePreviewToggle();
 
-  // Split-view preview is only meaningful on the editor tab; the dedicated
-  // preview tab already shows a full-pane preview, and the settings tab has
-  // no canvas to flank.
-  const splitPreviewActive = showPreview && activeTab === "editor";
+  // Clarflow-style: the two editing panels (Funnel Steps + element editor) stay
+  // put on the editor AND preview tabs; only the right-hand stage swaps between
+  // the flow canvas and the live device preview. Settings takes the full width.
+  const showPanels = activeTab !== "settings";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
       <QuizTopBar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex-1 flex min-h-0">
-        {/* Left sidebar - always visible (collapses to 60px in split-view) */}
-        <StepsTree
-          readOnly={activeTab === "settings"}
-          collapsed={splitPreviewActive}
-        />
-
-        {/* Main content area: swaps by tab */}
-        {activeTab === "editor" && (
+        {showPanels && (
           <>
-            <main className="flex-1 overflow-hidden bg-gray-100 relative min-w-0">
-              <LogicCanvas />
-            </main>
-            <aside className="w-96 border-l border-gray-200 bg-white flex flex-col min-h-0">
+            {/* Zone 1 — Funnel Steps accordion */}
+            <FunnelStepsPanel />
+            {/* Zone 2 — contextual element editor */}
+            <aside className="w-[360px] border-r border-gray-200 bg-white flex flex-col min-h-0 shrink-0">
               <StepEditor />
             </aside>
-            {splitPreviewActive && <SplitPreviewPane />}
           </>
         )}
 
+        {/* Zone 3 — stage: canvas (editor) or live preview (preview) */}
+        {activeTab === "editor" && (
+          <main className="flex-1 overflow-hidden bg-gray-100 relative min-w-0">
+            <LogicCanvas />
+          </main>
+        )}
+
         {activeTab === "preview" && (
-          <main className="flex-1 overflow-hidden bg-gray-100 flex flex-col">
+          <main className="flex-1 overflow-hidden bg-gray-100 flex flex-col min-w-0">
             <PreviewPane quizId={quiz.id} />
           </main>
         )}
@@ -68,7 +64,7 @@ export function QuizShell() {
 }
 
 // ---------------------------------------------------------------------------
-// PreviewPane — renders the quiz in a sandboxed iframe
+// PreviewPane — renders the quiz in a sandboxed iframe, live-reloading on save
 // ---------------------------------------------------------------------------
 
 type DeviceSize = "mobile" | "tablet" | "desktop";
@@ -82,9 +78,19 @@ const DEVICE_SIZES: Record<DeviceSize, { width: number; height: number; label: s
 function PreviewPane({ quizId }: { quizId: string }) {
   const [device, setDevice] = useState<DeviceSize>("mobile");
   const [key, setKey] = useState(0); // bump to force reload
+  const { selectedNodeId, data } = useQuiz();
 
-  const { width, height, label: _ } = DEVICE_SIZES[device];
-  const src = `/quizzes/${quizId}/preview`;
+  // Live-ish preview: reload the iframe whenever an autosave lands, so what
+  // you see tracks what you just edited (the preview route reads saved data).
+  useSaveStateChange(() => setKey((k) => k + 1));
+
+  // Jump the preview to the step currently being edited (runtime ?goto matches
+  // by step name). Falls back to the funnel start if no step is selected.
+  const step = selectedNodeId ? data.nodes[selectedNodeId] : null;
+  const gotoName = step && step.kind === "step" ? step.name : null;
+
+  const { width, height } = DEVICE_SIZES[device];
+  const src = `/quizzes/${quizId}/preview${gotoName ? `?goto=${encodeURIComponent(gotoName)}` : ""}`;
 
   return (
     <div className="flex flex-col h-full">
@@ -108,6 +114,7 @@ function PreviewPane({ quizId }: { quizId: string }) {
           ),
         )}
         <div className="flex-1" />
+        <span className="text-[11px] text-gray-400">Updates when you edit</span>
         <button
           type="button"
           onClick={() => setKey((k) => k + 1)}
