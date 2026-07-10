@@ -66,7 +66,16 @@ function buildGroups(steps: StepNode[]): StepGroup[] {
       const members = steps
         .filter((x) => x.variantGroupId === s.variantGroupId)
         .sort((a, b) => (/(variant)/i.test(a.name) ? 1 : 0) - (/(variant)/i.test(b.name) ? 1 : 0));
-      groups.push({ key: s.variantGroupId, nodes: members, isVariant: members.length > 1 });
+      // Only a LIVE A/B test (>= 2 variants actually getting traffic) nests as
+      // Variant A/B. A paused test (one variant at 100%, the rest at 0%)
+      // collapses to just its live variant, so the accordion isn't cluttered
+      // with an off test. Keep the group key so expansion stays stable.
+      const active = members.filter((m) => (m.trafficPct ?? 0) > 0);
+      if (active.length >= 2) {
+        groups.push({ key: s.variantGroupId, nodes: members, isVariant: true });
+      } else {
+        groups.push({ key: s.variantGroupId, nodes: [active[0] ?? members[0]], isVariant: false });
+      }
     } else {
       groups.push({ key: s.id, nodes: [s], isVariant: false });
     }
