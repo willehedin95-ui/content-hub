@@ -2,11 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { sendMessage, isTelegramDisabled } from "@/lib/telegram";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
-const FETCH_TIMEOUT_MS = 15_000;
-const MAX_CONCURRENT = 5;
+const FETCH_TIMEOUT_MS = 12_000;
+const MAX_CONCURRENT = 3;
 const MIN_BODY_BYTES = 500;
+// Retry with spaced backoff so a single transient blip / rate-limit rejection
+// doesn't fire a false alarm (hardening mirrors scripts/uptime-watch.mjs,
+// 2026-07-20). RETRY_BACKOFF_MS[i] is the wait AFTER attempt i, before the next.
+const ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = [4_000, 10_000];
+const CHUNK_GAP_MS = 1_000;
+// 429/430 mean the checker itself is being throttled (bursty datacenter IP),
+// never that the page is down - retry, but never alert if that's all we saw.
+const THROTTLE_STATUSES = new Set([429, 430]);
+// Real browser UA - a "HealthCheck" UA from Vercel's datacenter IP gets
+// bot-flagged (429/503/challenge) by Shopify/Cloudflare far more readily.
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface CheckResult {
   url: string;
@@ -66,12 +81,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ checked: 0, message: "No active landing pages found" });
   }
 
-  // Check URLs in parallel batches
+  // Check URLs in small batches with a gap between them, so we never present
+  // as a burst that trips the storefront's per-IP rate limiter (the cause of
+  // the correlated 429/503 false alarms the uptime watch hit on 2026-07-18).
   const results: CheckResult[] = [];
   for (let i = 0; i < urls.length; i += MAX_CONCURRENT) {
     const batch = urls.slice(i, i + MAX_CONCURRENT);
     const batchResults = await Promise.all(batch.map(checkUrl));
     results.push(...batchResults);
+    if (i + MAX_CONCURRENT < urls.length) await sleep(CHUNK_GAP_MS);
   }
 
   const broken = results.filter((r) => !r.ok);
@@ -105,49 +123,62 @@ export async function GET(req: NextRequest) {
 }
 
 async function checkUrl(url: string): Promise<CheckResult> {
-  const issues: string[] = [];
   const start = Date.now();
+  let throttledOnly = true; // stays true only if every failed attempt was 429/430
+  let hardIssues: string[] = [];
+  let lastThrottle = "";
+  let statusCode: number | undefined;
+  let bodyLength: number | undefined;
 
-  try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: { "User-Agent": "ContentHub-HealthCheck/1.0" },
-    });
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "sv-SE,sv;q=0.9,en;q=0.8",
+        },
+      });
+      statusCode = res.status;
+      const body = await res.text();
+      bodyLength = body.length;
 
-    const responseMs = Date.now() - start;
-    const body = await res.text();
-
-    if (res.status !== 200) {
-      issues.push(`HTTP ${res.status}`);
+      if (THROTTLE_STATUSES.has(res.status)) {
+        // Checker throttled - retry, but this alone never counts as "down".
+        lastThrottle = `HTTP ${res.status}`;
+      } else {
+        const issues: string[] = [];
+        if (res.status !== 200) issues.push(`HTTP ${res.status}`);
+        if (body.length < MIN_BODY_BYTES) issues.push(`Too small (${body.length} bytes)`);
+        if (!body.includes("</html>") && !body.includes("</HTML>")) {
+          issues.push("Missing </html> - not valid HTML");
+        }
+        if (issues.length === 0) {
+          return { url, ok: true, issues: [], statusCode: res.status, bodyLength: body.length, responseMs: Date.now() - start };
+        }
+        hardIssues = issues;
+        throttledOnly = false;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      const name = err instanceof Error ? err.name : "";
+      const isTimeout = name === "TimeoutError" || msg.toLowerCase().includes("timeout") || msg.toLowerCase().includes("abort");
+      hardIssues = [isTimeout ? `Timeout (>${FETCH_TIMEOUT_MS / 1000}s)` : `Fetch failed: ${msg.slice(0, 100)}`];
+      throttledOnly = false;
     }
 
-    if (body.length < MIN_BODY_BYTES) {
-      issues.push(`Too small (${body.length} bytes)`);
+    if (attempt < ATTEMPTS - 1) {
+      await sleep(RETRY_BACKOFF_MS[attempt] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
     }
-
-    if (!body.includes("</html>") && !body.includes("</HTML>")) {
-      issues.push("Missing </html> — not valid HTML");
-    }
-
-    return {
-      url,
-      ok: issues.length === 0,
-      issues,
-      statusCode: res.status,
-      bodyLength: body.length,
-      responseMs,
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    const isTimeout = msg.includes("timeout") || msg.includes("abort");
-    issues.push(isTimeout ? `Timeout (>${FETCH_TIMEOUT_MS / 1000}s)` : `Fetch failed: ${msg.slice(0, 100)}`);
-
-    return {
-      url,
-      ok: false,
-      issues,
-      responseMs: Date.now() - start,
-    };
   }
+
+  // Only ever saw 429/430: the checker was throttled, not the page down. Skip.
+  if (throttledOnly) {
+    console.warn(`[landing-page-health] throttled, not alerting: ${url} (${lastThrottle})`);
+    return { url, ok: true, issues: [], statusCode, bodyLength, responseMs: Date.now() - start };
+  }
+
+  return { url, ok: false, issues: hardIssues, statusCode, bodyLength, responseMs: Date.now() - start };
 }
