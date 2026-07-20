@@ -14,7 +14,6 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 // hours per scheduled cron. Update together with vercel.json and the
 // watchdog table in reconcile-stuck-jobs.
 const SCHEDULED_CRONS: Record<string, number> = {
-  "invoice-check": 24,
   "gsc-sync": 168,
   "gsc-gap-refresh": 168,
   "blog-link-depth-audit": 168,

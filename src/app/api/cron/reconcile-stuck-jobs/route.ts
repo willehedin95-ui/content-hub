@@ -15,7 +15,6 @@ export const maxDuration = 800;
  * "watchdog:<cron>" marker row in cron_runs).
  */
 const WATCHDOG_EXPECTED_INTERVAL_HOURS: Record<string, number> = {
-  "invoice-check": 24, //          0 7 * * *
   "gsc-sync": 168, //              0 5 * * 1 (weekly)
   "gsc-gap-refresh": 168, //       0 6 * * 1 (weekly)
   "blog-link-depth-audit": 168, // 0 7 * * 1 (weekly)
