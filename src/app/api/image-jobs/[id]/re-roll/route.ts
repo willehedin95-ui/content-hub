@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -12,7 +11,6 @@ import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import type { ProductFull, ProductSegment } from "@/types";
-import { triggerRerollTranslations } from "@/lib/autopilot-translations";
 
 export const maxDuration = 800; // Kie poll runs up to 280s; 180 killed renders mid-flight
 
@@ -234,6 +232,7 @@ export async function POST(
         skip_translation: false,
         generation_prompt: originalPrompt,
         generation_style: "competitor-swipe",
+        generation_model: chosenModel,
       })
       .select()
       .single();
@@ -263,15 +262,8 @@ export async function POST(
       },
     });
 
-    // Trigger translation pipeline in background
-    after(async () => {
-      try {
-        await triggerRerollTranslations(id, newSourceImage.id);
-        console.log(`[re-roll] Translations completed for re-rolled image ${newSourceImage.id}`);
-      } catch (err) {
-        console.error(`[re-roll] Translation pipeline failed:`, err);
-      }
-    });
+    // Manual re-roll intentionally does NOT auto-translate. It replaces the original
+    // image only (so you can compare models); translate manually once you pick one.
 
     return NextResponse.json({
       source_image: {
@@ -380,6 +372,7 @@ export async function POST(
       skip_translation: false,
       generation_prompt: brief.prompt,
       generation_style: brief.style,
+      generation_model: chosenModel,
     })
     .select()
     .single();
@@ -410,15 +403,8 @@ export async function POST(
     },
   });
 
-  // Trigger translation pipeline in background
-  after(async () => {
-    try {
-      await triggerRerollTranslations(id, newSourceImage.id);
-      console.log(`[re-roll] Translations completed for re-rolled image ${newSourceImage.id}`);
-    } catch (err) {
-      console.error(`[re-roll] Translation pipeline failed:`, err);
-    }
-  });
+  // Manual re-roll intentionally does NOT auto-translate. It replaces the original
+  // image only (so you can compare models); translate manually once you pick one.
 
   return NextResponse.json({
     source_image: {

@@ -14,7 +14,7 @@ interface Props {
   onClose: () => void;
   onRetry: (translationId: string) => void;
   onReroll?: (sourceImageId: string, customInstructions?: string, model?: string) => void;
-  rerollingId?: string | null;
+  rerollingIds?: Set<string>;
   onPrev?: () => void;
   onNext?: () => void;
   currentIndex?: number;
@@ -28,7 +28,7 @@ export default function ImagePreviewModal({
   onClose,
   onRetry,
   onReroll,
-  rerollingId,
+  rerollingIds,
   onPrev,
   onNext,
   currentIndex,
@@ -154,6 +154,9 @@ export default function ImagePreviewModal({
                 : `${LANGUAGES.find((l) => l.value === activeLang)?.label} translation${
                     activeVersion ? ` (v${activeVersion.version_number})` : ""
                   }`}
+              {isOriginal && sourceImage.generation_style && (
+                <span className="ml-2 text-gray-500">· {IMAGE_MODELS.find((m) => m.id === sourceImage.generation_model)?.label ?? "Nano Banana 2"}</span>
+              )}
               {currentIndex != null && totalCount != null && (
                 <span className="ml-2">{currentIndex + 1} / {totalCount}</span>
               )}
@@ -191,7 +194,7 @@ export default function ImagePreviewModal({
                 <select
                   value={rerollModel}
                   onChange={(e) => setRerollModel(e.target.value)}
-                  disabled={rerollingId === sourceImage.id}
+                  disabled={rerollingIds?.has(sourceImage.id)}
                   className="text-xs border border-gray-200 rounded-lg px-1.5 py-1.5 mr-1 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50 max-w-[9rem]"
                   title="Bildmodell som används vid re-roll"
                 >
@@ -201,11 +204,11 @@ export default function ImagePreviewModal({
                 </select>
                 <button
                   onClick={() => onReroll(sourceImage.id, undefined, rerollModel)}
-                  disabled={rerollingId === sourceImage.id}
+                  disabled={rerollingIds?.has(sourceImage.id)}
                   className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-l-lg transition-colors disabled:opacity-50"
                   title="Re-roll this image (same prompt, new seed)"
                 >
-                  {rerollingId === sourceImage.id ? (
+                  {rerollingIds?.has(sourceImage.id) ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -214,7 +217,7 @@ export default function ImagePreviewModal({
                 </button>
                 <button
                   onClick={() => { setShowRerollInstructions(!showRerollInstructions); setRerollText(""); }}
-                  disabled={rerollingId === sourceImage.id}
+                  disabled={rerollingIds?.has(sourceImage.id)}
                   className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-r-lg transition-colors disabled:opacity-50 border-l border-gray-200 ${
                     showRerollInstructions
                       ? "bg-indigo-50 text-indigo-600"
@@ -357,10 +360,10 @@ export default function ImagePreviewModal({
                   setShowRerollInstructions(false);
                   setRerollText("");
                 }}
-                disabled={!rerollText.trim() || rerollingId === sourceImage.id}
+                disabled={!rerollText.trim() || rerollingIds?.has(sourceImage.id)}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
               >
-                {rerollingId === sourceImage.id ? (
+                {rerollingIds?.has(sourceImage.id) ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <RotateCcw className="w-3 h-3" />
@@ -407,7 +410,7 @@ export default function ImagePreviewModal({
               </div>
             </>
           ) : (
-            <div className="relative inline-flex">
+            <div className="relative flex max-w-full max-h-full items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={displayUrl}

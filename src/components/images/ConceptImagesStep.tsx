@@ -248,7 +248,7 @@ export interface ConceptImagesStepProps {
   handleCancelGenerate?: () => void;
   // Re-roll
   onReroll?: (sourceImageId: string, customInstructions?: string) => void;
-  rerollingId?: string | null;
+  rerollingIds?: Set<string>;
   // Skip translation toggle
   onToggleSkip?: (sourceImageId: string, skip: boolean) => void;
   // 9:16 generation
@@ -312,7 +312,7 @@ export default function ConceptImagesStep({
   onRefresh,
   handleCancelGenerate,
   onReroll,
-  rerollingId,
+  rerollingIds,
   onToggleSkip,
   handleGenerate9x16,
   show9x16Button,
@@ -887,7 +887,7 @@ export default function ConceptImagesStep({
                   className="aspect-[4/5] bg-gray-50 relative cursor-pointer"
                   onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
                 >
-                  {rerollingId === si.id && (
+                  {rerollingIds?.has(si.id) && (
                     <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                       <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
                     </div>
@@ -946,7 +946,7 @@ export default function ConceptImagesStep({
                   >
                     {editRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
                   </button>
-                  {onReroll && si.generation_style && !rerollingId && (
+                  {onReroll && si.generation_style && !rerollingIds?.has(si.id) && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onReroll(si.id); }}
                       className="text-gray-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100 ml-1 shrink-0"
@@ -1124,6 +1124,8 @@ export default function ConceptImagesStep({
         </>
       ) : (
       <>
+      {/* Competitor reference stays visible in the translations view too (was only in draft/ready) */}
+      {renderCompetitorReference()}
       {/* Status summary */}
       <div className="flex items-center gap-3 mb-3">
         {pendingCount > 0 || proc.processing ? (
@@ -1395,7 +1397,7 @@ export default function ConceptImagesStep({
               >
                 {editRunningId === si.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
               </button>
-              {onReroll && si.generation_style && !rerollingId && (
+              {onReroll && si.generation_style && !rerollingIds?.has(si.id) && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onReroll(si.id); }}
                   className="p-1.5 rounded-lg bg-white/90 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
@@ -1415,7 +1417,7 @@ export default function ConceptImagesStep({
               )}
             </div>
             {/* Re-rolling overlay */}
-            {rerollingId === si.id && (
+            {rerollingIds?.has(si.id) && (
               <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />

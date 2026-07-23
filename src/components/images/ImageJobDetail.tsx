@@ -244,7 +244,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   } | null>(null);
 
   // Re-roll state
-  const [rerollingId, setRerollingId] = useState<string | null>(null);
+  const [rerollingIds, setRerollingIds] = useState<Set<string>>(new Set());
 
   // Static ad generation states
   const [genState, setGenState] = useState<{
@@ -1324,8 +1324,8 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
 
   // Re-roll a single source image
   async function handleReroll(sourceImageId: string, customInstructions?: string, model?: string) {
-    if (rerollingId) return;
-    setRerollingId(sourceImageId);
+    if (rerollingIds.has(sourceImageId)) return;
+    setRerollingIds((prev) => new Set(prev).add(sourceImageId));
     try {
       const res = await fetch(`/api/image-jobs/${job.id}/re-roll`, {
         method: "POST",
@@ -1346,7 +1346,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
     } catch (err) {
       console.error("Re-roll failed:", err);
     } finally {
-      setRerollingId(null);
+      setRerollingIds((prev) => { const next = new Set(prev); next.delete(sourceImageId); return next; });
     }
   }
 
@@ -1709,7 +1709,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         onRefresh={() => refreshJob()}
         handleCancelGenerate={handleCancelGenerate}
         onReroll={handleReroll}
-        rerollingId={rerollingId}
+        rerollingIds={rerollingIds}
         onToggleSkip={handleToggleSkip}
         handleGenerate9x16={handleGenerate9x16}
         show9x16Button={show9x16Button}
@@ -1983,7 +1983,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
             onClose={() => setPreviewImage(null)}
             onRetry={(id) => { handleRetrySingle(id); }}
             onReroll={previewImage.generation_style ? handleReroll : undefined}
-            rerollingId={rerollingId}
+            rerollingIds={rerollingIds}
             onPrev={currentIdx > 0 ? () => { setPreviewImage(allImages[currentIdx - 1]); setPreviewLang(null); } : undefined}
             onNext={currentIdx < allImages.length - 1 ? () => { setPreviewImage(allImages[currentIdx + 1]); setPreviewLang(null); } : undefined}
             currentIndex={currentIdx}

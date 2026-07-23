@@ -293,6 +293,7 @@ export interface SourceImage {
   skip_translation: boolean;
   generation_prompt: string | null;
   generation_style: string | null;
+  generation_model: string | null;
   batch: number;
   batch_label: string | null;
   created_at: string;
