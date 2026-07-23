@@ -1,5 +1,54 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-07 (HUB-AUDIT DEL 2: resten av hubben, ~155 fynd åtgärdade + deployat, prod på 7a6c941b - se journal LATEST + .claude/tasks/hub-audit-2026-07-07.md)
+Updated: 2026-07-23 (doginwork Meta attribution fix + cron/uptime false-alarm fixes deployed; GetHookd swipe + pain-point UI fix committad-ej-pushad - se journal LATEST)
+
+## 2026-07-23 - doginwork Meta over-reporting fix + ads tooling (deployed dc242b80..e499b855; pain-point fix committad-ej-pushad)
+
+Done this session:
+- [x] **doginwork Meta överrapporterar ~2.4x** - verifierat vs Shopify-facit (80 hävdade vs 56 verkliga, 30d; sann Meta-ROAS ~1.15-1.4x ej 2.81x). Orsak: Shopify native FB-pixel + vår webhook-CAPI dubbelräknar (olika event_ids) + view-through. Fix `e499b855`: `meta_config.skip_capi_purchase=true` för doginwork -> Shopify native pixel = enda Meta-källan. Flagga SATT. Minne `doginwork-meta-attribution.md`.
+- [x] Cron/uptime false-alarm-fixar: `dc242b80` (invoice-check bort ur watchdog-speglar), `a94f45fd` (uptime-watch.mjs härdad), `18cfe2c8` (landing-page-health härdad).
+- [x] doginwork-annonser: dödade SE #002, trimmade SE #007 [2] (död underannons). Budget -20% (William). Telegram-summering skickad.
+- [x] GetHookd MCP kopplad (Full access); 12 konkurrent-statics swipe:ade till Williams swipe file.
+- [x] Live swipe-demo: Ad Spy-swipern -> doginwork-koncept #42 "Stressad Valp vs Lugn Valp" (`/images/0c9f60cd-...`). Kördes via prod-cron (lokal ANTHROPIC-nyckel död).
+- [x] Ads-UI-fix (committad, EJ pushad): BrainstormGenerate.tsx pain-point-knappar hämtas nu från produktens segment (var hårdkodat HappySleep).
+
+Open / next (ads-arbetet fortsätter - ny agent):
+- [ ] **Pusha pain-point-fixen** (BrainstormGenerate.tsx) när ads-batchen är klar + William bekräftar.
+- [ ] **Hitta fler HappySleep-hårdkodningar i ads-UI/pipeline** (SwiperAngle `types/index.ts:618`, autopilot-keyword-listor, landing-angle-presets) - generalisera per workspace.
+- [ ] **Bevaka attributions-fixen:** Metas doginwork-köp ska falla ~80 -> ~56 kommande dagar (meta_capi_events vs Meta insights).
+- [ ] Valfritt: koppla konkurrent-swipes genom Genesis (Copy Coders + creative-judge) om William vill (kör nu den äldre brainstorm-pipelinen).
+- [ ] Uppdatera den återkallade lokala ANTHROPIC_API_KEY i content-hub/.env.local så lokala swipe/brainstorm-script kör.
+- [ ] 12 konkurrent-statics i GetHookd swipe file redo att swipas till koncept.
+
+## 2026-07-10 - Clarflow editor rebuild + live quiz bug fix + A/B cleanup (deployed 02fb8d40..6165e644)
+
+Done this session:
+- [x] Quiz-builder editor rebuilt to Clarflow's 3-zone layout (FunnelStepsPanel accordion + contextual StepEditor + canvas/live-preview stage), horizontal auto-layout canvas, collapsible left panel, A/B variants nested w/ editable %, paused-test collapse, inline rename, Variant-B quizzes hidden from list. 5 commits pushed, verified on localhost dev.
+- [x] **Live doginwork quiz bug fixed**: stray gender-question dupe ("Block 1 - Kön (B variant)") was pinned at 100% in the landing's variant group (landing at 0%), so the live quiz started on the gender question and the landing never showed. Removed + ungrouped on A + B, republished. Landing shows again (verified live).
+- [x] **Offer A/B test turned OFF** (control 100 / B 0, B preserved) so the name-position A/B runs unconfounded. Only test live now = name-position (50/50).
+- [x] Landing meta title/description aligned to the visible H1; node renamed `Landing - hook (A control)` -> `Landing - hook`.
+
+Open / next:
+- [ ] **WILLIAM: click-test the new editor** on the deployed app once Vercel lands `6165e644`.
+- [ ] **~1 week: pull the name-position A-vs-B read** (completion + purchase per variant) via Resultat modal / `variant_assignments->>'ab_2ce2ce4e-...'` (now unconfounded).
+- [ ] **Editor Phase 2 remainder:** element `Template` library + variant-level Conditional-Routing toggle (deferred, not faked this session).
+- [ ] **Editor Phase 3:** Clarflow-style AI-assistant panel (reuse Adapt logic).
+- [ ] **Landing framing = WILLIAM's copy call**: live H1 is problem-finder ("Hitta din valps största beteendeproblem"); if he wants the plan-builder framing instead, flip the H1 + meta. Optionally re-run the landing headline A/B (recreate landing_b).
+- [ ] **Housekeeping:** MEMORY.md at ~20KB - due for a dedicated compaction pass (target <17KB).
+
+## 2026-07-08 - doginwork Concepts crash + judge visibility + edit UX + attribution (deployed 542aa0df)
+
+Done this session (all live: 5582922a, aae82bcb, 542aa0df):
+- [x] Concepts page crash fixed (one malformed `ad_copy_primary` string nuked the grid via getWizardStep; `asStringArray()` hardening in render helpers/detail fetch/PATCH boundary)
+- [x] valpkurs registered as external LP in the picker (pages id `dd9dea13`) + thumbnail
+- [x] `judge_meta` (score+issues) persisted at generation + shown on list pill on hover + backfilled the 20 doginwork WARN concepts (`scripts/backfill-judge.ts`)
+- [x] Purchase Telegram notification rewritten - honest attribution (referrer + discount code + Klaviyo signal), verified vs 10 real orders
+- [x] Image edit made async (`after()` + client poll by url-change) - fixed the infinite-spinner
+- [x] LP picker shows full destination URLs; async-edit failure indicator; ad `utm_source` meta->facebook
+
+Open / next:
+- [ ] **WILLIAM: review concept #18** ("Min golden bet mig 20-30 gånger...") - the backfill re-judge flipped it WARN->REJECT, so it is now blocked from push. Check whether the blocking issue is a false positive.
+- [ ] **Optional: forward fbclid/fbp in the valpkurs cart links** (`doginwork/scripts/sales_page_html_body.py` + republish) -> stronger FB CAPI match on /valpkurs sales-page purchases (only the quiz funnel forwards them today).
+- [ ] **Optional: email-attributed revenue as a daily-brief line** (pull from Klaviyo) - only if William actually reads the morning brief. Per-order Klaviyo lookup was rejected (Shopify webhook fires before Klaviyo attributes the order).
 
 ## NÄSTA SESSION - efter 2026-07-07
 
@@ -410,9 +459,7 @@ Three major upgrades landed. All running in production for Hydro13; HappySleep d
 
 ## Expense Report & Invoice Tracker
 - [x] ~~**Expense Report feature**~~ - Upload receipts + bank screenshots, AI extracts data in Swedish (Haiku), matches receipts to bank transactions, generates Excel with payment section, downloads receipts as ZIP. Client-side ZIP (JSZip) to avoid Vercel body limit. Commits `9748f68`, `c13f026`, `f21649c`, `c973d9f`. (done 2026-04-11)
-- [ ] **Invoice Tracker redesign Phase 1** - Fix email matching (forwarded emails lose original sender, WisprFlow matches everything). Add `extractOriginalSender()`, two-pass matching, `original_sender` column, fix WisprFlow config, reassign wrongly-matched logs. (plan ready)
-- [ ] **Invoice Tracker redesign Phase 2** - Simplify statuses (9 -> 6 stored + 2 computed). Data migration SQL. (plan ready, depends on Phase 1)
-- [ ] **Invoice Tracker redesign Phase 3** - UI cleanup: consolidate banners, consolidate actions, simplify rows, handle 518 stuck pending logs. (plan ready, depends on Phase 2)
+- [x] ~~**Invoice Tracker redesign Phase 1/2/3**~~ - SUPERSEDED 2026-07-08. Hela den regelbaserade invoice-trackern + auto-forwarder-cronen borttagen (commit `474b1278`) och ersatt av **/bokforing-skillen** (`~/.claude/skills/bokforing/`). Skillen sveper alla underlags-källor (lokal Mail inkl Outlook, Downloads, doginwork/get-renew IMAP, portaler, WhatsApp) och levererar EN mapp med döpta underlag; William bulk-laddar till Juni + matchar failade manuellt. Se memory `bokforing-skill-and-juni-open-issue.md`. Redesign-planerna (email-matching, statusar, UI) är inte längre relevanta - trackern finns inte.
 
 ## Tier 1 — Revenue & Automation
 - [x] ~~**Multi-workspace hardcoding audit**~~ — Full codebase audit (4 parallel agents), fixed 24 files. Removed pausedProducts hiding Hydro13, hardcoded pillow descriptions, `|| "happysleep"` fallbacks, collagen-specific research prompts, HappySleep-specific blog language rules. Commits `69dea06`, `f80afda`. (done 2026-03-27)

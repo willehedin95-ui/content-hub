@@ -1197,9 +1197,11 @@ export default function BrainstormGenerate() {
                 <div className="flex flex-wrap gap-2">
                   {[
                     { value: "auto-detect", label: "Auto-detect" },
-                    { value: "neck-pain", label: "Neck Pain" },
-                    { value: "snoring", label: "Snoring" },
-                    { value: "sleep-quality", label: "Sleep Quality" },
+                    // Pain points come from THIS product's segments. Was hardcoded to
+                    // HappySleep (neck-pain/snoring/sleep-quality), which showed the
+                    // wrong options for every other workspace. Empty segments -> just
+                    // Auto-detect + General.
+                    ...segments.map((s) => ({ value: s.name, label: s.name })),
                     { value: "general", label: "General" },
                   ].map((pp) => (
                     <button
