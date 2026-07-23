@@ -594,10 +594,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Send Meta CAPI Purchase event
+  // Send Meta CAPI Purchase event.
+  //
+  // Skipped when the workspace's Shopify store already reports Purchase through
+  // Shopify's native Facebook & Instagram pixel (Server+Web). That pixel and
+  // this CAPI carry different event_ids (Shopify's own vs `shopify_{order.id}`),
+  // so Meta can't deduplicate the two and DOUBLE-COUNTS every order where both
+  // fire. doginwork audit 2026-07: Meta claimed 80 purchases / 80k SEK against
+  // 56 real orders / 56k. Suppressing this redundant send leaves Shopify's
+  // native pixel as the single Meta source. We still log to meta_capi_events
+  // (our order mirror / ground-truth) and updated the quiz session above.
+  const skipCapiSend =
+    (ws.meta_config as Record<string, unknown>)?.skip_capi_purchase === true;
   const token = process.env.META_SYSTEM_USER_TOKEN;
   let capiResult: { ok: boolean; error?: string; events_received?: number } = { ok: false, error: "no token" };
-  if (token) {
+  if (skipCapiSend) {
+    capiResult = { ok: true };
+  } else if (token) {
     capiResult = await sendCAPIPurchase(ws.pixel_id, token, order, attr);
   }
 
@@ -621,9 +634,13 @@ export async function POST(req: NextRequest) {
       event_time: new Date(order.created_at).toISOString(),
       value: parseFloat(order.total_price),
       currency: order.currency,
-      status: capiResult.ok ? "sent" : "failed",
-      response_data: capiResult.ok ? { events_received: capiResult.events_received } : null,
-      error_message: capiResult.ok ? null : capiResult.error ?? null,
+      status: skipCapiSend ? "skipped" : capiResult.ok ? "sent" : "failed",
+      response_data: skipCapiSend
+        ? { skipped: "native Shopify FB pixel is the single Meta source" }
+        : capiResult.ok
+          ? { events_received: capiResult.events_received }
+          : null,
+      error_message: skipCapiSend ? null : capiResult.ok ? null : capiResult.error ?? null,
       sent_at: new Date().toISOString(),
     },
     { onConflict: "event_id" },
