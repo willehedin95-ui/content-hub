@@ -1,4 +1,4 @@
-import { KIE_MODEL } from "./constants";
+import { KIE_MODEL, IMAGE_MODELS } from "./constants";
 import { withRetry, isTransientError } from "./retry";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
@@ -43,15 +43,17 @@ export async function createImageTask(
   prompt: string,
   imageUrls: string[],
   aspectRatio: string = "2:3",
-  resolution: string = "1K"
+  resolution: string = "1K",
+  model: string = KIE_MODEL
 ): Promise<string> {
-  const input: Record<string, unknown> = {
-    prompt,
-    image_input: imageUrls,
-    aspect_ratio: aspectRatio,
-    resolution,
-    output_format: "png",
-  };
+  // Input schema differs per model family (see IMAGE_MODELS): the reference-image
+  // field name and whether resolution/output_format apply are model-specific.
+  // Unknown model → nano-banana-2 defaults (image_input + resolution + output_format).
+  const cfg = IMAGE_MODELS.find((m) => m.id === model);
+  const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio };
+  input[cfg?.imageField ?? "image_input"] = imageUrls;
+  if (cfg?.includeResolution ?? true) input.resolution = cfg?.resolutionOverride ?? resolution;
+  if (cfg?.outputFormat ?? true) input.output_format = "png";
 
   return withRetry(
     async () => {
@@ -62,7 +64,7 @@ export async function createImageTask(
           Authorization: `Bearer ${getApiKey()}`,
         },
         body: JSON.stringify({
-          model: KIE_MODEL,
+          model,
           input,
         }),
         signal: AbortSignal.timeout(KIE_FETCH_TIMEOUT_MS),
@@ -178,9 +180,10 @@ export async function generateImage(
   imageUrls: string[],
   aspectRatio: string = "2:3",
   resolution: string = "2K",
-  maxPollMs?: number
+  maxPollMs?: number,
+  model: string = KIE_MODEL
 ): Promise<{ urls: string[]; costTimeMs: number | null }> {
-  const taskId = await createImageTask(prompt, imageUrls, aspectRatio, resolution);
+  const taskId = await createImageTask(prompt, imageUrls, aspectRatio, resolution, model);
   return pollTaskResult(taskId, maxPollMs);
 }
 

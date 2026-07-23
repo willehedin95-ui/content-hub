@@ -260,6 +260,7 @@ export interface ConceptImagesStepProps {
   // Competitor swipe variations
   isCompetitorSwipe?: boolean;
   competitorImageUrls?: string[];
+  competitorAdCopy?: string;
   variationState?: {
     generating: boolean;
     count: number;
@@ -319,6 +320,7 @@ export default function ConceptImagesStep({
   onDeleteImage,
   isCompetitorSwipe,
   competitorImageUrls,
+  competitorAdCopy,
   variationState,
   handleGenerateVariations,
   selectedRatio = "4:5",
@@ -326,6 +328,7 @@ export default function ConceptImagesStep({
 }: ConceptImagesStepProps) {
   const wsLanguages = useWorkspaceLanguages();
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
+  const [competitorPreview, setCompetitorPreview] = useState<string | null>(null);
   // Manual per-image QA (checks text/product via vision, text-fixes in place when possible)
   const [qaRunningId, setQaRunningId] = useState<string | null>(null);
   const [qaMessages, setQaMessages] = useState<Record<string, string>>({});
@@ -630,20 +633,43 @@ export default function ConceptImagesStep({
   const renderCompetitorReference = () => {
     if (!isCompetitorSwipe || !competitorImageUrls?.length) return null;
     return (
-      <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Copy className="w-4 h-4 text-gray-500" />
-          <h4 className="text-sm font-medium text-gray-700">Original Competitor Ad</h4>
+      <>
+        <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Copy className="w-4 h-4 text-gray-500" />
+            <h4 className="text-sm font-medium text-gray-700">Original Competitor Ad</h4>
+          </div>
+          <div className="flex gap-3">
+            {competitorImageUrls.map((url, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setCompetitorPreview(url)}
+                className="w-24 rounded-lg overflow-hidden border border-gray-200 shrink-0 cursor-zoom-in hover:border-indigo-300 transition-colors"
+                title="Klicka för att förstora"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt={`Competitor ${i + 1}`} className="w-full aspect-[4/5] object-cover" />
+              </button>
+            ))}
+            {competitorAdCopy?.trim() && (
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Original ad copy</p>
+                <p className="text-xs text-gray-600 whitespace-pre-wrap max-h-40 overflow-y-auto">{competitorAdCopy}</p>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex gap-3">
-          {competitorImageUrls.map((url, i) => (
-            <div key={i} className="w-24 rounded-lg overflow-hidden border border-gray-200 shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`Competitor ${i + 1}`} className="w-full aspect-[4/5] object-cover" />
-            </div>
-          ))}
-        </div>
-      </div>
+        {competitorPreview && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-zoom-out"
+            onClick={() => setCompetitorPreview(null)}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={competitorPreview} alt="Competitor ad (full)" className="max-h-full max-w-full object-contain rounded-lg" />
+          </div>
+        )}
+      </>
     );
   };
 
@@ -872,17 +898,19 @@ export default function ConceptImagesStep({
                     alt={si.filename ?? "Original"}
                     className="w-full h-full object-cover"
                   />
-                  {si.generation_style && (
-                    <span className="absolute left-1.5 top-1.5 max-w-[85%] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                      {STATIC_STYLES.find((s) => s.id === si.generation_style)?.label ?? si.generation_style.replace(/-bot-?$/i, "").replace(/-/g, " ")}
-                    </span>
-                  )}
-                  {si.skip_translation && (
-                    <div className="absolute inset-0 bg-white/40 flex items-center justify-center">
-                      <span className="bg-gray-800/70 text-white text-xs px-2 py-1 rounded">No text</span>
-                    </div>
-                  )}
                 </div>
+                {(si.generation_style || si.skip_translation) && (
+                  <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1.5">
+                    {si.generation_style && (
+                      <span className="inline-block max-w-full truncate rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                        {STATIC_STYLES.find((s) => s.id === si.generation_style)?.label ?? si.generation_style.replace(/-bot-?$/i, "").replace(/-/g, " ")}
+                      </span>
+                    )}
+                    {si.skip_translation && (
+                      <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">No text</span>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between px-2 py-1.5">
                   {onToggleSkip && hasTranslatableLangs && (
                     <label className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0">

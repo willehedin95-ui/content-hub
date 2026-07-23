@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
           // Single competitor image — see autopilot-concepts/route.ts for rationale
           competitor_image_urls: media_urls.slice(0, 1),
           product_hero_urls: [],
+          competitor_ad_copy: adBody ?? "",
         },
         // swipe_progress tracks pipeline steps for the UI
         swipe_progress: { step: "queued", message: "Waiting to start..." },

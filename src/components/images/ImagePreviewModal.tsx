@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { X, RotateCcw, ChevronLeft, ChevronRight, Columns2, ZoomIn, ZoomOut, Maximize2, Loader2, Pencil } from "lucide-react";
 import { SourceImage, Version, LANGUAGES } from "@/types";
 import { deriveImageGrade, gradeConfig } from "@/lib/quality-grades";
+import { IMAGE_MODELS, KIE_MODEL } from "@/lib/constants";
 import QualityDetails from "./QualityDetails";
 
 interface Props {
@@ -12,7 +13,7 @@ interface Props {
   onChangeLang: (lang: string | null) => void;
   onClose: () => void;
   onRetry: (translationId: string) => void;
-  onReroll?: (sourceImageId: string, customInstructions?: string) => void;
+  onReroll?: (sourceImageId: string, customInstructions?: string, model?: string) => void;
   rerollingId?: string | null;
   onPrev?: () => void;
   onNext?: () => void;
@@ -63,6 +64,7 @@ export default function ImagePreviewModal({
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const [showRerollInstructions, setShowRerollInstructions] = useState(false);
   const [rerollText, setRerollText] = useState("");
+  const [rerollModel, setRerollModel] = useState<string>(KIE_MODEL);
 
   // Reset active version when translation changes
   useEffect(() => {
@@ -186,8 +188,19 @@ export default function ImagePreviewModal({
             {/* Re-roll buttons (only for AI-generated originals) */}
             {isOriginal && onReroll && sourceImage.generation_style && (
               <div className="flex items-center gap-0.5 ml-1">
+                <select
+                  value={rerollModel}
+                  onChange={(e) => setRerollModel(e.target.value)}
+                  disabled={rerollingId === sourceImage.id}
+                  className="text-xs border border-gray-200 rounded-lg px-1.5 py-1.5 mr-1 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50 max-w-[9rem]"
+                  title="Bildmodell som används vid re-roll"
+                >
+                  {IMAGE_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
                 <button
-                  onClick={() => onReroll(sourceImage.id)}
+                  onClick={() => onReroll(sourceImage.id, undefined, rerollModel)}
                   disabled={rerollingId === sourceImage.id}
                   className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-l-lg transition-colors disabled:opacity-50"
                   title="Re-roll this image (same prompt, new seed)"
@@ -340,7 +353,7 @@ export default function ImagePreviewModal({
               <p className="text-[10px] text-gray-400">Instructions are appended to the original generation prompt.</p>
               <button
                 onClick={() => {
-                  onReroll(sourceImage.id, rerollText.trim() || undefined);
+                  onReroll(sourceImage.id, rerollText.trim() || undefined, rerollModel);
                   setShowRerollInstructions(false);
                   setRerollText("");
                 }}

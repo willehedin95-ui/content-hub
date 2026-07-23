@@ -7,7 +7,7 @@ import { generateImage } from "@/lib/kie";
 import { generateImageBriefs, resolveReferenceImages, STATIC_STYLES } from "@/lib/static-ad-prompt";
 import { getProductAppearance } from "@/lib/product-appearance";
 import type { StaticStyleId } from "@/lib/constants";
-import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL } from "@/lib/constants";
+import { STORAGE_BUCKET, KIE_MODEL, CLAUDE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
 import { KIE_IMAGE_COST, calcClaudeCost } from "@/lib/pricing";
 import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
@@ -72,10 +72,13 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const { source_image_id, custom_instructions } = body as {
+  const { source_image_id, custom_instructions, model } = body as {
     source_image_id?: string;
     custom_instructions?: string;
+    model?: string;
   };
+  // Validate requested image model against the allowed list; fall back to default.
+  const chosenModel = model && IMAGE_MODEL_IDS.includes(model) ? model : KIE_MODEL;
 
   if (!source_image_id || !isValidUUID(source_image_id)) {
     return NextResponse.json({ error: "source_image_id is required" }, { status: 400 });
@@ -187,7 +190,7 @@ export async function POST(
     let costTimeMs: number | undefined;
     try {
       // Same prompt, different seed → different image from Nano Banana
-      const result = await generateImage(rerollPrompt, referenceUrls, "4:5");
+      const result = await generateImage(rerollPrompt, referenceUrls, "4:5", "2K", undefined, chosenModel);
       resultUrls = result.urls;
       costTimeMs = result.costTimeMs ?? undefined;
     } catch (err) {
@@ -331,7 +334,7 @@ export async function POST(
   let resultUrls: string[] | undefined;
   let costTimeMs: number | undefined;
   try {
-    const result = await generateImage(brief.prompt, referenceUrls, "4:5");
+    const result = await generateImage(brief.prompt, referenceUrls, "4:5", "2K", undefined, chosenModel);
     resultUrls = result.urls;
     costTimeMs = result.costTimeMs ?? undefined;
   } catch (err) {
@@ -393,7 +396,7 @@ export async function POST(
     type: "image_generation",
     page_id: null,
     translation_id: null,
-    model: KIE_MODEL,
+    model: chosenModel,
     input_tokens: 0,
     output_tokens: 0,
     cost_usd: KIE_IMAGE_COST,

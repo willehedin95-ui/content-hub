@@ -273,6 +273,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   // Competitor swipe variation states
   const isCompetitorSwipe = (job.tags ?? []).includes("competitor-swipe");
   const competitorImageUrls = (job.competitor_reference_data as { competitor_image_urls?: string[] } | null)?.competitor_image_urls ?? [];
+  const competitorAdCopy = (job.competitor_reference_data as { competitor_ad_copy?: string } | null)?.competitor_ad_copy ?? "";
   // A concept swiped from a competitor ad has its own competitor->image pipeline (the
   // "Original Competitor Ad" section below). The Genesis image-bot panel is only meaningful
   // for non-swipe concepts (Genesis / brainstorm / autopilot), so hide it on swipe concepts.
@@ -1322,7 +1323,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   }
 
   // Re-roll a single source image
-  async function handleReroll(sourceImageId: string, customInstructions?: string) {
+  async function handleReroll(sourceImageId: string, customInstructions?: string, model?: string) {
     if (rerollingId) return;
     setRerollingId(sourceImageId);
     try {
@@ -1332,6 +1333,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         body: JSON.stringify({
           source_image_id: sourceImageId,
           custom_instructions: customInstructions?.trim() || undefined,
+          model: model || undefined,
         }),
       });
       if (res.ok) {
@@ -1715,6 +1717,7 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         onDeleteImage={handleDeleteImage}
         isCompetitorSwipe={isCompetitorSwipe}
         competitorImageUrls={competitorImageUrls}
+        competitorAdCopy={competitorAdCopy}
         variationState={{
           ...varState,
           setCount: (n: number) => setVarState(prev => ({ ...prev, count: n })),

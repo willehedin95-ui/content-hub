@@ -1,6 +1,22 @@
 export const OPENAI_MODEL = "gpt-5.2";
 export const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
 export const KIE_MODEL = "nano-banana-2";
+
+// Selectable image-generation models for re-roll. Kie's createTask input schema
+// differs per model family — the reference-image field name and whether
+// resolution / output_format apply are model-specific — so each entry carries the
+// schema shape consumed by src/lib/kie.ts. Verified against docs.kie.ai (2026-07):
+//   nano-banana-2 / -pro  -> image_input,  resolution, output_format
+//   nano-banana-2-lite    -> image_urls,   (no resolution, no output_format)
+//   gpt-image-2-i2i       -> input_urls,   resolution (1K for 4:5), no output_format
+export const IMAGE_MODELS = [
+  { id: "gpt-image-2-image-to-image", label: "GPT Image 2", description: "OpenAI — hög precision, stark textrendering", imageField: "input_urls", includeResolution: true, resolutionOverride: "1K", outputFormat: false },
+  { id: "nano-banana-2", label: "Nano Banana 2", description: "Gemini 3.1 Flash — snabb, billig (standard)", imageField: "image_input", includeResolution: true, resolutionOverride: null, outputFormat: true },
+  { id: "nano-banana-2-lite", label: "Nano Banana 2 Lite", description: "Snabbast, lägst latens", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: false },
+  { id: "nano-banana-pro", label: "Nano Banana Pro", description: "Gemini 3 Pro — bäst kvalitet + text", imageField: "image_input", includeResolution: true, resolutionOverride: null, outputFormat: true },
+] as const;
+export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];
+export const IMAGE_MODEL_IDS = IMAGE_MODELS.map((m) => m.id) as readonly string[];
 export const STORAGE_BUCKET = "translated-images";
 
 // Feature flag: JSON-structured prompts for native ad styles (native-closeup, native-messy).
