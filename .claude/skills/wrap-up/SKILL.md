@@ -1,7 +1,6 @@
 ---
 name: wrap-up
 description: End-of-session routine — commit code, journal what happened, review for self-improvement, update memory and rules
-disable-model-invocation: true
 ---
 
 # Session Wrap-Up
