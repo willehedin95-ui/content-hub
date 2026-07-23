@@ -1,7 +1,27 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-23 (doginwork Meta attribution fix + cron/uptime false-alarm fixes deployed; GetHookd swipe + pain-point UI fix committad-ej-pushad - se journal LATEST)
+Updated: 2026-07-23 (kväll) - ads-UI-fixar + koncept-detaljsidan + re-roll-omarbetning deployed 04891d02..4076c38b - se journal LATEST
 
-## 2026-07-23 - doginwork Meta over-reporting fix + ads tooling (deployed dc242b80..e499b855; pain-point fix committad-ej-pushad)
+## 2026-07-23 (kväll) - ads-UI-fixar + koncept-detaljsidan + re-roll-omarbetning (deployed 04891d02..4076c38b)
+
+Done this session:
+- [x] **Genesis-panel döljs på swipe-koncept** (`04891d02`) - gejtades på visual_direction (finns överallt); nu !isSwipeConcept. Tog med pain-point-fixen i Brainstorm (förra sessionens committad-ej-pushad).
+- [x] **Ad Spy pain-point-väljaren product-aware** (`09fe4bfc`) - var hårdkodat HappySleep i BoardFeed; nu getProductAngles(product). WorkspaceProvider fick product-fält.
+- [x] **HappySleep-hårdkodnings-jakt klar** (läst source): SwiperAngle=död kod, autopilot redan generaliserad+cron av, AngleSelector live men pages.angle okonsumerad. Genesis+Ad Spy pain-point var de enda live-buggarna.
+- [x] **Lokal ANTHROPIC_API_KEY fixad** - ny nyckel i 1Password Dropship "API Credentials"/"Claude API"; hämtad via op, i .env.local, HTTP 200.
+- [x] **Ad Spy-board** "Doginwork konkurrenter (hund-statics)" (id 307695, 17 statics) + registrerad i `gethookd_board_ids`. William bläddrar+swipar själv.
+- [x] **Koncept-detaljsidan UX** (`78f3db63`, `847b7d01`): klickbar competitor→lightbox, badges under bild, competitor ad copy sparas+visas (backfill 10/12), opacity-60-bleking borttagen.
+- [x] **Bild-modellväljare vid re-roll** - 4 Kie-modeller (gpt-image-2, nano-banana-2/lite/pro) med per-modell input-scheman i kie.ts (`IMAGE_MODELS`). Minne `content-hub-adspy-and-image-models.md`.
+- [x] **Re-roll-omarbetning** (`4076c38b`): manuell re-roll auto-översätter EJ (bara ny original); `generation_model`-kolumn+visning; parallell re-roll (Set); competitor i alla vyer; preview-sizing-fix.
+
+Open / next (William verifierar på prod - kan ej live-testas lokalt pga auth):
+- [ ] **Preview-sizing (#2):** löste `inline-flex`-fixen inzoomningen? Ev. iterera preview-modal-layout live med William.
+- [ ] **First-run-testa gpt-image-2 + nano-banana-2-lite** (re-rolla en bild med var) - schema-verifierat mot docs, ej skarpt kört. Failar → justera `IMAGE_MODELS`/kie.ts.
+- [ ] **Bevaka attributions-fixen** (från `e499b855`): Metas doginwork-köp ~80→~56 kommande dagar (meta_capi_events vs Meta insights).
+- [ ] Ev. "översätt den här"-knapp på bild (re-roll lämnar nu "Original only") om William vill.
+- [ ] Ev. `DOGINWORK_ANGLES` i product-angles.ts (hund-pain-points) om William vill vinkel-snabbval.
+- [ ] Valfritt: konkurrent-swipes genom Genesis (kör nu äldre brainstorm-pipeline).
+
+## 2026-07-23 - doginwork Meta over-reporting fix + ads tooling (deployed dc242b80..e499b855)
 
 Done this session:
 - [x] **doginwork Meta överrapporterar ~2.4x** - verifierat vs Shopify-facit (80 hävdade vs 56 verkliga, 30d; sann Meta-ROAS ~1.15-1.4x ej 2.81x). Orsak: Shopify native FB-pixel + vår webhook-CAPI dubbelräknar (olika event_ids) + view-through. Fix `e499b855`: `meta_config.skip_capi_purchase=true` för doginwork -> Shopify native pixel = enda Meta-källan. Flagga SATT. Minne `doginwork-meta-attribution.md`.
@@ -11,13 +31,13 @@ Done this session:
 - [x] Live swipe-demo: Ad Spy-swipern -> doginwork-koncept #42 "Stressad Valp vs Lugn Valp" (`/images/0c9f60cd-...`). Kördes via prod-cron (lokal ANTHROPIC-nyckel död).
 - [x] Ads-UI-fix (committad, EJ pushad): BrainstormGenerate.tsx pain-point-knappar hämtas nu från produktens segment (var hårdkodat HappySleep).
 
-Open / next (ads-arbetet fortsätter - ny agent):
-- [ ] **Pusha pain-point-fixen** (BrainstormGenerate.tsx) när ads-batchen är klar + William bekräftar.
-- [ ] **Hitta fler HappySleep-hårdkodningar i ads-UI/pipeline** (SwiperAngle `types/index.ts:618`, autopilot-keyword-listor, landing-angle-presets) - generalisera per workspace.
-- [ ] **Bevaka attributions-fixen:** Metas doginwork-köp ska falla ~80 -> ~56 kommande dagar (meta_capi_events vs Meta insights).
-- [ ] Valfritt: koppla konkurrent-swipes genom Genesis (Copy Coders + creative-judge) om William vill (kör nu den äldre brainstorm-pipelinen).
-- [ ] Uppdatera den återkallade lokala ANTHROPIC_API_KEY i content-hub/.env.local så lokala swipe/brainstorm-script kör.
-- [ ] 12 konkurrent-statics i GetHookd swipe file redo att swipas till koncept.
+Open / next → mestadels klara i kväll-sessionen ovan:
+- [x] ~~Pusha pain-point-fixen~~ (pushad `04891d02`)
+- [x] ~~Hitta fler HappySleep-hårdkodningar~~ (klar - Genesis + Ad Spy pain-point var de enda live-buggarna; SwiperAngle/autopilot/AngleSelector döda/generaliserade)
+- [x] ~~Uppdatera lokal ANTHROPIC_API_KEY~~ (fixad från 1Password Dropship)
+- [x] ~~12 konkurrent-statics redo att swipas~~ (nu i Ad Spy-board 307695 - William bläddrar/swipar själv)
+- [ ] **Bevaka attributions-fixen** (flyttad till kväll-sektionen ovan).
+- [ ] Valfritt: konkurrent-swipes genom Genesis (kvar, kväll-sektionen).
 
 ## 2026-07-10 - Clarflow editor rebuild + live quiz bug fix + A/B cleanup (deployed 02fb8d40..6165e644)
 
