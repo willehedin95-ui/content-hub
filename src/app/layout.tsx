@@ -47,7 +47,7 @@ export default async function RootLayout({
       </head>
       <body className="flex min-h-screen bg-gray-50">
           {user ? (
-            <WorkspaceProvider activeLanguages={activeWs?.languages ?? []} slug={activeWs?.slug ?? "happysleep"}>
+            <WorkspaceProvider activeLanguages={activeWs?.languages ?? []} slug={activeWs?.slug ?? "happysleep"} product={(activeWs?.settings as { default_product?: string } | undefined)?.default_product ?? "happysleep"}>
               <Sidebar userEmail={user.email} workspaces={workspaces} activeWorkspaceSlug={activeWorkspaceSlug} />
               <main className="flex-1 overflow-auto">{children}</main>
             </WorkspaceProvider>

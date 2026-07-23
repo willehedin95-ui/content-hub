@@ -7,6 +7,8 @@ import {
   SWIPE_FORMAT_OPTIONS,
   type SwipeVideoFormatId,
 } from "@/lib/video-format-aesthetics";
+import { useWorkspaceProduct } from "@/components/WorkspaceProvider";
+import { getProductAngles } from "@/lib/product-angles";
 
 type VideoStyle = "ugc" | "pixar_animation";
 
@@ -38,6 +40,13 @@ type TypeFilter = "all" | "image" | "video";
 
 export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }) {
   const router = useRouter();
+  const product = useWorkspaceProduct();
+  // Pain-point quick-picks come from the active workspace's product angles,
+  // not a HappySleep-hardcoded list. "Auto" (auto-detect) always leads.
+  const painPointOptions = [
+    { value: "auto-detect", label: "Auto" },
+    ...getProductAngles(product).angles.map((a) => ({ value: a.value, label: a.label })),
+  ];
   const [ads, setAds] = useState<BoardAd[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -358,13 +367,7 @@ export default function BoardFeed({ onBatchSwipe }: { onBatchSwipe: () => void }
         <span className="text-gray-300 mx-1">|</span>
 
         <span className="text-xs font-medium text-gray-500 shrink-0">Pain Point:</span>
-        {[
-          { value: "auto-detect", label: "Auto" },
-          { value: "neck-pain", label: "Neck Pain" },
-          { value: "snoring", label: "Snoring" },
-          { value: "sleep-quality", label: "Sleep Quality" },
-          { value: "general", label: "General" },
-        ].map((pp) => (
+        {painPointOptions.map((pp) => (
           <button
             key={pp.value}
             onClick={() => setPainPoint(pp.value)}

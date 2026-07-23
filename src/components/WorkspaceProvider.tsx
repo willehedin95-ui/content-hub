@@ -8,20 +8,24 @@ type LanguageInfo = (typeof LANGUAGES)[number];
 interface WorkspaceContextValue {
   languages: LanguageInfo[];
   slug: string;
+  product: string;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue>({
   languages: LANGUAGES,
   slug: "happysleep",
+  product: "happysleep",
 });
 
 export function WorkspaceProvider({
   activeLanguages,
   slug,
+  product,
   children,
 }: {
   activeLanguages: string[];
   slug: string;
+  product: string;
   children: React.ReactNode;
 }) {
   const languages = useMemo(
@@ -33,7 +37,7 @@ export function WorkspaceProvider({
   );
 
   return (
-    <WorkspaceContext.Provider value={{ languages, slug }}>
+    <WorkspaceContext.Provider value={{ languages, slug, product }}>
       {children}
     </WorkspaceContext.Provider>
   );
@@ -46,4 +50,9 @@ export function useWorkspaceLanguages(): LanguageInfo[] {
 
 export function useWorkspaceSlug(): string {
   return useContext(WorkspaceContext).slug;
+}
+
+/** Returns the current workspace's default product slug (for product-aware selectors). */
+export function useWorkspaceProduct(): string {
+  return useContext(WorkspaceContext).product;
 }
