@@ -273,6 +273,10 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
   // Competitor swipe variation states
   const isCompetitorSwipe = (job.tags ?? []).includes("competitor-swipe");
   const competitorImageUrls = (job.competitor_reference_data as { competitor_image_urls?: string[] } | null)?.competitor_image_urls ?? [];
+  // A concept swiped from a competitor ad has its own competitor->image pipeline (the
+  // "Original Competitor Ad" section below). The Genesis image-bot panel is only meaningful
+  // for non-swipe concepts (Genesis / brainstorm / autopilot), so hide it on swipe concepts.
+  const isSwipeConcept = isCompetitorSwipe || competitorImageUrls.length > 0;
   const [varState, setVarState] = useState<{
     generating: boolean;
     count: number;
@@ -1655,8 +1659,8 @@ export default function ImageJobDetail({ initialJob, autoIterate, iterateMarket,
         </div>
       )}
 
-      {/* ===== Genesis image-bot static ads ===== */}
-      {job.visual_direction && (
+      {/* ===== Genesis image-bot static ads (hidden on competitor-swipe concepts) ===== */}
+      {job.visual_direction && !isSwipeConcept && (
         <div className="mb-4">
           <GenesisStaticPanel jobId={job.id} onDone={() => refreshJob()} />
         </div>
