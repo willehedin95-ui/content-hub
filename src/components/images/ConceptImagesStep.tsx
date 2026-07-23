@@ -882,7 +882,7 @@ export default function ConceptImagesStep({
           {/* Source images preview */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
             {sourceImages.map((si) => (
-              <div key={si.id} className={`bg-white border rounded-lg overflow-hidden relative group transition-colors ${si.skip_translation ? "border-gray-300 opacity-60" : "border-gray-200"}`}>
+              <div key={si.id} className={`bg-white border rounded-lg overflow-hidden relative group transition-colors ${si.skip_translation ? "border-gray-300" : "border-gray-200"}`}>
                 <div
                   className="aspect-[4/5] bg-gray-50 relative cursor-pointer"
                   onClick={() => { setPreviewImage(si); setPreviewLang(null); }}
