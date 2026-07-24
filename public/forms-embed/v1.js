@@ -28,6 +28,8 @@
   var FORM_SLUG = script.getAttribute("data-form") || "";
   var MARKET = script.getAttribute("data-market") || "se";
   var TARGET_SEL = script.getAttribute("data-target") || "";
+  // Testläge: submission sparas märkt is_test, ingen helpdesk-ticket skapas
+  var IS_TEST = script.getAttribute("data-test") === "1";
 
   var container = TARGET_SEL ? document.querySelector(TARGET_SEL) : null;
   if (!container) {
@@ -362,6 +364,7 @@
             clientSubmissionId: clientSubmissionId,
             answers: collectAnswers(),
             files: files,
+            isTest: IS_TEST,
             website: hpInput ? hpInput.value : "",
           }),
         }).then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); });

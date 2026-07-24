@@ -68,8 +68,10 @@ export async function middleware(request: NextRequest) {
     "/api/loop",
     "/api/shopify/customer",
     // Self-hosted support forms: embed bundle + public runtime endpoints
-    // (config fetch, submit, file upload) called from the brands' Shopify domains
+    // (config fetch, submit, file upload) called from the brands' Shopify domains,
+    // plus /f standalone form pages (direct links; /forms inbox stays gated)
     "/forms-embed",
+    "/f",
     "/api/forms/config",
     "/api/forms/submit",
     "/api/forms/upload",

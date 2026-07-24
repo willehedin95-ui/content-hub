@@ -34,6 +34,8 @@ interface SubmitBody {
   answers?: SubmissionAnswer[];
   files?: SubmissionFile[];
   turnstileToken?: string;
+  /** Testläge (från /f-sidans ?test=1): spara märkt is_test, ingen leverans. */
+  isTest?: boolean;
   /** Honeypot - real users never fill this. */
   website?: string;
 }
@@ -154,6 +156,7 @@ export async function POST(req: NextRequest) {
   const gate = evaluateDateGate(form.config, answers);
   const name = buildFullName(form.config, answers);
   const orderNumber = extractOrderNumber(form.config, answers);
+  const isTest = body.isTest === true;
 
   // Persist-first. Idempotent on client_submission_id: double-clicks and
   // network retries can never create duplicate rows (or duplicate tickets).
@@ -173,8 +176,11 @@ export async function POST(req: NextRequest) {
         user_agent: (req.headers.get("user-agent") || "").slice(0, 300),
         origin: req.headers.get("origin") || null,
       },
+      is_test: isTest,
       gate_status: gate,
-      delivery_status: gate ? "skipped" : "pending",
+      // Testläge levererar aldrig till helpdesk; gate-utvärderingen behålls
+      // så testläget visar samma ending som skarp drift skulle göra.
+      delivery_status: gate || isTest ? "skipped" : "pending",
     },
     { onConflict: "client_submission_id", ignoreDuplicates: true }
   );
@@ -193,7 +199,7 @@ export async function POST(req: NextRequest) {
     .single<{ id: string; gate_status: string | null; delivery_status: string }>();
 
   // Deliver after the response + opportunistically sweep old pending rows.
-  if (row && !gate) {
+  if (row && !gate && !isTest) {
     const submissionId = row.id;
     after(async () => {
       try {
