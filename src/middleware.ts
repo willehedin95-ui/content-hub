@@ -67,6 +67,12 @@ export async function middleware(request: NextRequest) {
     // Hydro13 iOS app lookups (auth via x-api-key header)
     "/api/loop",
     "/api/shopify/customer",
+    // Self-hosted support forms: embed bundle + public runtime endpoints
+    // (config fetch, submit, file upload) called from the brands' Shopify domains
+    "/forms-embed",
+    "/api/forms/config",
+    "/api/forms/submit",
+    "/api/forms/upload",
   ];
   const path = request.nextUrl.pathname;
   if (

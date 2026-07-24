@@ -89,6 +89,8 @@ export async function GET(req: NextRequest) {
     imageBatchesFailed: 0,
     importingPagesFailed: 0,
     videoJobsFailed: 0,
+    formDeliveriesRetried: 0,
+    formSyntheticTest: null as string | null,
     watchdogAlerts: [] as string[],
     watchdogNeverRun: [] as string[],
   };
@@ -324,6 +326,25 @@ export async function GET(req: NextRequest) {
       summary.videoJobsFailed = stuckVideos?.length ?? 0;
     }
 
+    // --- 9.5 Retry due form-submission deliveries (self-hosted forms) ---
+    // Persist-first design: submissions sit in form_submissions until a
+    // helpdesk delivery succeeds. This sweep is the cron-backed safety net;
+    // exhausted retries alert via Telegram inside deliverSubmission.
+    // Never let form sweep errors break the reconcile steps around it.
+    try {
+      const { sweepPendingDeliveries, runSyntheticFormTest } = await import("@/lib/form-delivery");
+      summary.formDeliveriesRetried = await sweepPendingDeliveries(10);
+
+      // Daily synthetic capture test, piggybacked on the 07:00-07:30 UTC run
+      const nowDate = new Date();
+      if (nowDate.getUTCHours() === 7 && nowDate.getUTCMinutes() < 30) {
+        const synth = await runSyntheticFormTest();
+        summary.formSyntheticTest = synth.ok ? "ok" : `failed: ${synth.error}`;
+      }
+    } catch (formErr) {
+      console.error("[Reconcile] Form delivery sweep failed (non-fatal):", formErr);
+    }
+
     // --- 10. Dead-man watchdog for scheduled crons ---
     // Never let watchdog errors break the reconcile sweeps above.
     try {
@@ -395,6 +416,7 @@ export async function GET(req: NextRequest) {
       summary.imageBatchesFailed +
       summary.importingPagesFailed +
       summary.videoJobsFailed +
+      summary.formDeliveriesRetried +
       summary.watchdogAlerts.length;
 
     if (totalActions > 0) {
