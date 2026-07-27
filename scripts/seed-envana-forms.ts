@@ -64,13 +64,13 @@ const kontakt: FormConfig = {
       kind: "info",
       key: "info_andra_order",
       showWhen: { field: "topic", in: ["andra_order"] },
-      html: `<p>Tyvärr är det inte möjligt att avbryta eller ändra en redan lagd order. Vårt orderflöde är välorganiserat och involverar flera system, vilket gör det svårt att göra ändringar i efterhand.</p><p>Om ordern ännu inte har skickats kan vi försöka anpassa den enligt dina önskemål, så se till att kontakta oss snarast möjligt.</p><p>För mer information om våra villkor, vänligen läs mer här:</p><p><a href="${STORE}/pages/leverans-returer" target="_blank" rel="noopener">${STORE.replace("https://", "")}/pages/leverans-returer</a></p>`,
+      html: `<p>Tyvärr är det inte möjligt att avbryta eller ändra en redan lagd order. Vårt orderflöde är välorganiserat och involverar flera system, vilket gör det svårt att göra ändringar i efterhand.</p><p>Om ordern ännu inte har skickats kan vi försöka anpassa den enligt dina önskemål, så se till att kontakta oss snarast möjligt.</p><p>För mer information om våra villkor, vänligen läs mer här:</p><p><a href="${STORE}/pages/kopvillkor" target="_blank" rel="noopener">${STORE.replace("https://", "")}/pages/kopvillkor</a></p>`,
     },
     {
       kind: "info",
       key: "info_retur",
       showWhen: { field: "topic", in: ["retur"] },
-      html: `<p>Du har 14 dagars ångerrätt från det att du mottagit din leverans. Oöppnade och förseglade flaskor kan returneras för full återbetalning.</p><p><strong>Viktigt att veta:</strong></p><p>Öppnade eller brutna förseglingar kan inte returneras enligt livsmedelslagstiftningen. Om du har öppnat produkten och inte är nöjd med resultatet kan du istället ansöka om vår <a href="${STORE}/pages/garanti-hydro13" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p><p>Vill du returnera oöppnade flaskor? Fyll i vårt <a href="${STORE}/pages/returformular" target="_blank" rel="noopener">returformulär här</a></p>`,
+      html: `<p>Du har 14 dagars ångerrätt från det att du mottagit din leverans. Oöppnade och förseglade flaskor kan returneras för full återbetalning.</p><p><strong>Viktigt att veta:</strong></p><p>Öppnade eller brutna förseglingar kan inte returneras enligt livsmedelslagstiftningen. Om du har öppnat produkten och inte är nöjd med resultatet kan du istället ansöka om vår <a href="${STORE}/pages/garanti" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p><p>Vill du returnera oöppnade flaskor? Fyll i vårt <a href="${STORE}/pages/returformular" target="_blank" rel="noopener">returformulär här</a></p>`,
     },
     {
       kind: "info",
@@ -106,7 +106,7 @@ const kontakt: FormConfig = {
       kind: "info",
       key: "info_garanti",
       showWhen: { field: "topic", in: ["garanti"] },
-      html: `<p>Vi erbjuder 60 dagars resultatgaranti på Hydro13. Innan du ansöker behöver du läsa igenom garantivillkoren så att du vet vad som gäller och hur processen fungerar.</p><p><a href="${STORE}/pages/garanti-hydro13" target="_blank" rel="noopener">Läs garantivillkoren och fyll i ansökan här →</a></p><p>Har du frågor om garantin? Fyll i formuläret nedan.</p>`,
+      html: `<p>Vi erbjuder 60 dagars resultatgaranti på Marint Kollagen. Innan du ansöker behöver du läsa igenom garantivillkoren så att du vet vad som gäller och hur processen fungerar.</p><p><a href="${STORE}/pages/garanti" target="_blank" rel="noopener">Läs garantivillkoren och fyll i ansökan här →</a></p><p>Har du frågor om garantin? Fyll i formuläret nedan.</p>`,
     },
     { kind: "text", key: "first_name", label: "Förnamn", required: true, role: "first_name" },
     { kind: "text", key: "last_name", label: "Efternamn", required: true, role: "last_name" },
@@ -133,7 +133,7 @@ const kontakt: FormConfig = {
 // 2. Returformulär (datum-gate: max 14 dagar efter leverans)
 // ---------------------------------------------------------------------------
 const retur: FormConfig = {
-  intro: `<p>Du har 14 dagars ångerrätt från det att du mottagit din leverans. Läs igenom informationen nedan innan du skickar in din ansökan.</p><p><strong>VIKTIGT INNAN DU RETURNERAR:</strong></p><ul><li>Endast oöppnade flaskor med intakt försegling accepteras</li><li>Du står för returfrakten och returen måste skickas spårbart</li><li>Skicka returen som vanligt paket, inte som rekommenderat brev</li><li>Skicka inte tillbaka produkter innan du fått returinstruktioner från oss</li></ul><p><strong>Har du öppnat flaskorna?</strong> Öppnade flaskor kan inte returneras. Om du har använt produkten och inte är nöjd kan du istället ansöka om vår <a href="${STORE}/pages/garanti-hydro13" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p><p>För fullständig information, se våra <a href="${STORE}/pages/kopvillkor" target="_blank" rel="noopener">köpvillkor</a>.</p>`,
+  intro: `<p>Du har 14 dagars ångerrätt från det att du mottagit din leverans. Läs igenom informationen nedan innan du skickar in din ansökan.</p><p><strong>VIKTIGT INNAN DU RETURNERAR:</strong></p><ul><li>Endast oöppnade flaskor med intakt försegling accepteras</li><li>Du står för returfrakten och returen måste skickas spårbart</li><li>Skicka returen som vanligt paket, inte som rekommenderat brev</li><li>Skicka inte tillbaka produkter innan du fått returinstruktioner från oss</li></ul><p><strong>Har du öppnat flaskorna?</strong> Öppnade flaskor kan inte returneras. Om du har använt produkten och inte är nöjd kan du istället ansöka om vår <a href="${STORE}/pages/garanti" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p><p>För fullständig information, se våra <a href="${STORE}/pages/kopvillkor" target="_blank" rel="noopener">köpvillkor</a>.</p>`,
   submitLabel: "Skicka in",
   ticket: { kindLabel: "Retur", priority: 1 },
   dateGate: { maxDays: 14 },
@@ -171,7 +171,7 @@ const retur: FormConfig = {
     },
     too_late: {
       title: "Tyvärr har returfristen passerat",
-      html: `<p>Det har gått mer än 14 dagar sedan du mottog din leverans, vilket innebär att ångerrätten tyvärr inte längre gäller.</p><p>Har du använt produkten utan önskat resultat? Då kan du istället ha rätt till vår <a href="${STORE}/pages/garanti-hydro13" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p>`,
+      html: `<p>Det har gått mer än 14 dagar sedan du mottog din leverans, vilket innebär att ångerrätten tyvärr inte längre gäller.</p><p>Har du använt produkten utan önskat resultat? Då kan du istället ha rätt till vår <a href="${STORE}/pages/garanti" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p>`,
     },
   },
 };
@@ -180,7 +180,7 @@ const retur: FormConfig = {
 // 3. Kollagen-garanti (datum-gate: 60-90 dagar efter första leverans)
 // ---------------------------------------------------------------------------
 const garanti: FormConfig = {
-  intro: `<p><strong>Hydro13 - Ansökan om 60 dagars resultatgaranti</strong></p><p>Har du använt Hydro13 dagligen i minst 60 dagar utan önskat resultat? Då kan du ansöka om full återbetalning för upp till 3 flaskor.</p><p><strong>Observera:</strong></p><ul><li>Garantin gäller vid daglig användning i minst 60 dagar (= minst 3 flaskor)</li><li>Ansökan måste göras inom 90 dagar från första leverans</li><li>Öppnade flaskor behöver inte returneras</li><li>Eventuell prenumeration måste pausas/avslutas innan ansökan</li></ul><p>Vi granskar din ansökan och återkommer inom 5 arbetsdagar.</p>`,
+  intro: `<p><strong>Marint Kollagen - Ansökan om 60 dagars resultatgaranti</strong></p><p>Har du använt Marint Kollagen dagligen i minst 60 dagar utan önskat resultat? Då kan du ansöka om full återbetalning för upp till 3 flaskor.</p><p><strong>Observera:</strong></p><ul><li>Garantin gäller vid daglig användning i minst 60 dagar (= minst 3 flaskor)</li><li>Ansökan måste göras inom 90 dagar från första leverans</li><li>Öppnade flaskor behöver inte returneras</li><li>Eventuell prenumeration måste pausas/avslutas innan ansökan</li></ul><p>Vi granskar din ansökan och återkommer inom 5 arbetsdagar.</p>`,
   submitLabel: "Skicka in",
   ticket: { kindLabel: "Garanti", priority: 1 },
   dateGate: { minDays: 60, maxDays: 90 },
@@ -195,7 +195,7 @@ const garanti: FormConfig = {
       label: "Datum för första leverans",
       required: true,
       role: "delivery_date",
-      help: "Ungefärligt datum då du fick din allra första Hydro13-leverans",
+      help: "Ungefärligt datum då du fick din allra första leverans av Marint Kollagen",
     },
     {
       kind: "radio",
@@ -212,7 +212,7 @@ const garanti: FormConfig = {
     {
       kind: "radio",
       key: "daily_usage",
-      label: "Har du använt Hydro13 dagligen?",
+      label: "Har du använt Marint Kollagen dagligen?",
       required: true,
       options: [
         { value: "ja", label: "Ja, varje dag" },
@@ -223,7 +223,7 @@ const garanti: FormConfig = {
     {
       kind: "radio",
       key: "goal",
-      label: "Vad var ditt mål med Hydro13?",
+      label: "Vad var ditt mål med Marint Kollagen?",
       required: true,
       options: [
         { value: "hud", label: "Bättre hud (fasthet, elasticitet)" },
@@ -266,7 +266,7 @@ const garanti: FormConfig = {
     {
       kind: "radio",
       key: "active_subscription",
-      label: "Har du en aktiv Hydro13-prenumeration?",
+      label: "Har du en aktiv prenumeration?",
       required: true,
       options: [
         { value: "nej", label: "Nej" },
@@ -283,7 +283,7 @@ const garanti: FormConfig = {
       kind: "checkbox",
       key: "confirm",
       label: "Jag godkänner",
-      text: "Jag bekräftar att jag har använt Hydro13 dagligen i minst 60 dagar och att uppgifterna stämmer.",
+      text: "Jag bekräftar att jag har använt Marint Kollagen dagligen i minst 60 dagar och att uppgifterna stämmer.",
       required: true,
     },
   ],
@@ -294,11 +294,11 @@ const garanti: FormConfig = {
     },
     too_early: {
       title: "Din ansökan är för tidig",
-      html: `<p>Resultatgarantin gäller efter minst 60 dagars daglig användning, och det har inte gått 60 dagar sedan din första leverans ännu.</p><p>Fortsätt använda Hydro13 dagligen och återkom när 60 dagar har passerat - ansökan ska göras inom 90 dagar från första leveransen.</p>`,
+      html: `<p>Resultatgarantin gäller efter minst 60 dagars daglig användning, och det har inte gått 60 dagar sedan din första leverans ännu.</p><p>Fortsätt använda Marint Kollagen dagligen och återkom när 60 dagar har passerat - ansökan ska göras inom 90 dagar från första leveransen.</p>`,
     },
     too_late: {
       title: "Tyvärr har ansökningsfristen passerat",
-      html: `<p>Ansökan om resultatgarantin måste göras inom 90 dagar från din första leverans, och den fristen har tyvärr passerat.</p><p>Har du frågor? <a href="${STORE}/pages/kontakta-oss" target="_blank" rel="noopener">Kontakta oss här</a>.</p>`,
+      html: `<p>Ansökan om resultatgarantin måste göras inom 90 dagar från din första leverans, och den fristen har tyvärr passerat.</p><p>Har du frågor? <a href="${STORE}/pages/kontakt" target="_blank" rel="noopener">Kontakta oss här</a>.</p>`,
     },
   },
 };
@@ -344,7 +344,7 @@ async function main() {
   const forms: Array<{ slug: string; name: string; config: FormConfig }> = [
     { slug: "kontakt", name: "Kontakta oss (Envana)", config: kontakt },
     { slug: "retur", name: "Returformulär (Envana)", config: retur },
-    { slug: "garanti", name: "Kollagen-garanti (Envana)", config: garanti },
+    { slug: "garanti", name: "Garantiansökan (Envana)", config: garanti },
     { slug: "angerratt", name: "Ångerrätt EU (Envana)", config: angerratt },
   ];
 
