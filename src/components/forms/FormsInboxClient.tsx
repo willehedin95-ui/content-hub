@@ -46,6 +46,14 @@ interface FormListItem {
   status: string;
 }
 
+interface TicketInfo {
+  loading: boolean;
+  url?: string;
+  statusLabel?: string;
+  updatedAt?: string | null;
+  deleted?: boolean;
+}
+
 const STATUS_FILTERS = [
   { value: "", label: "Alla" },
   { value: "pending", label: "Väntar" },
@@ -88,9 +96,11 @@ export default function FormsInboxClient() {
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
   const [forms, setForms] = useState<FormListItem[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [formFilter, setFormFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
+  const [tickets, setTickets] = useState<Record<string, TicketInfo>>({});
 
   const load = useCallback(async () => {
     try {
@@ -119,12 +129,32 @@ export default function FormsInboxClient() {
   }, [forms]);
 
   const toggleExpanded = (id: string) => {
+    const willOpen = !expanded.has(id);
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    // Live Freshdesk-status vid expandering (en gång per rad)
+    if (willOpen && !tickets[id]) {
+      const sub = submissions.find((s) => s.id === id);
+      if (sub?.ticket_id) {
+        setTickets((prev) => ({ ...prev, [id]: { loading: true } }));
+        fetch(`/api/forms/submissions/${id}/ticket`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            const t = data?.ticket ?? null;
+            setTickets((prev) => ({
+              ...prev,
+              [id]: t
+                ? { loading: false, url: t.url, statusLabel: t.statusLabel, updatedAt: t.updatedAt, deleted: t.deleted }
+                : { loading: false },
+            }));
+          })
+          .catch(() => setTickets((prev) => ({ ...prev, [id]: { loading: false } })));
+      }
+    }
   };
 
   const retry = async (id: string) => {
@@ -142,6 +172,26 @@ export default function FormsInboxClient() {
   };
 
   const problemCount = submissions.filter((s) => s.delivery_status === "failed").length;
+
+  const visibleSubmissions = useMemo(
+    () => (formFilter ? submissions.filter((s) => s.form_id === formFilter) : submissions),
+    [submissions, formFilter]
+  );
+
+  // Statistik över senaste laddningen (exkl. syntetiska tester)
+  const stats = useMemo(() => {
+    const real = visibleSubmissions.filter((s) => !s.is_test);
+    const now = Date.now();
+    const week = real.filter((s) => now - new Date(s.created_at).getTime() < 7 * 24 * 60 * 60 * 1000);
+    return {
+      week: week.length,
+      total: real.length,
+      delivered: real.filter((s) => s.delivery_status === "delivered").length,
+      pending: real.filter((s) => s.delivery_status === "pending").length,
+      failed: real.filter((s) => s.delivery_status === "failed").length,
+      gated: real.filter((s) => s.delivery_status === "skipped").length,
+    };
+  }, [visibleSubmissions]);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -171,7 +221,27 @@ export default function FormsInboxClient() {
         </div>
       )}
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {[
+          { label: "Senaste 7 dagarna", value: stats.week },
+          { label: "Levererade", value: stats.delivered },
+          { label: "Väntar", value: stats.pending },
+          { label: "Misslyckade", value: stats.failed, alert: stats.failed > 0 },
+          { label: "Utanför fönster", value: stats.gated },
+        ].map((t) => (
+          <div
+            key={t.label}
+            className={`rounded-xl border px-3 py-2 ${
+              t.alert ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"
+            }`}
+          >
+            <div className={`text-lg font-bold ${t.alert ? "text-red-700" : "text-gray-900"}`}>{t.value}</div>
+            <div className="text-xs text-gray-500">{t.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {STATUS_FILTERS.map((f) => (
           <button
             key={f.value}
@@ -185,18 +255,30 @@ export default function FormsInboxClient() {
             {f.label}
           </button>
         ))}
+        <select
+          value={formFilter}
+          onChange={(e) => setFormFilter(e.target.value)}
+          className="ml-auto rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700"
+        >
+          <option value="">Alla formulär</option>
+          {forms.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name} ({f.market.toUpperCase()})
+            </option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
         <div className="text-gray-500 text-sm py-12 text-center">Laddar...</div>
-      ) : submissions.length === 0 ? (
+      ) : visibleSubmissions.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white py-16 text-center text-gray-500">
           <Inbox className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-          Inga submissions ännu{statusFilter ? " med det filtret" : ""}.
+          Inga submissions ännu{statusFilter || formFilter ? " med det filtret" : ""}.
         </div>
       ) : (
         <div className="space-y-2">
-          {submissions.map((s) => {
+          {visibleSubmissions.map((s) => {
             const form = formById.get(s.form_id);
             const isOpen = expanded.has(s.id);
             return (
@@ -238,6 +320,41 @@ export default function FormsInboxClient() {
 
                 {isOpen && (
                   <div className="border-t border-gray-100 px-4 py-3">
+                    {s.ticket_id && (
+                      <div className="mb-3 flex items-center gap-2 text-sm">
+                        {tickets[s.id]?.loading ? (
+                          <span className="text-gray-400">Hämtar ticketstatus...</span>
+                        ) : tickets[s.id]?.deleted ? (
+                          <span className="rounded-full bg-gray-100 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                            Ticket #{s.ticket_id} raderad i Freshdesk
+                          </span>
+                        ) : (
+                          <>
+                            {tickets[s.id]?.statusLabel && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium border ${
+                                  tickets[s.id].statusLabel === "Löst" || tickets[s.id].statusLabel === "Stängd"
+                                    ? "bg-green-50 text-green-700 border-green-200"
+                                    : "bg-blue-50 text-blue-700 border-blue-200"
+                                }`}
+                              >
+                                Freshdesk: {tickets[s.id].statusLabel}
+                              </span>
+                            )}
+                            {tickets[s.id]?.url && (
+                              <a
+                                href={tickets[s.id].url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-indigo-600 hover:underline text-xs"
+                              >
+                                <ExternalLink className="h-3 w-3" /> Öppna ticket #{s.ticket_id} i Freshdesk
+                              </a>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                     {s.last_error && (
                       <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800 font-mono break-all">
                         {s.last_error}
