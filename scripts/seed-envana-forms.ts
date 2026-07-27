@@ -106,7 +106,7 @@ const kontakt: FormConfig = {
       kind: "info",
       key: "info_garanti",
       showWhen: { field: "topic", in: ["garanti"] },
-      html: `<p>Vi erbjuder 60 dagars resultatgaranti på Marint Kollagen. Innan du ansöker behöver du läsa igenom garantivillkoren så att du vet vad som gäller och hur processen fungerar.</p><p><a href="${STORE}/pages/garanti" target="_blank" rel="noopener">Läs garantivillkoren och fyll i ansökan här →</a></p><p>Har du frågor om garantin? Fyll i formuläret nedan.</p>`,
+      html: `<p>Vi erbjuder 60 dagars resultatgaranti på Collagen Formula. Innan du ansöker behöver du läsa igenom garantivillkoren så att du vet vad som gäller och hur processen fungerar.</p><p><a href="${STORE}/pages/garanti" target="_blank" rel="noopener">Läs garantivillkoren och fyll i ansökan här →</a></p><p>Har du frågor om garantin? Fyll i formuläret nedan.</p>`,
     },
     { kind: "text", key: "first_name", label: "Förnamn", required: true, role: "first_name" },
     { kind: "text", key: "last_name", label: "Efternamn", required: true, role: "last_name" },
@@ -180,7 +180,7 @@ const retur: FormConfig = {
 // 3. Kollagen-garanti (datum-gate: 60-90 dagar efter första leverans)
 // ---------------------------------------------------------------------------
 const garanti: FormConfig = {
-  intro: `<p><strong>Marint Kollagen - Ansökan om 60 dagars resultatgaranti</strong></p><p>Har du använt Marint Kollagen dagligen i minst 60 dagar utan önskat resultat? Då kan du ansöka om full återbetalning för upp till 3 flaskor.</p><p><strong>Observera:</strong></p><ul><li>Garantin gäller vid daglig användning i minst 60 dagar (= minst 3 flaskor)</li><li>Ansökan måste göras inom 90 dagar från första leverans</li><li>Öppnade flaskor behöver inte returneras</li><li>Eventuell prenumeration måste pausas/avslutas innan ansökan</li></ul><p>Vi granskar din ansökan och återkommer inom 5 arbetsdagar.</p>`,
+  intro: `<p><strong>Collagen Formula - Ansökan om 60 dagars resultatgaranti</strong></p><p>Har du använt Collagen Formula dagligen i minst 60 dagar utan önskat resultat? Då kan du ansöka om full återbetalning för upp till 3 flaskor.</p><p><strong>Observera:</strong></p><ul><li>Garantin gäller vid daglig användning i minst 60 dagar (= minst 3 flaskor)</li><li>Ansökan måste göras inom 90 dagar från första leverans</li><li>Öppnade flaskor behöver inte returneras</li><li>Eventuell prenumeration måste pausas/avslutas innan ansökan</li></ul><p>Vi granskar din ansökan och återkommer inom 5 arbetsdagar.</p>`,
   submitLabel: "Skicka in",
   ticket: { kindLabel: "Garanti", priority: 1 },
   dateGate: { minDays: 60, maxDays: 90 },
@@ -195,7 +195,7 @@ const garanti: FormConfig = {
       label: "Datum för första leverans",
       required: true,
       role: "delivery_date",
-      help: "Ungefärligt datum då du fick din allra första leverans av Marint Kollagen",
+      help: "Ungefärligt datum då du fick din allra första leverans av Collagen Formula",
     },
     {
       kind: "radio",
@@ -212,7 +212,7 @@ const garanti: FormConfig = {
     {
       kind: "radio",
       key: "daily_usage",
-      label: "Har du använt Marint Kollagen dagligen?",
+      label: "Har du använt Collagen Formula dagligen?",
       required: true,
       options: [
         { value: "ja", label: "Ja, varje dag" },
@@ -223,7 +223,7 @@ const garanti: FormConfig = {
     {
       kind: "radio",
       key: "goal",
-      label: "Vad var ditt mål med Marint Kollagen?",
+      label: "Vad var ditt mål med Collagen Formula?",
       required: true,
       options: [
         { value: "hud", label: "Bättre hud (fasthet, elasticitet)" },
@@ -283,7 +283,7 @@ const garanti: FormConfig = {
       kind: "checkbox",
       key: "confirm",
       label: "Jag godkänner",
-      text: "Jag bekräftar att jag har använt Marint Kollagen dagligen i minst 60 dagar och att uppgifterna stämmer.",
+      text: "Jag bekräftar att jag har använt Collagen Formula dagligen i minst 60 dagar och att uppgifterna stämmer.",
       required: true,
     },
   ],
@@ -294,7 +294,7 @@ const garanti: FormConfig = {
     },
     too_early: {
       title: "Din ansökan är för tidig",
-      html: `<p>Resultatgarantin gäller efter minst 60 dagars daglig användning, och det har inte gått 60 dagar sedan din första leverans ännu.</p><p>Fortsätt använda Marint Kollagen dagligen och återkom när 60 dagar har passerat - ansökan ska göras inom 90 dagar från första leveransen.</p>`,
+      html: `<p>Resultatgarantin gäller efter minst 60 dagars daglig användning, och det har inte gått 60 dagar sedan din första leverans ännu.</p><p>Fortsätt använda Collagen Formula dagligen och återkom när 60 dagar har passerat - ansökan ska göras inom 90 dagar från första leveransen.</p>`,
     },
     too_late: {
       title: "Tyvärr har ansökningsfristen passerat",
