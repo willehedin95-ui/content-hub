@@ -108,17 +108,21 @@ const kontakt: FormConfig = {
       showWhen: { field: "topic", in: ["garanti"] },
       html: `<p>Vi erbjuder 60 dagars resultatgaranti på Collagen Formula. Innan du ansöker behöver du läsa igenom garantivillkoren så att du vet vad som gäller och hur processen fungerar.</p><p><a href="${STORE}/pages/garanti" target="_blank" rel="noopener">Läs garantivillkoren och fyll i ansökan här →</a></p><p>Har du frågor om garantin? Fyll i formuläret nedan.</p>`,
     },
-    { kind: "text", key: "first_name", label: "Förnamn", required: true, role: "first_name" },
-    { kind: "text", key: "last_name", label: "Efternamn", required: true, role: "last_name" },
-    { kind: "email", key: "email", label: "E-post", required: true, role: "email" },
-    { kind: "text", key: "order_number", label: "Ordernummer", role: "order_number" },
-    { kind: "textarea", key: "message", label: "Ditt meddelande", required: true, role: "message" },
+    // Kontaktfälten avslöjas först när ett ämne är valt (Fillout-paritet:
+    // originalet dolde fälten tills rätt val; vi visar dem för ALLA val
+    // eftersom varje info-block uppmanar "fyll i formuläret nedan")
+    { kind: "text", key: "first_name", label: "Förnamn", required: true, role: "first_name", showWhen: { field: "topic", notEmpty: true } },
+    { kind: "text", key: "last_name", label: "Efternamn", required: true, role: "last_name", showWhen: { field: "topic", notEmpty: true } },
+    { kind: "email", key: "email", label: "E-post", required: true, role: "email", showWhen: { field: "topic", notEmpty: true } },
+    { kind: "text", key: "order_number", label: "Ordernummer", role: "order_number", showWhen: { field: "topic", notEmpty: true } },
+    { kind: "textarea", key: "message", label: "Ditt meddelande", required: true, role: "message", showWhen: { field: "topic", notEmpty: true } },
     {
       kind: "file",
       key: "image",
       label: "Ladda upp bild (frivilligt)",
       help: "T.ex. bildbevis på orderbekräftelse",
       maxFiles: 3,
+      showWhen: { field: "topic", notEmpty: true },
     },
   ],
   endings: {
@@ -164,14 +168,16 @@ const retur: FormConfig = {
       required: true,
     },
   ],
+  // Ending-texter 1:1 från Fillout-originalet (kundservice@get-renew.com ->
+  // support@shopenvana.com, garanti-länk -> temats /pages/garanti)
   endings: {
     success: {
-      title: "Tack, vi har tagit emot din returansökan",
-      html: `<p>En supportrepresentant granskar din ansökan och skickar returinstruktioner till din e-post (vanligtvis inom 48 timmar).</p><p>Skicka inte tillbaka några produkter innan du har fått instruktionerna från oss.</p>`,
+      title: "Tack för din returansökan!",
+      html: `<p>Vi granskar ditt ärende och återkommer med returinstruktioner inom kort.</p><p>Skicka inte tillbaka några produkter innan du har fått instruktionerna från oss.</p>`,
     },
     too_late: {
-      title: "Tyvärr har returfristen passerat",
-      html: `<p>Det har gått mer än 14 dagar sedan du mottog din leverans, vilket innebär att ångerrätten tyvärr inte längre gäller.</p><p>Har du använt produkten utan önskat resultat? Då kan du istället ha rätt till vår <a href="${STORE}/pages/garanti" target="_blank" rel="noopener">60 dagars resultatgaranti</a>.</p>`,
+      title: "Ångerrätten har passerat",
+      html: `<p>Ångerrätten gäller i 14 dagar från det att du mottog leveransen. Tyvärr har det gått mer än 14 dagar sedan din leverans.</p><p>Om du inte är nöjd med resultatet kan du istället ansöka om vår 60 dagars resultatgaranti. Observera att garantin kräver minst 60 dagars daglig användning innan den kan utnyttjas.</p><p><a href="${STORE}/pages/garanti" target="_blank" rel="noopener">Läs mer och ansök om resultatgarantin här →</a></p><p>Har du frågor? Kontakta oss på support@shopenvana.com</p>`,
     },
   },
 };
@@ -287,18 +293,20 @@ const garanti: FormConfig = {
       required: true,
     },
   ],
+  // Ending-texter 1:1 från Fillout-originalet (kundservice@get-renew.com ->
+  // support@shopenvana.com; em-dash normaliserad)
   endings: {
     success: {
-      title: "Tack, vi har tagit emot din garantiansökan",
-      html: `<p>Vi granskar din ansökan och återkommer till din e-post inom 5 arbetsdagar.</p>`,
+      title: "Tack för din ansökan",
+      html: `<p>Vi granskar ditt ärende och återkommer inom kort via e-post.</p><p>Om ansökan godkänns återbetalas beloppet för upp till 3 flaskor inom 10 arbetsdagar till samma betalningsmetod.</p><p>Frågor? support@shopenvana.com</p>`,
     },
     too_early: {
-      title: "Din ansökan är för tidig",
-      html: `<p>Resultatgarantin gäller efter minst 60 dagars daglig användning, och det har inte gått 60 dagar sedan din första leverans ännu.</p><p>Fortsätt använda Collagen Formula dagligen och återkom när 60 dagar har passerat - ansökan ska göras inom 90 dagar från första leveransen.</p>`,
+      title: "Det har inte gått 60 dagar ännu",
+      html: `<p>Resultatgarantin kräver minst 60 dagars daglig användning. Ge din kropp den tid den behöver - kliniska studier visar att de tydligaste resultaten syns efter 8-10 veckor.</p><p>Kom tillbaka och ansök igen när det har gått minst 60 dagar sedan din första leverans.</p>`,
     },
     too_late: {
-      title: "Tyvärr har ansökningsfristen passerat",
-      html: `<p>Ansökan om resultatgarantin måste göras inom 90 dagar från din första leverans, och den fristen har tyvärr passerat.</p><p>Har du frågor? <a href="${STORE}/pages/kontakt" target="_blank" rel="noopener">Kontakta oss här</a>.</p>`,
+      title: "Ansökningstiden har passerat",
+      html: `<p>Garantin måste utnyttjas inom 90 dagar från din första leverans. Kontakta oss på support@shopenvana.com om du har frågor.</p>`,
     },
   },
 };
@@ -309,7 +317,9 @@ const garanti: FormConfig = {
 const angerratt: FormConfig = {
   title: "Ångra ditt köp",
   intro: `<p>Här utövar du din lagstadgade ångerrätt och frånträder ditt köpeavtal. Du har 14 dagars ångerrätt från det att du tagit emot varan, och du kan ångra köpet redan innan varan har skickats. Det är kostnadsfritt och du behöver inte ange något skäl.</p><p>Fyll i uppgifterna nedan så bekräftar vi mottagandet via e-post.</p>`,
-  submitLabel: "Skicka in",
+  // Steg 2:s bekräftelseknapp = själva ångerknappen (EU:s tvåstegskrav,
+  // samma knapptext som SB:s Fillout-original)
+  submitLabel: "Jag bekräftar att jag ångrar avtalet",
   ticket: { kindLabel: "Ångerrätt", priority: 3, tags: ["angerratt"] },
   fields: [
     { kind: "text", key: "first_name", label: "Förnamn", required: true, role: "first_name" },
@@ -324,6 +334,13 @@ const angerratt: FormConfig = {
       help: "Står i din orderbekräftelse, t.ex. #12345",
     },
     { kind: "textarea", key: "message", label: "Meddelande (valfritt)", role: "message" },
+    // --- Steg 2: granska och bekräfta (tvåstegskravet) ---
+    { kind: "pagebreak", key: "to_confirm", label: "Fortsätt" },
+    {
+      kind: "info",
+      key: "confirm_info",
+      html: `<p><strong>Granska och bekräfta</strong></p><p>Du utövar nu din lagstadgade ångerrätt och frånträder ditt köpeavtal. När du klickar på knappen nedan registreras din begäran och ett mottagningsbevis skickas till din e-post.</p>`,
+    },
   ],
   endings: {
     success: {

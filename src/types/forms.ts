@@ -14,8 +14,10 @@ export type FormFieldRole =
   | "delivery_date"
   | "message";
 
-/** Show a field only when another field's value is in the list. */
-export type FormCondition = { field: string; in: string[] };
+/** Show a field only when another field's value is in the list (`in`) or has
+ *  any non-empty value (`notEmpty`) - the latter powers "visa kontaktfälten
+ *  först när ett ämne är valt" (Fillout-paritet). */
+export type FormCondition = { field: string; in?: string[]; notEmpty?: boolean };
 
 export type FormEnding = { title: string; html?: string };
 
@@ -36,7 +38,11 @@ export type FormField =
   | ({ kind: "select" | "radio"; options: { value: string; label: string }[] } & FormFieldBase)
   // Checkbox with confirmation text (godkännande)
   | ({ kind: "checkbox"; text: string } & FormFieldBase)
-  | ({ kind: "file"; accept?: string; maxFiles?: number } & FormFieldBase);
+  | ({ kind: "file"; accept?: string; maxFiles?: number } & FormFieldBase)
+  // Page break: splits the form into steps. `label` = the continue-button
+  // text for the step BEFORE the break (e.g. "Fortsätt"). Used for the
+  // EU-mandated two-step ångerrätt confirmation.
+  | ({ kind: "pagebreak" } & FormFieldBase);
 
 /** Date-window gating (retur 0-14 dagar, garanti 60-90 dagar). Evaluated
  *  server-side on the field with role "delivery_date". Out-of-window

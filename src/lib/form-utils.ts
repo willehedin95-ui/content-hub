@@ -166,9 +166,24 @@ export function evaluateDateGate(
   return null;
 }
 
-/** Fields that expect a submitted value (everything except static info blocks). */
+/** Fields that expect a submitted value (excludes static info blocks and
+ *  pagebreak markers). */
 export function answerableFields(config: FormConfig): FormField[] {
-  return config.fields.filter((f) => f.kind !== "info");
+  return config.fields.filter((f) => f.kind !== "info" && f.kind !== "pagebreak");
+}
+
+/** Evaluate a showWhen condition against submitted answers. Mirrors the
+ *  runtime's conditionMet: `in` matches listed values, `notEmpty` matches any
+ *  non-empty value. */
+function conditionMet(
+  cond: NonNullable<FormField["showWhen"]>,
+  valueOf: (key: string) => string
+): boolean {
+  const current = valueOf(cond.field);
+  const empty = !current || current === "(tomt svar)";
+  if (cond.notEmpty) return !empty;
+  if (cond.in) return !empty && cond.in.includes(current);
+  return true;
 }
 
 /** Server-side required-check mirroring the runtime's client-side validation.
@@ -184,10 +199,7 @@ export function findMissingRequired(
   const missing: string[] = [];
   for (const f of answerableFields(config)) {
     if (!f.required) continue;
-    if (f.showWhen) {
-      const current = valueOf(f.showWhen.field);
-      if (!f.showWhen.in.includes(current)) continue;
-    }
+    if (f.showWhen && !conditionMet(f.showWhen, valueOf)) continue;
     const v = valueOf(f.key);
     if (!v || v === "(tomt svar)" || (f.kind === "checkbox" && v === "Nej")) {
       missing.push(f.label || f.key);

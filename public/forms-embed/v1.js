@@ -47,6 +47,7 @@
     values: {},
     files: {}, // key -> File[]
     submitting: false,
+    currentStep: 0, // pagebreak-delade formulär (t.ex. tvåstegs ångerrätt)
   };
 
   // ------------------------------------------------------------------ styles
@@ -111,10 +112,37 @@
   function conditionMet(cond) {
     if (!cond) return true;
     var v = state.values[cond.field];
-    return cond.in.indexOf(v) !== -1;
+    var empty = v === undefined || v === null || v === "" || v === false;
+    if (cond.notEmpty) return !empty;
+    if (cond.in) return !empty && cond.in.indexOf(v) !== -1;
+    return true;
   }
 
   // ------------------------------------------------------------------ render
+  /** Dela fälten i steg vid pagebreaks. Returnerar [{fields, continueLabel}] -
+   *  continueLabel är pagebreakens label (knappen som lämnar steget). */
+  function splitSteps(fields) {
+    var steps = [{ fields: [], continueLabel: null }];
+    fields.forEach(function (f) {
+      if (f.kind === "pagebreak") {
+        steps[steps.length - 1].continueLabel = f.label || "Fortsätt";
+        steps.push({ fields: [], continueLabel: null });
+      } else {
+        steps[steps.length - 1].fields.push(f);
+      }
+    });
+    return steps;
+  }
+
+  function showStep(idx) {
+    state.currentStep = idx;
+    var stepEls = container.querySelectorAll("[data-step]");
+    for (var i = 0; i < stepEls.length; i++) {
+      stepEls[i].style.display = String(idx) === stepEls[i].getAttribute("data-step") ? "" : "none";
+    }
+    container.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function render() {
     container.innerHTML = "";
     var cfg = state.config;
@@ -128,49 +156,75 @@
     var topError = elText("div", "chf-toperror");
     form.appendChild(topError);
 
-    cfg.fields.forEach(function (f) {
-      var wrap;
-      if (f.kind === "info") {
-        wrap = elHtml("div", "chf-info", f.html);
-      } else {
-        wrap = elText("div", "chf-field");
-        if (f.label && f.kind !== "checkbox") {
-          var lab = elText("label", "chf-label", f.label);
-          if (f.required) lab.appendChild(elText("span", "chf-req", "*"));
-          lab.setAttribute("for", "chf-" + f.key);
-          wrap.appendChild(lab);
+    var steps = splitSteps(cfg.fields);
+
+    steps.forEach(function (step, stepIdx) {
+      var stepEl = elText("div", "chf-step");
+      stepEl.setAttribute("data-step", String(stepIdx));
+      if (stepIdx !== 0) stepEl.style.display = "none";
+
+      step.fields.forEach(function (f) {
+        var wrap;
+        if (f.kind === "info") {
+          wrap = elHtml("div", "chf-info", f.html);
+        } else {
+          wrap = elText("div", "chf-field");
+          if (f.label && f.kind !== "checkbox") {
+            var lab = elText("label", "chf-label", f.label);
+            if (f.required) lab.appendChild(elText("span", "chf-req", "*"));
+            lab.setAttribute("for", "chf-" + f.key);
+            wrap.appendChild(lab);
+          }
+          if (f.help) wrap.appendChild(elText("div", "chf-help", f.help));
+          wrap.appendChild(buildInput(f));
+          wrap.appendChild(elText("div", "chf-error", ""));
         }
-        if (f.help) wrap.appendChild(elText("div", "chf-help", f.help));
-        wrap.appendChild(buildInput(f));
-        wrap.appendChild(elText("div", "chf-error", ""));
+        wrap.setAttribute("data-key", f.key);
+        if (f.showWhen) {
+          wrap.setAttribute("data-showwhen", "1");
+          if (!conditionMet(f.showWhen)) wrap.style.display = "none";
+        }
+        stepEl.appendChild(wrap);
+      });
+
+      if (stepIdx < steps.length - 1) {
+        // Mellansteg: Fortsätt-knapp som validerar stegets synliga fält
+        var cont = elText("button", "chf-submit", step.continueLabel || "Fortsätt");
+        cont.type = "button";
+        cont.addEventListener("click", function () {
+          topError.style.display = "none";
+          if (!validate(form, step.fields)) {
+            var firstInvalid = stepEl.querySelector(".chf-invalid");
+            if (firstInvalid) firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+          }
+          showStep(stepIdx + 1);
+        });
+        stepEl.appendChild(cont);
+      } else {
+        // Sista steget: honeypot + submit
+        var hp = elText("div", "chf-hp");
+        var hpLabel = elText("label", null, "Lämna fältet tomt");
+        var hpInput = document.createElement("input");
+        hpInput.type = "text";
+        hpInput.name = "website";
+        hpInput.tabIndex = -1;
+        hpInput.autocomplete = "off";
+        hpLabel.appendChild(hpInput);
+        hp.appendChild(hpLabel);
+        stepEl.appendChild(hp);
+
+        var submit = elText("button", "chf-submit", cfg.submitLabel || "Skicka in");
+        submit.type = "submit";
+        stepEl.appendChild(submit);
+
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          onSubmit(form, submit, topError);
+        });
       }
-      wrap.setAttribute("data-key", f.key);
-      if (f.showWhen) {
-        wrap.setAttribute("data-showwhen", "1");
-        if (!conditionMet(f.showWhen)) wrap.style.display = "none";
-      }
-      form.appendChild(wrap);
-    });
 
-    // Honeypot
-    var hp = elText("div", "chf-hp");
-    var hpLabel = elText("label", null, "Lämna fältet tomt");
-    var hpInput = document.createElement("input");
-    hpInput.type = "text";
-    hpInput.name = "website";
-    hpInput.tabIndex = -1;
-    hpInput.autocomplete = "off";
-    hpLabel.appendChild(hpInput);
-    hp.appendChild(hpLabel);
-    form.appendChild(hp);
-
-    var submit = elText("button", "chf-submit", cfg.submitLabel || "Skicka in");
-    submit.type = "submit";
-    form.appendChild(submit);
-
-    form.addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      onSubmit(form, submit, topError);
+      form.appendChild(stepEl);
     });
 
     container.appendChild(form);
@@ -272,10 +326,10 @@
   }
 
   // ---------------------------------------------------------------- validate
-  function validate(form) {
+  function validate(form, fieldsSubset) {
     var ok = true;
-    state.config.fields.forEach(function (f) {
-      if (f.kind === "info") return;
+    (fieldsSubset || state.config.fields).forEach(function (f) {
+      if (f.kind === "info" || f.kind === "pagebreak") return;
       var wrap = form.querySelector('[data-key="' + f.key + '"]');
       if (!wrap) return;
       wrap.classList.remove("chf-invalid");
@@ -302,7 +356,7 @@
   function collectAnswers() {
     var answers = [];
     state.config.fields.forEach(function (f) {
-      if (f.kind === "info") return;
+      if (f.kind === "info" || f.kind === "pagebreak") return;
       if (f.showWhen && !conditionMet(f.showWhen)) return;
       var v = state.values[f.key];
       if (v === undefined) v = "";
