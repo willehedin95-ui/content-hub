@@ -6,11 +6,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   ExternalLink,
+  FileText,
   Inbox,
   RefreshCw,
   SkipForward,
@@ -101,6 +104,8 @@ export default function FormsInboxClient() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
   const [tickets, setTickets] = useState<Record<string, TicketInfo>>({});
+  const [copiedForm, setCopiedForm] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -173,6 +178,31 @@ export default function FormsInboxClient() {
 
   const problemCount = submissions.filter((s) => s.delivery_status === "failed").length;
 
+  // Hub-origin för embed-koder/länkar (samma origin som sidan körs på)
+  const hubOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const workspaceSlug = "hydro13"; // TODO: exponera aktiv workspace-slug via API när fler workspaces får formulär
+
+  const embedCode = (formSlug: string, market: string) =>
+    `<div id="ch-form-${formSlug}"></div>\n<script src="${hubOrigin}/forms-embed/v1.js" data-workspace="${workspaceSlug}" data-form="${formSlug}" data-market="${market}" data-target="#ch-form-${formSlug}" defer></script>`;
+
+  const copyEmbed = async (form: FormListItem) => {
+    try {
+      await navigator.clipboard.writeText(embedCode(form.slug, form.market));
+      setCopiedForm(form.id);
+      setTimeout(() => setCopiedForm(null), 2000);
+    } catch {
+      // Clipboard blockerad - ingen åtgärd, koden syns i rutan
+    }
+  };
+
+  const submissionCountByForm = useMemo(() => {
+    const m = new Map<string, number>();
+    submissions.forEach((s) => {
+      if (!s.is_test) m.set(s.form_id, (m.get(s.form_id) ?? 0) + 1);
+    });
+    return m;
+  }, [submissions]);
+
   const visibleSubmissions = useMemo(
     () => (formFilter ? submissions.filter((s) => s.form_id === formFilter) : submissions),
     [submissions, formFilter]
@@ -220,6 +250,89 @@ export default function FormsInboxClient() {
           tappat, men kör om dem nedan.
         </div>
       )}
+
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white">
+        <button
+          onClick={() => setShowLibrary((v) => !v)}
+          className="w-full flex items-center gap-2 px-4 py-3 text-left"
+        >
+          {showLibrary ? (
+            <ChevronDown className="h-4 w-4 text-gray-400" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-gray-400" />
+          )}
+          <FileText className="h-4 w-4 text-gray-500" />
+          <span className="font-semibold text-gray-900">Våra formulär ({forms.length})</span>
+          <span className="text-xs text-gray-400 ml-2">visa, testa och kopiera embed-kod till Shopify</span>
+        </button>
+        {showLibrary && (
+          <div className="border-t border-gray-100 divide-y divide-gray-100">
+            {forms.map((f) => (
+              <div key={f.id} className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-gray-900">{f.name}</span>
+                  <span className="rounded-full bg-gray-100 border border-gray-200 px-2 py-0.5 text-xs text-gray-600">
+                    {f.slug} · {f.market.toUpperCase()}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs border ${
+                      f.status === "published"
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-gray-100 text-gray-500 border-gray-200"
+                    }`}
+                  >
+                    {f.status === "published" ? "Publicerat" : f.status}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {submissionCountByForm.get(f.id) ?? 0} inskickade
+                  </span>
+                  <span className="ml-auto flex items-center gap-3 text-xs">
+                    <a
+                      href={`${hubOrigin}/f/${workspaceSlug}/${f.slug}?market=${f.market}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Öppna
+                    </a>
+                    <a
+                      href={`${hubOrigin}/f/${workspaceSlug}/${f.slug}?market=${f.market}&test=1`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-gray-500 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Testläge
+                    </a>
+                  </span>
+                </div>
+                <div className="mt-2 flex items-start gap-2">
+                  <pre className="flex-1 overflow-x-auto rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-700 whitespace-pre-wrap break-all">
+                    {embedCode(f.slug, f.market)}
+                  </pre>
+                  <button
+                    onClick={() => copyEmbed(f)}
+                    className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium border ${
+                      copiedForm === f.id
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    {copiedForm === f.id ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" /> Kopierad!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" /> Kopiera
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
         {[
