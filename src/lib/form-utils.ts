@@ -93,26 +93,20 @@ export function buildTicketSubject(
   return `Ny formulärinlämning: ${formName}`;
 }
 
-/** HTML ticket description preserving every answer in form order. Files become
- *  clickable links so the helpdesk doesn't mangle raw URLs. */
+/** Human-readable answer: option label for select/radio, else the raw value. */
+function answerDisplay(a: SubmissionAnswer): string {
+  return a.display && a.display.trim() ? a.display : formatAnswerValue(a.value);
+}
+
+/** HTML ticket description: ONLY the customer's own questions/answers.
+ *  No internal metadata - agents quote the description when replying, so
+ *  formulärnamn/submission-id must never appear here (see buildInternalNote). */
 export function buildTicketDescription(
   formName: string,
   answers: SubmissionAnswer[],
-  files: SubmissionFile[],
-  meta: { submissionId?: string; submittedAt?: string; market?: string | null }
+  files: SubmissionFile[]
 ): string {
   const lines: string[] = [];
-  lines.push(`<h2>Ny formulärinlämning</h2>`);
-  lines.push(`<p><strong>Formulär:</strong> ${escapeHtml(formName)}</p>`);
-  if (meta.market) lines.push(`<p><strong>Marknad:</strong> ${escapeHtml(meta.market.toUpperCase())}</p>`);
-  if (meta.submittedAt) {
-    const t = new Date(meta.submittedAt);
-    if (!isNaN(t.getTime())) {
-      lines.push(`<p><strong>Skickat:</strong> ${escapeHtml(t.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm" }))}</p>`);
-    }
-  }
-  if (meta.submissionId) lines.push(`<p><strong>Submission ID:</strong> ${escapeHtml(meta.submissionId)}</p>`);
-  lines.push(`<hr>`);
 
   for (const a of answers) {
     const question = (a.label || a.key).trim();
@@ -127,7 +121,7 @@ export function buildTicketDescription(
         })
         .join("<br>");
     } else {
-      answerHtml = escapeHtml(formatAnswerValue(a.value)).replace(/\n/g, "<br>");
+      answerHtml = escapeHtml(answerDisplay(a)).replace(/\n/g, "<br>");
     }
     lines.push(`<p><strong>${escapeHtml(question)}</strong><br>${answerHtml}</p>`);
   }
@@ -141,6 +135,25 @@ export function buildTicketDescription(
     lines.push(`<p><strong>Bifogade filer</strong><br>${links}</p>`);
   }
 
+  return lines.join("\n");
+}
+
+/** Internal metadata as a PRIVATE helpdesk note (never visible to the
+ *  customer, never quoted in replies). */
+export function buildInternalNote(
+  formName: string,
+  meta: { submissionId?: string; submittedAt?: string; market?: string | null }
+): string {
+  const lines: string[] = [`<p><strong>Intern info (hubbens formulärsystem)</strong></p>`];
+  lines.push(`<p>Formulär: ${escapeHtml(formName)}</p>`);
+  if (meta.market) lines.push(`<p>Marknad: ${escapeHtml(meta.market.toUpperCase())}</p>`);
+  if (meta.submittedAt) {
+    const t = new Date(meta.submittedAt);
+    if (!isNaN(t.getTime())) {
+      lines.push(`<p>Skickat: ${escapeHtml(t.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm" }))}</p>`);
+    }
+  }
+  if (meta.submissionId) lines.push(`<p>Submission ID: ${escapeHtml(meta.submissionId)}</p>`);
   return lines.join("\n");
 }
 

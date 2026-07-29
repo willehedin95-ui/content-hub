@@ -360,7 +360,15 @@
       if (f.showWhen && !conditionMet(f.showWhen)) return;
       var v = state.values[f.key];
       if (v === undefined) v = "";
-      answers.push({ key: f.key, label: f.label || f.key, value: v });
+      var answer = { key: f.key, label: f.label || f.key, value: v };
+      // Select/radio: skicka med läsbara option-labeln (kunden/CS ska se
+      // "Hantera min prenumeration", inte "pren_hantera")
+      if ((f.kind === "select" || f.kind === "radio") && f.options) {
+        for (var i = 0; i < f.options.length; i++) {
+          if (f.options[i].value === v) { answer.display = f.options[i].label; break; }
+        }
+      }
+      answers.push(answer);
     });
     return answers;
   }

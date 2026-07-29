@@ -14,6 +14,7 @@ import { sendTelegramNotification, escapeHtml as tgEscape } from "@/lib/telegram
 import {
   buildTicketSubject,
   buildTicketDescription,
+  buildInternalNote,
   extractEmail,
 } from "@/lib/form-utils";
 import type {
@@ -39,6 +40,7 @@ interface DeliveryInput {
   form: FormRow;
   subject: string;
   description: string;
+  internalNote: string;
   email: string;
   customerName: string | null;
 }
@@ -103,7 +105,36 @@ async function deliverViaFreshdesk(
     const text = await res.text().catch(() => "");
     throw new Error(`Freshdesk API error ${res.status}: ${text.slice(0, 300)}`);
   }
-  const ticket = (await res.json()) as { id: number };
+  const ticket = (await res.json()) as { id: number; requester_id?: number };
+
+  // Efterarbete som inte får fälla leveransen (ticketen finns redan):
+  // 1. Intern meta som PRIVAT note - syns aldrig för kund, citeras inte i svar
+  try {
+    await fetch(`https://${domain}.freshdesk.com/api/v2/tickets/${ticket.id}/notes`, {
+      method: "POST",
+      headers: { Authorization: authHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({ body: input.internalNote, private: true }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    console.warn(`[form-delivery] Kunde inte lägga intern note på ticket ${ticket.id}:`, e);
+  }
+  // 2. Synka kontaktnamnet till senast inskickade - Freshdesk återanvänder
+  //    kontakter per e-post och behåller annars ett gammalt namn i mallarna
+  //    ("Hej {{first_name}}" hälsade fel efter namnbyte på samma adress)
+  if (ticket.requester_id && input.customerName) {
+    try {
+      await fetch(`https://${domain}.freshdesk.com/api/v2/contacts/${ticket.requester_id}`, {
+        method: "PUT",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: input.customerName }),
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch (e) {
+      console.warn(`[form-delivery] Kunde inte synka kontaktnamn för ticket ${ticket.id}:`, e);
+    }
+  }
+
   return { ticketId: String(ticket.id) };
 }
 
@@ -200,7 +231,8 @@ export async function deliverSubmission(submissionId: string): Promise<{ ok: boo
   }
 
   const subject = buildTicketSubject(form.name, config, submission.payload);
-  const description = buildTicketDescription(form.name, submission.payload, submission.files ?? [], {
+  const description = buildTicketDescription(form.name, submission.payload, submission.files ?? []);
+  const internalNote = buildInternalNote(form.name, {
     submissionId: submission.client_submission_id,
     submittedAt: submission.created_at,
     market: submission.market,
@@ -211,6 +243,7 @@ export async function deliverSubmission(submissionId: string): Promise<{ ok: boo
     form,
     subject,
     description,
+    internalNote,
     email,
     customerName: submission.name,
   };

@@ -90,11 +90,14 @@ export interface FormRow {
 }
 
 /** One answer as submitted by the embed runtime. Order is preserved and used
- *  verbatim in the ticket description. */
+ *  verbatim in the ticket description. For select/radio, `value` is the
+ *  option VALUE (used by showWhen/gates) and `display` the human-readable
+ *  option label (used in ticket descriptions - kunden ska inte se "pren_hantera"). */
 export interface SubmissionAnswer {
   key: string;
   label: string;
   value: unknown;
+  display?: string;
 }
 
 export interface SubmissionFile {
