@@ -1,5 +1,20 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-23 (kväll) - ads-UI-fixar + koncept-detaljsidan + re-roll-omarbetning deployed 04891d02..4076c38b - se journal LATEST
+Updated: 2026-07-29 - eget formulärsystem ersätter Fillout (Envana fas 1 KLAR, live-verifierad) + hela Envana-kundservicekedjan (egen Freshdesk, mejl, ångerknapp) - se journal LATEST
+
+## 2026-07-24..29 - Formulärsystem + Envana-kundservice (hub 7c5a9252..67ae6592, theme 3f46ee3..3e39130)
+
+Done this session:
+- [x] **Eget formulärsystem fas 1**: forms/form_submissions-tabeller, persist-first + retry + Telegram-larm, vanilla embed (villkor/flersteg/upload), /forms-inbox med stats+Freshdesk-status+embedkoder, dagligt syntetiskt test, 4 Envana-formulär (Fillout-logiken läst ur __NEXT_DATA__, tvåstegs ångerrätt).
+- [x] **Shopify-koppling**: theme-embeds + pages via Admin API, ångerknapp i footern (EU), produktnamn -> Collagen Formula överallt (handle orörd pga Loop), UI-fixar efter Williams test.
+- [x] **Envana-Freshdesk** (shopenvana.freshdesk.com): routing via inline creds i workspace-settings, svensk mall, DKIM+SPF via Hostinger DNS API, support@ primär avsändare, forwarders support@+hello@ -> desk, ticket-hygien (privat meta-note, kontaktnamn-sync, display-labels).
+
+Open / next:
+- [ ] **Freshdesk-trial löper ut ~12 aug** - William väljer plan.
+- [ ] **wirasleep.de löper ut ~1 aug, auto-renewal AV** - William beslutar.
+- [ ] Vid lansering: shopenvana.com in i deliverability-dashboarden + Postmaster; bevaka Microsoft-skräppost (SPF/DKIM/DMARC komplett, rykte byggs).
+- [ ] Fas 3 (efter tyst drift): migrera SB/doginwork/Wirasleep-formulären, säg upp Fillout.
+- [ ] DK/NO-formulärvarianter när markets öppnas (config-rader).
+- [ ] Ev. Turnstile-aktivering vid spamtryck (TURNSTILE_SECRET_KEY).
 
 ## 2026-07-23 (kväll) - ads-UI-fixar + koncept-detaljsidan + re-roll-omarbetning (deployed 04891d02..4076c38b)
 
