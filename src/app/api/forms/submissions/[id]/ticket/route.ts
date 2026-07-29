@@ -55,11 +55,12 @@ export async function GET(
     return NextResponse.json({ ticket: null });
   }
 
-  const domain = (helpdesk.account === "sb" ? process.env.FRESHDESK_SB_DOMAIN : process.env.FRESHDESK_RENEW_DOMAIN)?.trim();
-  const apiKey = (helpdesk.account === "sb" ? process.env.FRESHDESK_SB_API_KEY : process.env.FRESHDESK_RENEW_API_KEY)?.trim();
-  if (!domain || !apiKey) {
+  const { resolveFreshdeskCreds } = await import("@/lib/form-delivery");
+  const creds = resolveFreshdeskCreds(helpdesk);
+  if (!creds) {
     return NextResponse.json({ ticket: null, error: "Freshdesk not configured" });
   }
+  const { domain, apiKey } = creds;
 
   const agentUrl = `https://${domain}.freshdesk.com/a/tickets/${row.ticket_id}`;
   try {

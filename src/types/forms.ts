@@ -130,8 +130,11 @@ export interface FormSubmissionRow {
 
 /** Per-workspace helpdesk routing, stored in workspaces.settings.forms_helpdesk.
  *  Swapping helpdesk provider = new adapter in form-delivery.ts + point this
- *  config at it. Freshdesk accounts reuse the existing FRESHDESK_RENEW_* /
- *  FRESHDESK_SB_* env vars. */
+ *  config at it.
+ *
+ *  Freshdesk resolution: inline `domain` + `apiKey` (stored in settings, same
+ *  pattern as workspaces.meta_config) wins; otherwise `account` maps to the
+ *  legacy FRESHDESK_RENEW_* / FRESHDESK_SB_* env vars. */
 export type HelpdeskConfig =
-  | { type: "freshdesk"; account: "renew" | "sb" }
+  | { type: "freshdesk"; account?: "renew" | "sb"; domain?: string; apiKey?: string }
   | { type: "email"; to: string };

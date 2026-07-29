@@ -47,15 +47,32 @@ interface DeliveryResult {
   ticketId: string | null;
 }
 
-async function deliverViaFreshdesk(
-  input: DeliveryInput,
-  account: "renew" | "sb"
-): Promise<DeliveryResult> {
+/** Resolve Freshdesk credentials from a helpdesk config: inline domain/apiKey
+ *  (workspace settings) wins over the legacy account -> env var mapping. */
+export function resolveFreshdeskCreds(helpdesk: {
+  account?: "renew" | "sb";
+  domain?: string;
+  apiKey?: string;
+}): { domain: string; apiKey: string } | null {
+  if (helpdesk.domain && helpdesk.apiKey) {
+    return { domain: helpdesk.domain.trim(), apiKey: helpdesk.apiKey.trim() };
+  }
+  const account = helpdesk.account ?? "renew";
   const domain = (account === "sb" ? process.env.FRESHDESK_SB_DOMAIN : process.env.FRESHDESK_RENEW_DOMAIN)?.trim();
   const apiKey = (account === "sb" ? process.env.FRESHDESK_SB_API_KEY : process.env.FRESHDESK_RENEW_API_KEY)?.trim();
-  if (!domain || !apiKey) {
-    throw new Error(`Freshdesk not configured for account "${account}" (missing env vars)`);
+  if (!domain || !apiKey) return null;
+  return { domain, apiKey };
+}
+
+async function deliverViaFreshdesk(
+  input: DeliveryInput,
+  helpdesk: { account?: "renew" | "sb"; domain?: string; apiKey?: string }
+): Promise<DeliveryResult> {
+  const creds = resolveFreshdeskCreds(helpdesk);
+  if (!creds) {
+    throw new Error(`Freshdesk not configured (no inline creds and missing env vars)`);
   }
+  const { domain, apiKey } = creds;
 
   const config = input.form.config;
   const tags = ["hub-form", input.form.slug, ...(config.ticket?.tags ?? [])];
@@ -201,7 +218,7 @@ export async function deliverSubmission(submissionId: string): Promise<{ ok: boo
   try {
     let result: DeliveryResult;
     if (helpdesk.type === "freshdesk") {
-      result = await deliverViaFreshdesk(input, helpdesk.account);
+      result = await deliverViaFreshdesk(input, helpdesk);
     } else if (helpdesk.type === "email") {
       result = await deliverViaEmail(input, helpdesk.to);
     } else {
