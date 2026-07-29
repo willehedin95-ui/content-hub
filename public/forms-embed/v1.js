@@ -52,8 +52,8 @@
 
   // ------------------------------------------------------------------ styles
   var CSS =
-    ".chf-root{font-family:inherit;max-width:640px;margin:0 auto;color:#1a1a1a;line-height:1.55}" +
-    ".chf-title{font-size:1.35em;font-weight:700;margin:0 0 12px}" +
+    ".chf-root{font-family:inherit;max-width:640px;margin:0 auto;padding:0 20px;box-sizing:border-box;color:#1a1a1a;line-height:1.55}" +
+    ".chf-title{font-size:1.75em;font-weight:700;margin:0 0 14px}" +
     ".chf-intro{margin:0 0 20px}" +
     ".chf-intro p{margin:0 0 10px}" +
     ".chf-field{margin:0 0 18px}" +
@@ -81,7 +81,7 @@
     ".chf-submit:disabled{opacity:.6;cursor:default}" +
     ".chf-toperror{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:12px 14px;margin-bottom:16px;display:none}" +
     ".chf-ending{text-align:left;padding:8px 0}" +
-    ".chf-ending h2{font-size:1.3em;margin:0 0 10px}" +
+    ".chf-ending h2{font-size:1.75em;font-weight:700;margin:0 0 14px}" +
     ".chf-hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden}" +
     ".chf-loading{color:#777;padding:14px 0}";
 
