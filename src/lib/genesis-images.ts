@@ -37,13 +37,17 @@ function parsePrompts(raw: string, n: number): string[] {
     .slice(0, n);
 }
 
+export type GenesisPhase = "bot_call" | "bot_retry" | "rendering";
+
 export async function generateGenesisStaticImages(opts: {
   jobId: string;
   workspaceId: string;
   botSlug: string;
   count?: number;
+  /** Progress hook so an async caller can surface where the run stands. */
+  onPhase?: (phase: GenesisPhase, extra?: Record<string, unknown>) => Promise<void> | void;
 }): Promise<GenerateStaticResult> {
-  const { jobId, workspaceId, botSlug } = opts;
+  const { jobId, workspaceId, botSlug, onPhase } = opts;
   const count = Math.min(Math.max(opts.count ?? 3, 1), 5);
   const db = createServerSupabase();
 
@@ -82,11 +86,24 @@ export async function generateGenesisStaticImages(opts: {
     .filter(Boolean)
     .join("\n");
 
-  const raw = await callGenesisBot(botSlug, input, { maxTokens: 2800 });
+  // Image prompts are ~200-500 tokens each plus bot preamble; a count-scaled cap keeps the
+  // Opus-class bots from rambling for minutes (the old fixed 2800 made every 1-image run pay
+  // 5-image latency). Floor of 800 covers preamble + a full prompt - a mid-sentence cut can
+  // leave a dangling text-overlay instruction that renders as garbage text in the image.
+  const maxTokens = Math.min(2800, 800 + 700 * count);
+  const usage = { prompt_tokens: 0, completion_tokens: 0 };
+  const addUsage = (u: { prompt_tokens?: number; completion_tokens?: number }) => {
+    usage.prompt_tokens += u.prompt_tokens ?? 0;
+    usage.completion_tokens += u.completion_tokens ?? 0;
+  };
+
+  await onPhase?.("bot_call");
+  const raw = await callGenesisBot(botSlug, input, { maxTokens, onUsage: addUsage });
   let prompts = parsePrompts(raw, count);
   if (prompts.length < count) {
     // One strict retry: some bots wrap output in commentary or skip the numbering.
     console.warn(`[genesis-images] ${botSlug}: parsed ${prompts.length}/${count} anchored prompts - retrying with stricter instruction`);
+    await onPhase?.("bot_retry");
     const strictRaw = await callGenesisBot(
       botSlug,
       [
@@ -94,11 +111,29 @@ export async function generateGenesisStaticImages(opts: {
         ``,
         `IMPORTANT: Your output will be machine-parsed. Output EXACTLY ${count} prompts and NOTHING else - no introduction, no commentary, no closing note. Each prompt MUST start on its own line with "PROMPT 1:", "PROMPT 2:", ... in that exact format.`,
       ].join("\n"),
-      { maxTokens: 2800 },
+      { maxTokens, onUsage: addUsage },
     );
     const strictPrompts = parsePrompts(strictRaw, count);
     if (strictPrompts.length > prompts.length) prompts = strictPrompts;
   }
+  // Log the bot step as soon as it finishes (cost billed via the provider key, not us) -
+  // this row doubling as the "prompts are done, rendering starts now" marker when debugging.
+  await db.from("usage_logs").insert({
+    type: "genesis_image_prompts",
+    page_id: null,
+    translation_id: null,
+    model: botSlug,
+    input_tokens: usage.prompt_tokens,
+    output_tokens: usage.completion_tokens,
+    cost_usd: 0,
+    metadata: {
+      image_job_id: jobId,
+      requested: count,
+      parsed_prompts: prompts.length,
+      max_tokens: maxTokens,
+      billed_via: "provider_key",
+    },
+  });
   if (prompts.length < count) {
     // Never render preamble chunks as images - fail the format loudly instead.
     throw new Error(
@@ -116,6 +151,7 @@ export async function generateGenesisStaticImages(opts: {
     referenceStrategy: "product",
   }));
 
+  await onPhase?.("rendering", { prompts: prompts.length });
   // No auto-QA/text-correction: fastest path, user triggers QA per image manually when needed.
   return generateStaticImages({ jobId, workspaceId, injectedBriefs: briefs });
 }

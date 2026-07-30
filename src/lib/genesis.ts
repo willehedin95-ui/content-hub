@@ -39,6 +39,8 @@ export interface CallOptions {
    * upstream call must fail instead of stalling the global per-process queue forever).
    */
   timeoutMs?: number;
+  /** Called with upstream token usage on success (for usage_logs visibility). */
+  onUsage?: (usage: { prompt_tokens?: number; completion_tokens?: number }) => void;
 }
 
 export class GenesisError extends Error {
@@ -145,11 +147,13 @@ export async function callGenesisBot(
       if (res.ok) {
         const json = (await res.json()) as {
           choices?: Array<{ message?: { content?: string } }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
           error?: { message?: string; type?: string };
         };
         if (json.error) throw new GenesisError(json.error.message || "stream error", res.status, json.error.type);
         const content = json.choices?.[0]?.message?.content ?? "";
         if (!content) throw new GenesisError("Genesis returned empty content (check provider key / quota)");
+        if (json.usage) opts.onUsage?.(json.usage);
         return content;
       }
 

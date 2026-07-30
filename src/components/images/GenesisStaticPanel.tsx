@@ -16,11 +16,34 @@ interface Bot {
 /**
  * Generate static ads for this concept using one of the ~45 trained Genesis image-format bots.
  * Pick one format + a count -> that many image variations of that format, rendered into the concept.
- * Images appear in the grid as they render (onDone polling).
+ *
+ * The generation runs server-side in the background (202 + after()): this panel polls
+ * GET genesis-static for phase progress and refreshes the grid so images appear as they
+ * render. A run in flight survives page reloads - the panel resumes its progress display.
  */
 type ThumbSize = "sm" | "md" | "lg";
 const THUMB_CLS: Record<ThumbSize, string> = { sm: "h-14 w-14", md: "h-24 w-24", lg: "h-44 w-44" };
 const LIST_CLS: Record<ThumbSize, string> = { sm: "max-h-64", md: "max-h-96", lg: "max-h-[38rem]" };
+
+interface GenesisProgress {
+  phase: "bot_call" | "bot_retry" | "rendering" | "done" | "error";
+  bot?: string;
+  count?: number;
+  started_at?: string;
+  prompts?: number;
+  generated?: number;
+  failed?: number;
+  error?: string;
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  bot_call: "Botten skriver bildprompt(er)... (det tunga steget, ~1-2 min)",
+  bot_retry: "Botten svarade i fel format - kör ett strikt omtag...",
+  rendering: "Renderar bilder - de dyker upp i rutnätet nedan...",
+};
+
+/** Runs older than this without reaching done/error are treated as dead (killed function). */
+const STALE_RUN_MS = 15 * 60 * 1000;
 
 export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; onDone: () => void }) {
   const [bots, setBots] = useState<Bot[]>([]);
@@ -35,6 +58,50 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const stopTimers = () => {
+    if (poll.current) clearInterval(poll.current);
+    if (tick.current) clearInterval(tick.current);
+    poll.current = null;
+    tick.current = null;
+  };
+
+  const finishRun = (p: GenesisProgress) => {
+    stopTimers();
+    setLoading(false);
+    if (p.phase === "done") {
+      setStatus(`Klart: ${p.generated ?? 0} bild(er) skapade${p.failed ? `, ${p.failed} misslyckades` : ""}.`);
+    } else {
+      setError(p.error || "Genereringen misslyckades");
+      setStatus(null);
+    }
+    onDone();
+  };
+
+  const watchRun = (startedAt?: string) => {
+    setLoading(true);
+    setError(null);
+    const t0 = startedAt ? new Date(startedAt).getTime() : Date.now();
+    setElapsed(Math.max(0, Math.round((Date.now() - t0) / 1000)));
+    stopTimers();
+    tick.current = setInterval(() => setElapsed(Math.max(0, Math.round((Date.now() - t0) / 1000))), 1000);
+    poll.current = setInterval(async () => {
+      onDone(); // refresh the grid so finished renders appear
+      try {
+        const res = await fetch(`/api/image-jobs/${jobId}/genesis-static`);
+        if (!res.ok) return; // transient - keep polling
+        const p: GenesisProgress | null = (await res.json()).progress;
+        if (!p) return;
+        if (p.phase === "done" || p.phase === "error") return finishRun(p);
+        setStatus(PHASE_LABELS[p.phase] ?? "Genererar...");
+        if (p.started_at && Date.now() - new Date(p.started_at).getTime() > STALE_RUN_MS) {
+          return finishRun({ phase: "error", error: "Körningen verkar ha dött (inget livstecken på 15 min). Testa igen." });
+        }
+      } catch {
+        // network blip - keep polling
+      }
+    }, 3000);
+  };
+
   useEffect(() => {
     const saved = localStorage.getItem("genesis-thumb-size") as ThumbSize | null;
     if (saved && THUMB_CLS[saved]) setThumbSize(saved);
@@ -42,10 +109,19 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
       .then((r) => r.json())
       .then((d) => setBots(d.bots ?? []))
       .catch(() => setError("Kunde inte hämta Genesis-format"));
-    return () => {
-      if (poll.current) clearInterval(poll.current);
-      if (tick.current) clearInterval(tick.current);
-    };
+    // Resume progress display if a run is already in flight for this concept.
+    fetch(`/api/image-jobs/${jobId}/genesis-static`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const p: GenesisProgress | null = d?.progress ?? null;
+        if (!p || p.phase === "done" || p.phase === "error") return;
+        if (p.started_at && Date.now() - new Date(p.started_at).getTime() > STALE_RUN_MS) return;
+        setStatus(PHASE_LABELS[p.phase] ?? "Genererar...");
+        watchRun(p.started_at);
+      })
+      .catch(() => {});
+    return stopTimers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const changeThumbSize = (s: ThumbSize) => {
@@ -63,10 +139,7 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
     setLoading(true);
     setError(null);
     setElapsed(0);
-    setStatus(`Genererar ${count} bild(er) med "${selectedBot?.name}"...`);
-    // Live-ish feedback: refresh the concept grid every few seconds so images appear as they render.
-    tick.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-    poll.current = setInterval(() => onDone(), 4000);
+    setStatus(`Startar ${count} bild(er) med "${selectedBot?.name}"...`);
     try {
       const res = await fetch(`/api/image-jobs/${jobId}/genesis-static`, {
         method: "POST",
@@ -74,16 +147,15 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
         body: JSON.stringify({ botSlug: selected, count }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Genereringen misslyckades");
-      setStatus(`Klart: ${data.generated} bild(er) skapade${data.failed ? `, ${data.failed} misslyckades` : ""}.`);
+      if (!res.ok) throw new Error(data.error || "Kunde inte starta genereringen");
+      // 202: the run continues server-side - poll progress + grid until done/error.
+      setStatus(PHASE_LABELS.bot_call);
+      watchRun(data.started_at);
     } catch (e) {
+      stopTimers();
       setError((e as Error).message);
       setStatus(null);
-    } finally {
-      if (poll.current) clearInterval(poll.current);
-      if (tick.current) clearInterval(tick.current);
       setLoading(false);
-      onDone();
     }
   }
 
@@ -173,8 +245,8 @@ export default function GenesisStaticPanel({ jobId, onDone }: { jobId: string; o
         </button>
       </div>
 
-      {loading && <p className="mt-2 text-xs text-gray-400">Bilderna dyker upp i rutnätet nedan allt eftersom de blir klara.</p>}
-      {!loading && status && <p className="mt-2 text-xs text-gray-500">{status}</p>}
+      {status && <p className="mt-2 text-xs text-gray-500">{status}</p>}
+      {loading && <p className="mt-2 text-xs text-gray-400">Du kan lämna sidan - genereringen fortsätter i bakgrunden och bilderna dyker upp i rutnätet nedan.</p>}
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   );
