@@ -8,6 +8,14 @@
 // PNG/JPG uploads to WebP automatically. Idempotent - skips files where webp
 // is already up-to-date.
 
+// Load .env.local when run standalone (same pattern as reconcile-quiz-metrics.ts) -
+// the old comment claimed next/dotenv loads it, which is not true under plain tsx.
+try {
+  (process as { loadEnvFile?: (path: string) => void }).loadEnvFile?.(".env.local");
+} catch {
+  // already loaded or missing - rely on existing process.env
+}
+
 import { spawnSync } from "child_process";
 import { resolve } from "path";
 
