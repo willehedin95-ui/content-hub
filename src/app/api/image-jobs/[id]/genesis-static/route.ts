@@ -6,12 +6,57 @@ import { isValidUUID } from "@/lib/validation";
 import { safeError } from "@/lib/api-error";
 import { generateGenesisStaticImages, type GenesisPhase } from "@/lib/genesis-images";
 import { generateStaticImages } from "@/lib/generate-static-images";
+import { processPendingTranslationsForJob } from "@/lib/autopilot-translations";
 import { STATIC_STYLES } from "@/lib/static-ad-prompt";
 import type { StaticStyleId } from "@/lib/constants";
 
-export const maxDuration = 800; // bot call + Kie renders run in after(); needs the full window
+export const maxDuration = 800; // bot call + Kie renders + 9:16 outpainting run in after(); needs the full window
 
-type ProgressPhase = GenesisPhase | "done" | "error";
+type ProgressPhase = GenesisPhase | "outpainting" | "done" | "error";
+
+/**
+ * Queue missing 9:16 rows for every completed primary-ratio translation on the job
+ * (same dedup rule as the manual generate-9x16 route). The standard concept pipeline
+ * outpaints every image in finish-and-queue step 5; the Genesis panel used to skip
+ * this, leaving letterboxed 4:5 in stories/reels placements.
+ */
+async function queueMissing9x16(
+  db: ReturnType<typeof createServerSupabase>,
+  jobId: string,
+  primaryRatio: string,
+): Promise<number> {
+  const { data: sourceImages } = await db
+    .from("source_images")
+    .select("id, image_translations(id, language, aspect_ratio, status)")
+    .eq("job_id", jobId);
+  const all = (sourceImages ?? []).flatMap((si) =>
+    (si.image_translations ?? []).map((t) => ({ ...t, source_image_id: si.id })),
+  );
+  const existing9x16 = new Set(
+    all.filter((t) => t.aspect_ratio === "9:16").map((t) => `${t.source_image_id}:${t.language}`),
+  );
+  const rows = all
+    .filter(
+      (t) =>
+        t.aspect_ratio === primaryRatio &&
+        t.status === "completed" &&
+        !existing9x16.has(`${t.source_image_id}:${t.language}`),
+    )
+    .map((t) => ({
+      source_image_id: t.source_image_id,
+      language: t.language,
+      aspect_ratio: "9:16",
+      status: "pending",
+    }));
+  if (rows.length > 0) {
+    const { error } = await db.from("image_translations").insert(rows);
+    if (error) {
+      console.error(`[genesis-static] Failed to queue 9:16 rows for job ${jobId}:`, error.message);
+      return 0;
+    }
+  }
+  return rows.length;
+}
 
 // POST /api/image-jobs/[id]/genesis-static — generate static ads via a Genesis image-format bot,
 // or one of the hub's own built-in styles (botSlug "hub:<styleId>").
@@ -42,11 +87,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { data: job } = await db
       .from("image_jobs")
-      .select("id")
+      .select("id, target_ratios")
       .eq("id", id)
       .eq("workspace_id", workspaceId)
       .single();
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    const targetRatios = (job.target_ratios as string[] | null) ?? ["4:5", "9:16"];
+    const primaryRatio = targetRatios[0] ?? "4:5";
 
     const startedAt = new Date().toISOString();
     const setProgress = async (phase: ProgressPhase, extra: Record<string, unknown> = {}) => {
@@ -74,6 +121,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               count,
               onPhase: (phase, extra) => setProgress(phase, extra),
             });
+        // Stories/reels versions: queue + render missing 9:16 for the whole job
+        // (idempotent - also fills gaps left by pre-fix Genesis runs). Failures
+        // here never fail the run; the reconcile cron drains stranded pending rows.
+        if (targetRatios.includes("9:16")) {
+          try {
+            await setProgress("outpainting", { generated: result.generated, failed: result.failed });
+            const queued = await queueMissing9x16(db, id, primaryRatio);
+            if (queued > 0) await processPendingTranslationsForJob(id);
+          } catch (err) {
+            console.error(`[genesis-static] 9:16 outpainting failed for job ${id}:`, err);
+          }
+        }
         await setProgress("done", {
           generated: result.generated,
           failed: result.failed,

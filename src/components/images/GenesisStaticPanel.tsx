@@ -26,7 +26,7 @@ const THUMB_CLS: Record<ThumbSize, string> = { sm: "h-14 w-14", md: "h-24 w-24",
 const LIST_CLS: Record<ThumbSize, string> = { sm: "max-h-64", md: "max-h-96", lg: "max-h-[38rem]" };
 
 interface GenesisProgress {
-  phase: "bot_call" | "bot_retry" | "rendering" | "done" | "error";
+  phase: "bot_call" | "bot_retry" | "rendering" | "outpainting" | "done" | "error";
   bot?: string;
   count?: number;
   started_at?: string;
@@ -40,6 +40,7 @@ const PHASE_LABELS: Record<string, string> = {
   bot_call: "Botten skriver bildprompt(er)... (det tunga steget, ~1-2 min)",
   bot_retry: "Botten svarade i fel format - kör ett strikt omtag...",
   rendering: "Renderar bilder - de dyker upp i rutnätet nedan...",
+  outpainting: "Skapar 9:16-versioner för stories/reels...",
 };
 
 /** Runs older than this without reaching done/error are treated as dead (killed function). */
