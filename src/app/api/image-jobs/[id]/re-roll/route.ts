@@ -278,6 +278,115 @@ export async function POST(
     });
   }
 
+  // --- GENESIS-BOT (or other unknown-style) RE-ROLL: reuse original prompt, new seed ---
+  // Genesis images store the bot slug (e.g. "infographic-bot") as generation_style. The
+  // hub's brief pipeline doesn't know those styles, so asking it for a new brief silently
+  // produced a DIFFERENT format (Claude picked its own hub style). Re-roll must preserve
+  // the format: same stored prompt, new seed - exactly like the competitor-swipe path.
+  const isKnownHubStyle = STATIC_STYLES.some((s) => s.id === styleRaw);
+  if (!isKnownHubStyle) {
+    const originalPrompt = sourceImage.generation_prompt as string | null;
+    if (!originalPrompt) {
+      return NextResponse.json(
+        { error: `Cannot re-roll: style "${styleRaw}" has no stored generation prompt` },
+        { status: 400 }
+      );
+    }
+
+    let rerollPrompt = originalPrompt;
+    if (custom_instructions?.trim()) {
+      rerollPrompt += `\n\nUSER OVERRIDE INSTRUCTIONS: ${custom_instructions.trim()}`;
+    }
+
+    // Same reference setup as the original Genesis render (referenceStrategy "product",
+    // unknown style falls back to the product hero inside resolveReferenceImages).
+    const referenceUrls = resolveReferenceImages(
+      { style: styleRaw as StaticStyleId, prompt: rerollPrompt, hookText: "", headlineText: "", referenceStrategy: "product" },
+      allProductImages
+    );
+
+    let resultUrls: string[] | undefined;
+    let costTimeMs: number | undefined;
+    try {
+      const result = await generateImage(rerollPrompt, referenceUrls, "4:5", "2K", undefined, chosenModel);
+      resultUrls = result.urls;
+      costTimeMs = result.costTimeMs ?? undefined;
+    } catch (err) {
+      return safeError(err, "Image generation failed");
+    }
+
+    if (!resultUrls?.length) {
+      return NextResponse.json({ error: "No image generated" }, { status: 500 });
+    }
+
+    const resultRes = await fetch(resultUrls[0]);
+    if (!resultRes.ok) {
+      return NextResponse.json({ error: "Failed to download generated image" }, { status: 500 });
+    }
+    const buffer = Buffer.from(await resultRes.arrayBuffer());
+
+    const fileId = crypto.randomUUID();
+    const filePath = `image-jobs/${id}/${fileId}.png`;
+    const { error: uploadError } = await db.storage
+      .from(STORAGE_BUCKET)
+      .upload(filePath, buffer, { contentType: "image/png", upsert: false });
+    if (uploadError) {
+      return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+    }
+    const { data: urlData } = db.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+
+    // Insert new row FIRST (same style + prompt preserved), then clean up the old one.
+    const { data: newSourceImage, error: insertErr } = await db
+      .from("source_images")
+      .insert({
+        job_id: id,
+        original_url: urlData.publicUrl,
+        filename: `${styleRaw}-${fileId.slice(0, 8)}.png`,
+        processing_order: sourceImage.processing_order,
+        skip_translation: false,
+        generation_prompt: originalPrompt,
+        generation_style: styleRaw,
+        generation_model: chosenModel,
+      })
+      .select()
+      .single();
+    if (insertErr || !newSourceImage) {
+      return safeError(insertErr ?? new Error("Insert failed"), "Failed to save new image");
+    }
+
+    await cleanupOldSourceImage(db, id, source_image_id, sourceImage.original_url as string);
+
+    await db.from("usage_logs").insert({
+      type: "image_generation",
+      page_id: null,
+      translation_id: null,
+      model: chosenModel,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: KIE_IMAGE_COST,
+      metadata: {
+        purpose: "genesis_style_reroll",
+        image_job_id: id,
+        source_image_id: newSourceImage.id,
+        old_source_image_id: source_image_id,
+        style: styleRaw,
+        kie_cost_time_ms: costTimeMs,
+      },
+    });
+
+    return NextResponse.json({
+      source_image: {
+        id: newSourceImage.id,
+        original_url: urlData.publicUrl,
+        filename: newSourceImage.filename,
+        label: styleRaw,
+        style: styleRaw,
+        prompt: originalPrompt,
+      },
+      cost_usd: KIE_IMAGE_COST,
+    });
+  }
+
   // --- STANDARD STATIC AD RE-ROLL ---
   // Generate ONE new brief for the same style
   let briefs;
