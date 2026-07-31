@@ -1,5 +1,26 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-29 - eget formulärsystem ersätter Fillout (Envana fas 1 KLAR, live-verifierad) + hela Envana-kundservicekedjan (egen Freshdesk, mejl, ångerknapp) - se journal LATEST
+Updated: 2026-07-31 - doginwork-strategi (advertorial-first), autopilot ÅTER PÅ för doginwork, quiz i underhållsläge - se journal LATEST
+
+## 2026-07-31 - doginwork: strategibeslut + autopilot på igen
+
+Beslut (William, efter full vault-genomläsning av quiz-funnel-materialet + LP-picker-fixen):
+advertorialen är bevisad vinnare (3.7-4x vs quiz 1.5-1.7x) -> advertorial-first. Quiz = underhållsläge
+(inga fler A/B-tester; namn-testet AVSLUTAT + republicerat 100% A; nya quiz-creatives görs bara "då och då").
+
+- [ ] **Listicle-lander för doginwork** - första vinkel: "därför ska du skippa den fysiska valpkursen"
+  (competitive destruction à la Primal Vikings; villain = gamla lydnadsskolan, samma som advertorialen).
+  EN bred listicle först - per-pain-versioner först när vinkel-annonser bevisat sig. Grunda i
+  kurs-transcript + Christine-avatar. (William har ej tid nu - Claude skriver utkast på begäran.)
+- [ ] **Separata advertorials per pain point** (Williams val, INTE UTM-dynamiska rubriker) - byggs i takt
+  med att vinkel-annonser bevisar vilka pains som bär spend. Prioriteringsordning från quiz-datans
+  svarsfördelning (4 281 sessioner).
+- [ ] Ev. Genesis-bottar som automatisk koncept-källa i autopiloten (manuellt på konceptsidan i dag).
+
+Autopilot-läge (deployat `2b6996ab`): autopilot-concepts 08 UTC (?workspace=doginwork, competitor_swipe,
+4 boards) -> Telegram-approve -> pipeline-push 03 UTC (max 3/natt) -> Meta. process-swipe-queue 09/12/15/18.
+Default-LP = advertorialen (`primary_landing_pages._default`). Launchpad städad 31/7: happysleep+hydro13:s
+inaktuella april-godkännanden urkopplade (19 lifecycles exited); kvar = doginwork #47/#42/#46 (pushas inatt)
++ #8 (prio 10, pushas natten därpå - säg till om den ska bort). autopilot-execute (auto-kill/budget) förblir AV.
 
 ## 2026-07-24..29 - Formulärsystem + Envana-kundservice (hub 7c5a9252..67ae6592, theme 3f46ee3..3e39130)
 
