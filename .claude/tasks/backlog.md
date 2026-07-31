@@ -19,8 +19,14 @@ advertorialen är bevisad vinnare (3.7-4x vs quiz 1.5-1.7x) -> advertorial-first
 Autopilot-läge (deployat `2b6996ab`): autopilot-concepts 08 UTC (?workspace=doginwork, competitor_swipe,
 4 boards) -> Telegram-approve -> pipeline-push 03 UTC (max 3/natt) -> Meta. process-swipe-queue 09/12/15/18.
 Default-LP = advertorialen (`primary_landing_pages._default`). Launchpad städad 31/7: happysleep+hydro13:s
-inaktuella april-godkännanden urkopplade (19 lifecycles exited); kvar = doginwork #47/#42/#46 (pushas inatt)
-+ #8 (prio 10, pushas natten därpå - säg till om den ska bort). autopilot-execute (auto-kill/budget) förblir AV.
+inaktuella april-godkännanden urkopplade (19 lifecycles exited); kvar = doginwork #47/#42 (-> advertorial)
++ #46 (-> QUIZ, Williams beslut - kreativet lovar "gör testet") pushas natten 31/7-1/8, sen #8 (prio 10,
+ompekad -> advertorial). #42:s avhuggna mening OK enligt William. autopilot-execute (auto-kill/budget) AV.
+Genesis auto-9:16 live (`635262d5`) - OBS infographics = feed-only (outpaint förstör text, se journal).
+
+- [ ] **Imorgon 1/8: verifiera nattens push** (Telegram-summering + Ads Manager: 3 adsets, rätt LP per koncept)
+  + första autopilot-concepts-körningen 08 UTC (3 swipe-förslag i Telegram).
+- [ ] Trimma live-svansen vid klartecken: SE #021:s 0.51-underannons, #017 (0 köp, svag CTR), småspenderare.
 
 ## 2026-07-24..29 - Formulärsystem + Envana-kundservice (hub 7c5a9252..67ae6592, theme 3f46ee3..3e39130)
 

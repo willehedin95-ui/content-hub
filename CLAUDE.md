@@ -43,6 +43,7 @@ Multiple concurrent dev servers have caused system performance issues in the pas
 - Localization constants (brand names, cultural rules) in `src/lib/localization.ts`
 - Usage/costs are logged to `usage_logs` table for every API call (OpenAI tokens, Kie AI images)
 - Settings stored in `localStorage` (`content-hub-settings` key) — read with `getSettings()` helper
+- Standalone scripts (`scripts/*.ts`) load env via `process.loadEnvFile?.(".env.local")` at the top (Node 20+). NEVER `source .env.local` in a shell — values with special characters break parsing mid-file and downstream API calls (e.g. Cloudflare) get empty vars and fail with confusing errors.
 - Languages: sv (Swedish), da (Danish), no (Norwegian), de (German) — German has no landing page domain, only used for static ads
 - Google Drive uses service account auth via `GDRIVE_SERVICE_ACCOUNT_EMAIL` and `GDRIVE_PRIVATE_KEY` env vars
 
