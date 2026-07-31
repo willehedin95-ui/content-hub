@@ -5,6 +5,7 @@ import {
   AdInsightDailyRow,
   getAdSetInsightsDaily,
   AdSetInsightDailyRow,
+  listAdLinks,
   listCampaigns,
   getCampaignBudget,
   runWithMetaConfig,
@@ -176,6 +177,32 @@ async function syncOneAccount(
     }
   } catch (err) {
     result.errors.push(`Ad fetch: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // --- Ad -> destination-link map (meta_ad_links) ---
+  // Lets downstream features (LP picker recommendations) aggregate performance per
+  // landing page across ALL account ads - the local meta_ads table only knows hub
+  // pushes, which made non-hub landers (e.g. the doginwork advertorial) look dataless.
+  try {
+    const links = await listAdLinks();
+    if (links.length > 0) {
+      const linkRows = links.map((l) => ({
+        meta_ad_id: l.ad_id,
+        ad_account_id: config.adAccountId,
+        ad_name: l.ad_name,
+        link_url: l.link_url,
+        updated_at: new Date().toISOString(),
+      }));
+      for (let i = 0; i < linkRows.length; i += BATCH_SIZE) {
+        const batch = linkRows.slice(i, i + BATCH_SIZE);
+        const { error } = await db
+          .from("meta_ad_links")
+          .upsert(batch, { onConflict: "meta_ad_id" });
+        if (error) result.errors.push(`Ad links upsert: ${error.message}`);
+      }
+    }
+  } catch (err) {
+    result.errors.push(`Ad links fetch: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // --- Ad-set level sync ---

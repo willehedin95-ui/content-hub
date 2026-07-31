@@ -26,6 +26,8 @@ interface PageRecommendation {
   cpa: number;
   concept_count: number;
   confidence: "high" | "medium" | "low" | "no_data";
+  /** "live" = whole ad account per destination URL; "hub" = only hub-pushed concepts. */
+  source?: "live" | "hub";
 }
 
 interface LandingPageModalProps {
@@ -264,9 +266,19 @@ export default function LandingPageModal({
                         <span className="text-[10px] text-gray-400">
                           {rec.conversions} sale{rec.conversions !== 1 ? "s" : ""}
                         </span>
-                        <span className="text-[10px] text-gray-400">
-                          {rec.concept_count} concept{rec.concept_count !== 1 ? "s" : ""}
-                        </span>
+                        {rec.concept_count > 0 && (
+                          <span className="text-[10px] text-gray-400">
+                            {rec.concept_count} concept{rec.concept_count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {rec.source === "hub" && (
+                          <span
+                            className="text-[10px] text-amber-600"
+                            title="Endast annonser skapade via hubben - kontots verkliga siffror kan skilja"
+                          >
+                            hub-only
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

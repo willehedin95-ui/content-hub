@@ -724,6 +724,39 @@ export async function getAdInsightsDaily(
 }
 
 /**
+ * List every ad in the account with its creative's destination link.
+ * Used to aggregate performance per landing page across ALL ads - including
+ * ones created outside the hub (the local meta_ads table only knows hub pushes).
+ */
+export interface AdLinkRow {
+  ad_id: string;
+  ad_name: string | null;
+  link_url: string | null;
+}
+
+export async function listAdLinks(): Promise<AdLinkRow[]> {
+  type RawAd = {
+    id: string;
+    name?: string;
+    creative?: {
+      object_story_spec?: { link_data?: { link?: string } };
+      asset_feed_spec?: { link_urls?: Array<{ website_url?: string }> };
+    };
+  };
+  const rows = await metaJsonPaginated<RawAd>(
+    `/act_${getAdAccountId()}/ads?fields=id,name,creative{object_story_spec{link_data{link}},asset_feed_spec{link_urls{website_url}}}&limit=200`
+  );
+  return rows.map((ad) => ({
+    ad_id: ad.id,
+    ad_name: ad.name ?? null,
+    link_url:
+      ad.creative?.object_story_spec?.link_data?.link ??
+      ad.creative?.asset_feed_spec?.link_urls?.[0]?.website_url ??
+      null,
+  }));
+}
+
+/**
  * Fetch ad-set-level insights with daily breakdown (for strategy engine).
  */
 export interface AdSetInsightDailyRow {
