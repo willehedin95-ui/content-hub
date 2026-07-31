@@ -576,13 +576,27 @@ export async function GET(
     completion_to_purchase: offerSessions > 0 ? (purchaseRows.length / offerSessions) * 100 : 0,
   };
 
+  // Funnel = current step-kind nodes only, in graph order. Excludes exit nodes (CTA
+  // redirect targets - converters leave for the checkout without ever "viewing" them)
+  // and orphaned steps (deleted from the quiz but still present in old step-view
+  // events); both rendered a bogus near-0% "reached end" tail. The topo sort makes
+  // first/last row semantically "start"/"offer" for headline math - the RPC's own
+  // row order is not the graph order (FunnelChart re-sorted client-side, headlines
+  // read the raw array and picked up whatever happened to sit last).
+  const funnelOrder = new Map(orderedSteps.map((s, i) => [s.id, i]));
+  const funnelSteps = ((funnelRes.data ?? []) as Array<{ step_id: string }>)
+    .filter((row) => currentStepIds.has(row.step_id))
+    .sort(
+      (a, b) => (funnelOrder.get(a.step_id) ?? 0) - (funnelOrder.get(b.step_id) ?? 0),
+    );
+
   const response = NextResponse.json({
     summary: summaryRow ?? {
       starts: 0, completions: 0, completion_rate: 0, email_captures: 0, median_time_to_exit_sec: 0,
     },
     purchases,
     fp_metrics: fpMetrics,
-    funnel: funnelRes.data ?? [],
+    funnel: funnelSteps,
     options: enrichedOptions,
     variants: variantsRes.data ?? [],
     cohorts,

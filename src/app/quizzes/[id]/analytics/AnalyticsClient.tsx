@@ -15,6 +15,11 @@ import {
 } from "lucide-react";
 import type { QuizRow, QuizData, StepNode } from "@/types/quiz";
 import { topoOrderSteps } from "@/lib/quiz-graph";
+import {
+  AbArmCard,
+  AbRecommendation,
+  type AbResults,
+} from "@/components/quiz-builder/AbTestResults";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1398,7 +1403,7 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
   const variantMembersByGroup = useMemo(() => {
     const groups = new Map<
       string,
-      Array<{ groupId: string; stepId: string; stepName: string }>
+      Array<{ groupId: string; stepId: string; stepName: string; trafficPct?: number }>
     >();
     for (const node of Object.values(quiz.data.nodes)) {
       if (node.kind !== "step" || !node.variantGroupId) continue;
@@ -1407,6 +1412,7 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
         groupId: node.variantGroupId,
         stepId: node.id,
         stepName: node.name ?? node.id,
+        trafficPct: node.trafficPct,
       });
       groups.set(node.variantGroupId, arr);
     }
@@ -1422,6 +1428,18 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
   const [perVariantFunnels, setPerVariantFunnels] = useState<
     Record<string, FunnelStep[]>
   >({});
+
+  // Quiz-level A/B experiment (two whole quizzes behind one URL, runtime coin flip).
+  // A separate system from the step-level variant groups in quiz.data - without this
+  // fetch, the page only ever showed old step-level tests while the LIVE experiment
+  // was visible nowhere but the editor's Resultat modal. 404 = not part of a test.
+  const [quizAb, setQuizAb] = useState<AbResults | null>(null);
+  useEffect(() => {
+    fetch(`/api/quiz/${quiz.id}/ab-test/results`)
+      .then((r) => (r.ok ? (r.json() as Promise<AbResults>) : null))
+      .then((d) => setQuizAb(d && d.experiment ? d : null))
+      .catch(() => setQuizAb(null));
+  }, [quiz.id]);
 
   const fetchAnalytics = useCallback(() => {
     setLoading(true);
@@ -1714,6 +1732,46 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
           </div>
         )}
 
+        {/* LIVE quiz-level A/B experiment (two whole quizzes behind one URL).
+            Separate system from the step-level variant groups in the drop-off
+            section - this card mirrors the editor's Resultat modal, read-only. */}
+        {quizAb && (
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+              A/B-test (quiz-nivå) - pågående
+            </h2>
+            <p className="mt-1 mb-4 text-xs text-gray-400">
+              Två hela quizzer bakom samma URL, slantsingling per besökare. Hanteras via
+              Resultat-knappen i editorn. Siffrorna gäller hela testperioden och påverkas
+              inte av datumfiltret ovan.
+            </p>
+            <div className="space-y-4">
+              <AbRecommendation data={quizAb} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <AbArmCard
+                  title={quizAb.experiment.ownerName}
+                  label="Variant A"
+                  arm={quizAb.a}
+                  winner={quizAb.significance.winner === "a"}
+                  showOffer={quizAb.has_offer_metric}
+                />
+                <AbArmCard
+                  title={quizAb.experiment.variantName}
+                  label="Variant B"
+                  arm={quizAb.b}
+                  winner={quizAb.significance.winner === "b"}
+                  showOffer={quizAb.has_offer_metric}
+                />
+              </div>
+              <p className="text-xs text-gray-400">
+                {quizAb.total_sessions.toLocaleString("sv-SE")} sessions i testet &middot;{" "}
+                {quizAb.total_purchases} köp &middot; trafik-split {quizAb.experiment.split_a}%
+                A / {100 - quizAb.experiment.split_a}% B
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Funnel Drop-off Chart (moved to top - most-used metric).
             When the quiz has A/B variants and "All variants" is selected, we
             render one chart per variant. Mixing variants into a single chart
@@ -1728,15 +1786,32 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
             {variantFilter === "all" && variantMembers.length > 0 ? (
               <div className="space-y-8">
                 {Array.from(variantMembersByGroup.entries()).map(
-                  ([groupId, members]) => (
+                  ([groupId, members]) => {
+                    // 100/0-split = a paused step-level test; the funnels below are history,
+                    // not a running experiment. Label it so it can't be read as live.
+                    const isPaused =
+                      members.length > 1 &&
+                      members.every((m) => typeof m.trafficPct === "number") &&
+                      members.some((m) => m.trafficPct === 0);
+                    return (
                     <div key={groupId} className="space-y-5">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         A/B Test - {members.map((m) => m.stepName).join(" vs ")}
+                        {isPaused && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-700">
+                            Pausat ({members.map((m) => `${m.trafficPct}%`).join("/")}) - historisk data
+                          </span>
+                        )}
                       </div>
                       {members.map((m) => {
                         const key = `${m.groupId}:${m.stepId}`;
                         const funnel = perVariantFunnels[key];
-                        const starts = funnel?.[0]?.sessions ?? 0;
+                        // Starts = the funnel's widest step, not row 0: when a step is
+                        // replaced mid-window (e.g. the landing swap 10/7) old sessions
+                        // sit on an orphaned id and row 0 undercounts absurdly.
+                        const starts = funnel?.length
+                          ? Math.max(...funnel.map((f) => f.sessions))
+                          : 0;
                         const reachedOffer =
                           funnel && funnel.length > 0
                             ? funnel[funnel.length - 1].sessions
@@ -1757,7 +1832,7 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
                               {funnel ? (
                                 <div className="text-xs text-gray-500">
                                   {starts} starts -&gt; {reachedOffer} reached
-                                  end ({completionPct}%)
+                                  offer ({completionPct}%)
                                 </div>
                               ) : (
                                 <div className="text-xs text-gray-400">
@@ -1784,7 +1859,8 @@ export function AnalyticsClient({ quiz }: { quiz: QuizRow }) {
                         );
                       })}
                     </div>
-                  ),
+                    );
+                  },
                 )}
               </div>
             ) : (

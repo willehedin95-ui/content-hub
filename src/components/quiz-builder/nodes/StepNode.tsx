@@ -18,11 +18,19 @@ function stripTags(html: string): string {
 
 function getPreviewTitle(subEls: SubEl[]): string | null {
   const titleEl = subEls.find((el) => el.kind === "title" || el.kind === "text");
-  if (!titleEl) return null;
-  if (titleEl.kind === "title" || titleEl.kind === "text") {
+  if (titleEl && (titleEl.kind === "title" || titleEl.kind === "text")) {
     const plain = stripTags(titleEl.text).trim();
-    return plain.length > 40 ? plain.slice(0, 40) + "…" : plain;
+    if (plain) return plain.length > 40 ? plain.slice(0, 40) + "…" : plain;
   }
+  // HTML-built steps (offer pages, commit/loading) have no plain title/text element -
+  // pull the first readable text out of the raw HTML instead of showing "No content yet".
+  for (const el of subEls) {
+    if (el.kind === "custom_html" && el.html) {
+      const plain = stripTags(el.html).replace(/\s+/g, " ").trim();
+      if (plain) return plain.length > 40 ? plain.slice(0, 40) + "…" : plain;
+    }
+  }
+  if (subEls.some((el) => el.kind === "loading")) return "Loading-steg";
   return null;
 }
 

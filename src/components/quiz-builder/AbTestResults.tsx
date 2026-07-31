@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { X, Loader2, Trophy, Crown } from "lucide-react";
 
-type Arm = {
+export type AbArm = {
   sessions: number;
   completions: number;
   purchases: number;
@@ -11,10 +11,10 @@ type Arm = {
   purchase_rate: number;
   aov: number;
 };
-type Results = {
+export type AbResults = {
   experiment: { ownerName: string; variantName: string; split_a: number };
-  a: Arm;
-  b: Arm;
+  a: AbArm;
+  b: AbArm;
   significance: { confident: boolean; p_value: number; winner: "a" | "b" | null; enough_data: boolean };
   total_sessions: number;
   total_purchases: number;
@@ -31,7 +31,7 @@ export function AbTestResults({
   onClose: () => void;
   onEnded: () => void;
 }) {
-  const [data, setData] = useState<Results | null>(null);
+  const [data, setData] = useState<AbResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [split, setSplit] = useState<number>(50);
   const [busy, setBusy] = useState<null | "a" | "b" | "end">(null);
@@ -41,7 +41,7 @@ export function AbTestResults({
     try {
       const res = await fetch(`/api/quiz/${quizId}/ab-test/results`);
       if (res.ok) {
-        const json = (await res.json()) as Results;
+        const json = (await res.json()) as AbResults;
         setData(json);
         setSplit(json.experiment.split_a);
       }
@@ -103,7 +103,7 @@ export function AbTestResults({
           </div>
         ) : (
           <div className="p-6 space-y-5">
-            <Recommendation data={data} />
+            <AbRecommendation data={data} />
 
             {/* Traffic split */}
             <div className="flex items-center gap-3 text-sm">
@@ -124,9 +124,9 @@ export function AbTestResults({
 
             {/* Scoreboard */}
             <div className="grid grid-cols-2 gap-3">
-              <ArmCard title={data.experiment.ownerName} label="Variant A" arm={data.a}
+              <AbArmCard title={data.experiment.ownerName} label="Variant A" arm={data.a}
                 winner={data.significance.winner === "a"} showOffer={data.has_offer_metric} />
-              <ArmCard title={data.experiment.variantName} label="Variant B" arm={data.b}
+              <AbArmCard title={data.experiment.variantName} label="Variant B" arm={data.b}
                 winner={data.significance.winner === "b"} showOffer={data.has_offer_metric} />
             </div>
 
@@ -158,7 +158,7 @@ export function AbTestResults({
   );
 }
 
-function Recommendation({ data }: { data: Results }) {
+export function AbRecommendation({ data }: { data: AbResults }) {
   const { significance: s, a, b } = data;
   let tone = "bg-gray-50 text-gray-600 border-gray-200";
   let msg: string;
@@ -177,7 +177,7 @@ function Recommendation({ data }: { data: Results }) {
   return <div className={`rounded-xl border px-4 py-3 text-sm ${tone}`}>{msg}</div>;
 }
 
-function ArmCard({
+export function AbArmCard({
   title,
   label,
   arm,
@@ -186,7 +186,7 @@ function ArmCard({
 }: {
   title: string;
   label: string;
-  arm: Arm;
+  arm: AbArm;
   winner: boolean;
   showOffer: boolean;
 }) {
