@@ -1,5 +1,42 @@
 # Content Hub - Task Backlog
-Updated: 2026-07-31 - doginwork-strategi (advertorial-first), autopilot ÅTER PÅ för doginwork, quiz i underhållsläge - se journal LATEST
+Updated: 2026-08-04 - Onsjö-advertorialen publicerad (separat projekt, se `onsjo/`). doginwork-punkterna nedan orörda sedan 31/7.
+
+## 2026-08-04 - Onsjö 415A: advertorial live, funnel kvar (projekt `onsjo/`, EJ content-hub)
+
+Live: `onsjo415a.pages.dev` (noindex). Handover: `onsjo/HANDOVER-2026-08-04.md`.
+Memory: `onsjo-advertorial.md`. Funnel-plan: `onsjo/plan-intresseanmalningar.md`.
+
+Klart: advertorial-korpusen läst och sammanfattad (`onsjo/MALL-advertorial.md`), texten godkänd
+av William, sidan byggd i karma-layout och deployad till CF Pages, Stefans egna tillägg
+inarbetade (Maries kursgårds-fråga, sångerskan, personalen, kommersiell taxering), 80 rubriker
+genererade via Genesis + Mario-bottarnas diagnos, funnel-planen skriven för Erling-avstämning.
+
+- [ ] **Blockerat på Erling Miles** - fem frågor i planen, fråga två (får Stefan prata drift med
+  spekulanter?) avgör om mellansteget finns kvar. Marie och Stefan tar det.
+- [ ] **Formuläret skarpt** när Erling svarat: Content Hubs formulärsystem (`forms` /
+  `form_submissions` + embed på CF-sidan), två kvalificeringsfrågor, variant som dolt fält.
+- [ ] **Clarity-projekt** för sidan, varianten som custom tag.
+- [ ] **Underlaget**: planritningar m.m. från Erling, Stefans drift-genomgång, rundvandringsfilm.
+- [ ] **Nytt ad-konto + FB-sida + pixel** innan första annonskronan.
+- [ ] **Rubrik-A/B** när William vill (varianter i `onsjo/genesis/ALLA-RUBRIKER.md` + `out4/`).
+- [ ] **Ta bort noindex + robots-disallow** vid skarp start.
+- [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
+  möblerade, detaljplan/bygglov för verksamhetsbyggnaden.
+
+## 2026-08-02 - Izabella: Groundwork Studio (projekt `izabella-v2`, EJ content-hub)
+
+Live: `izabella-v2.pages.dev/studio`. Handover: `izabella-v2/docs/STUDIO-HANDOVER.md`. Memory: `izabella-studio.md`.
+Hela kedjan fungerar verifierat mot prod: swipe -> dekonstruktion -> generering -> bucket. 29 konkurrentposts inne.
+
+- [ ] **TikTok-poster saknar outlier-score.** Hashtag-skrapning ger 1-2 poster per konto, median kräver 4+.
+      Kör tvåfas: hashtag för att upptäcka konton, sen `--accounts` för djup. Skript: `izabella-v2/tools/ingest.py`.
+- [ ] **Sänk längdfiltret** 60s -> ~45s i `ingest.py` (`MAX_DURATION`). En TikTok-träff var 171s.
+- [ ] **Koppla Swipe -> Make.** Idag separata flikar; en swipead post ska kunna dekonstrueras direkt
+      (video_url finns redan på raden, det är bara UI-limmet som saknas).
+- [ ] Sätt `ai_reproducible` på konkurrenterna. Kräver att man tittar på content, inte bara siffror.
+      Troligen det filter som gör mest skillnad nu när hon inte filmar.
+- [ ] Uppdatera `izabella-v2/docs/SWIPE-PLAN.md` - beskriver frame-vägen som ersattes av video.
+- [ ] Izabella har konto (`bbellasvensson@hotmail.com`) men har inte fått URL:en. Williams beslut när.
 
 ## 2026-07-31 - doginwork: strategibeslut + autopilot på igen
 
