@@ -28,6 +28,7 @@ import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { getProductAppearance } from "@/lib/product-appearance";
+import { mirrorCompetitorImages } from "@/lib/competitor-image-mirror";
 import type {
   BrainstormRequest,
   ProductFull,
@@ -80,12 +81,32 @@ export async function swipeCompetitorAd(input: SwipeInput): Promise<SwipeResult>
   const {
     workspaceId,
     productSlug,
-    competitorImageUrls,
     competitorAdCopy,
     brandName,
     notifyTelegram,
     existingJobId,
   } = input;
+
+  // --- Mirror competitor images to permanent storage ---
+  // GetHookd URLs are signed and expire after 24h. Everything downstream
+  // (Claude url-type image sources, Kie reference images, the "Original
+  // Competitor Ad" thumbnail stored in competitor_reference_data) needs a
+  // URL that stays alive, so re-host in Supabase Storage first.
+  const mirror = await mirrorCompetitorImages(db, input.competitorImageUrls, workspaceId);
+  const competitorImageUrls = mirror.urls.filter((u) => !mirror.failed.includes(u));
+  if (competitorImageUrls.length === 0) {
+    throw new Error(
+      `Competitor image download failed (URL likely expired): ${input.competitorImageUrls[0]?.slice(0, 120)}`
+    );
+  }
+  // Keep the queue/ad-spy UI thumbnails alive too
+  if (input.gethookdAdId && mirror.urls.some((u, i) => u !== input.competitorImageUrls[i])) {
+    await db
+      .from("discovered_ads")
+      .update({ media_urls: competitorImageUrls })
+      .eq("gethookd_ad_id", input.gethookdAdId)
+      .eq("workspace_id", workspaceId);
+  }
 
   // Helper to update swipe_progress on existing job (for live UI updates)
   async function updateProgress(jobId: string, step: string, message: string) {

@@ -743,8 +743,13 @@ export async function listAdLinks(): Promise<AdLinkRow[]> {
       asset_feed_spec?: { link_urls?: Array<{ website_url?: string }> };
     };
   };
+  // limit=50 (was 200): the nested creative fields make each row heavy and
+  // Meta rejected the 200-row pages with "Please reduce the amount of data
+  // you're asking for". maxPages bumped 10 -> 40 to keep the same 2000-ad
+  // coverage at the smaller page size.
   const rows = await metaJsonPaginated<RawAd>(
-    `/act_${getAdAccountId()}/ads?fields=id,name,creative{object_story_spec{link_data{link}},asset_feed_spec{link_urls{website_url}}}&limit=200`
+    `/act_${getAdAccountId()}/ads?fields=id,name,creative{object_story_spec{link_data{link}},asset_feed_spec{link_urls{website_url}}}&limit=50`,
+    40
   );
   return rows.map((ad) => ({
     ad_id: ad.id,

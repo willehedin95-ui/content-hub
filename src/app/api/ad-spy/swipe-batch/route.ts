@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
+import { mirrorCompetitorImages } from "@/lib/competitor-image-mirror";
 
 export const maxDuration = 800;
 
@@ -22,14 +23,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No ads provided" }, { status: 400 });
   }
 
-  // Insert all as "queued" in discovered_ads
-  const rows = ads.map((ad) => ({
+  // Insert all as "queued" in discovered_ads.
+  // Mirror media to Supabase Storage first — GetHookd URLs are signed and
+  // expire after 24h, and queued items can sit for hours before the cron
+  // drains them (which then fed Anthropic dead URLs).
+  const mirroredByAd = await Promise.all(
+    ads.map(async (ad) => (await mirrorCompetitorImages(db, ad.media_urls, workspaceId)).urls),
+  );
+  const rows = ads.map((ad, i) => ({
     workspace_id: workspaceId,
     gethookd_ad_id: ad.gethookd_ad_id,
     brand_name: ad.brand_name,
     title: ad.title ?? "",
     body: ad.body ?? "",
-    media_urls: ad.media_urls,
+    media_urls: mirroredByAd[i],
     source: "board" as const,
     status: "queued",
     pain_point: pain_point || null,

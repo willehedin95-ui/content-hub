@@ -6,6 +6,7 @@ import {
 } from "@/lib/swipe-queue-worker";
 import { isTelegramDisabled } from "@/lib/telegram";
 import { trackedCronRoute } from "@/lib/cron-tracker";
+import { maybeSendSwipeDigest } from "@/lib/swipe-digest";
 
 // 300s Vercel hobby cap. swipeCompetitorAd per item = ~60-120s with
 // parallelized image gen. We budget ~250s of processing time so we fit
@@ -126,6 +127,31 @@ async function handleCron(req: NextRequest) {
     }
 
     if (bailedOnTime) break;
+  }
+
+  // Batched review digest for workspaces where we swiped something this run.
+  // Per-swipe Telegram is off (notifyTelegram: false in the queue worker);
+  // this sends one message per ~10 pending concepts instead.
+  const doneWorkspaceIds = new Set(
+    processed.filter((p) => p.status === "done").map((p) => p.workspace),
+  );
+  for (const ws of workspaces ?? []) {
+    if (!doneWorkspaceIds.has(ws.slug)) continue;
+    const productSlug = (ws.settings as Record<string, unknown> | null)
+      ?.default_product as string | undefined;
+    let label = ws.slug;
+    if (productSlug) {
+      const { data: prod } = await db
+        .from("products")
+        .select("name")
+        .eq("slug", productSlug)
+        .eq("workspace_id", ws.id)
+        .single();
+      if (prod?.name) label = prod.name;
+    }
+    await maybeSendSwipeDigest(db, ws.id, label).catch((err) => {
+      console.error(`[process-swipe-queue] ${ws.slug}: digest failed:`, err);
+    });
   }
 
   const elapsedMs = Date.now() - startedAt;

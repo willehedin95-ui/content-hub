@@ -329,6 +329,10 @@ export default function ConceptImagesStep({
   const wsLanguages = useWorkspaceLanguages();
   const [confirmDeleteImageId, setConfirmDeleteImageId] = useState<string | null>(null);
   const [competitorPreview, setCompetitorPreview] = useState<string | null>(null);
+  // Pre-2026-08-07 concepts stored signed GetHookd URLs that expire after 24h.
+  // Track which ones 404 so we can show an "expired" placeholder instead of a
+  // broken image. New concepts store permanent Supabase Storage mirrors.
+  const [expiredCompetitorImgs, setExpiredCompetitorImgs] = useState<Set<number>>(new Set());
   // Manual per-image QA (checks text/product via vision, text-fixes in place when possible)
   const [qaRunningId, setQaRunningId] = useState<string | null>(null);
   const [qaMessages, setQaMessages] = useState<Record<string, string>>({});
@@ -640,18 +644,33 @@ export default function ConceptImagesStep({
             <h4 className="text-sm font-medium text-gray-700">Original Competitor Ad</h4>
           </div>
           <div className="flex gap-3">
-            {competitorImageUrls.map((url, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setCompetitorPreview(url)}
-                className="w-24 rounded-lg overflow-hidden border border-gray-200 shrink-0 cursor-zoom-in hover:border-indigo-300 transition-colors"
-                title="Klicka för att förstora"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Competitor ${i + 1}`} className="w-full aspect-[4/5] object-cover" />
-              </button>
-            ))}
+            {competitorImageUrls.map((url, i) =>
+              expiredCompetitorImgs.has(i) ? (
+                <div
+                  key={i}
+                  className="w-24 aspect-[4/5] rounded-lg border border-dashed border-gray-300 shrink-0 flex items-center justify-center px-1"
+                  title="Källbildens URL har gått ut (GetHookd-länkar lever bara 24h)"
+                >
+                  <span className="text-[10px] text-gray-400 text-center leading-tight">Bilden har gått ut</span>
+                </div>
+              ) : (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setCompetitorPreview(url)}
+                  className="w-24 rounded-lg overflow-hidden border border-gray-200 shrink-0 cursor-zoom-in hover:border-indigo-300 transition-colors"
+                  title="Klicka för att förstora"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Competitor ${i + 1}`}
+                    className="w-full aspect-[4/5] object-cover"
+                    onError={() => setExpiredCompetitorImgs((prev) => new Set(prev).add(i))}
+                  />
+                </button>
+              )
+            )}
             {competitorAdCopy?.trim() && (
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Original ad copy</p>

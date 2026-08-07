@@ -16,6 +16,8 @@ import { generateImage } from "@/lib/kie";
 import { CLAUDE_MODEL, STORAGE_BUCKET, KIE_MODEL } from "@/lib/constants";
 import { KIE_IMAGE_COST } from "@/lib/pricing";
 import { swipeCompetitorAd, findBestLandingPage } from "@/lib/swipe-competitor";
+import { mirrorCompetitorImages } from "@/lib/competitor-image-mirror";
+import { maybeSendSwipeDigest } from "@/lib/swipe-digest";
 import { insertJobWithConceptNumber } from "@/lib/concept-number";
 import { getAdCopyLanguageByWorkspaceId } from "@/lib/workspace";
 import {
@@ -186,6 +188,13 @@ export async function GET(req: NextRequest) {
             allResults.push({ workspace: ws.slug, result });
           }
         }
+
+        // Batched review digest — replaces the old per-swipe Telegram messages.
+        // Sends one message when >= 10 concepts await review (or the oldest
+        // has waited > 72h) and marks them notified.
+        await maybeSendSwipeDigest(db, ws.id, ws.productName).catch((err) => {
+          console.error(`[Autopilot] ${label}Swipe digest failed:`, err);
+        });
       } catch (err) {
         console.error(`[Autopilot] ${label}Fatal error:`, err);
         if (chatId) {
@@ -239,7 +248,11 @@ async function runCompetitorSwipe(
     console.log(`[Autopilot] ${label}Discovered ad from ${discovered.ad.brand.name}: "${discovered.ad.title?.slice(0, 60)}" (attempt ${attempt + 1})`);
 
     // --- Store in discovered_ads ---
-    const imageUrls = getImageUrls(discovered.ad);
+    // Mirror to Supabase Storage immediately: GetHookd URLs are signed and
+    // expire after 24h, which broke both the Anthropic image download
+    // ("Unable to download the file") and the competitor thumbnails in the UI.
+    const rawImageUrls = getImageUrls(discovered.ad);
+    const { urls: imageUrls } = await mirrorCompetitorImages(db, rawImageUrls, ws.id);
     await db.from("discovered_ads").upsert({
       workspace_id: ws.id,
       gethookd_ad_id: discovered.ad.id,
@@ -261,7 +274,7 @@ async function runCompetitorSwipe(
 
     // --- Score ad (skip for board ads — user already vetted) ---
     if (discovered.source !== "board") {
-      const score = await scoreAd(discovered.ad, ws.productName);
+      const score = await scoreAd(discovered.ad, ws.productName, imageUrls[0]);
       await db.from("discovered_ads")
         .update({ ai_relevance_score: score.score, ai_reasoning: score.reasoning })
         .eq("gethookd_ad_id", discovered.ad.id)
@@ -296,7 +309,7 @@ async function runCompetitorSwipe(
     }
 
     // Found a good ad — proceed to swipe it
-    return await executeSwipe(db, chatId, ws, label, discovered, competitorImageUrls);
+    return await executeSwipe(db, ws, label, discovered, competitorImageUrls);
   }
 
   // All attempts exhausted (all ads scored too low)
@@ -312,7 +325,6 @@ async function runCompetitorSwipe(
 /** Execute the actual swipe after a good ad has been found and scored */
 async function executeSwipe(
   db: ReturnType<typeof createServerSupabase>,
-  chatId: string | undefined,
   ws: WorkspaceCtx,
   label: string,
   discovered: { ad: GethookdAd; source: "board" | "brand_spy" | "explore"; boardName?: string },
@@ -332,7 +344,9 @@ async function executeSwipe(
       competitorAdCopy: discovered.ad.body,
       brandName: discovered.ad.brand.name,
       gethookdAdId: discovered.ad.id,
-      notifyTelegram: !!chatId,
+      // Per-swipe Telegram removed 2026-08-07 — William gets a batched digest
+      // via maybeSendSwipeDigest instead (one message per ~10 pending concepts).
+      notifyTelegram: false,
       forceNoProduct: isNativeBoard,
       swipeMode: isNativeBoard ? "faithful" : "adapt",
     });
@@ -364,12 +378,9 @@ async function executeSwipe(
       .eq("gethookd_ad_id", discovered.ad.id)
       .eq("workspace_id", ws.id);
 
-    if (chatId) {
-      await sendMessageWithInlineKeyboard(chatId,
-        `⚠️ ${label}Autopilot swipe failed for ad from ${discovered.ad.brand.name}: ${err instanceof Error ? err.message : "Unknown error"}`,
-        []
-      );
-    }
+    // No per-failure Telegram — it spammed one message per failed ad (3x on
+    // bad mornings). Failures are logged + the ad is marked skipped; the
+    // retry loop in runCompetitorSwipe already tries the next ad.
     return { error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
@@ -497,11 +508,12 @@ async function discoverCompetitorAd(
 // SCORE AD (Claude Haiku quick relevance check)
 // ===========================================================================
 
-async function scoreAd(ad: GethookdAd, productName: string = "sleep pillow"): Promise<{ score: number; reasoning: string }> {
+async function scoreAd(ad: GethookdAd, productName: string = "sleep pillow", imageUrlOverride?: string): Promise<{ score: number; reasoning: string }> {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-    const imageUrls = getImageUrls(ad);
-    const firstImage = imageUrls[0];
+    // Prefer the mirrored (permanent) URL — raw GetHookd URLs are signed,
+    // expire after 24h, and intermittently fail Anthropic's server-side fetch.
+    const firstImage = imageUrlOverride ?? getImageUrls(ad)[0];
 
     const content: Anthropic.Messages.ContentBlockParam[] = [];
     if (firstImage) {
