@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ImageIcon, Film, Sparkles, Scissors, HardDrive, GitCompare, Wand2 } from "lucide-react";
+import { ImageIcon, Film, Sparkles, Scissors, HardDrive, GitCompare, Wand2, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type AssetView =
@@ -10,7 +10,8 @@ export type AssetView =
   | "swipe-image"
   | "swipe-video"
   | "before-after"
-  | "post-production";
+  | "post-production"
+  | "relabel";
 
 interface Props {
   activeView: AssetView;
@@ -28,6 +29,7 @@ const TOOL_ITEMS: { view: AssetView; label: string; icon: typeof Sparkles }[] = 
   { view: "swipe-video", label: "Swipe Video", icon: Scissors },
   { view: "before-after", label: "Before/After", icon: GitCompare },
   { view: "post-production", label: "Post Production", icon: Wand2 },
+  { view: "relabel", label: "Relabel", icon: Tag },
 ];
 
 function formatBytes(bytes: number): string {

@@ -15,6 +15,10 @@ export const KIE_IMAGE_COST = 0.06; // $0.06 per image (~12 credits at 2K, $0.00
 // TODO: verify against Kie's price list — flat estimate at half the 2K cost.
 export const KIE_KEYFRAME_COST = 0.03;
 
+// Kie.ai nano-banana-pro at 2K (relabel tool).
+// TODO: verify against Kie's price list — flat estimate at ~2x nano-banana-2.
+export const KIE_PRO_IMAGE_COST = 0.12;
+
 // Kie.ai video generation — flat per-clip estimates for cost visibility in
 // usage_logs (previously logged as $0, hiding the most expensive tool spend).
 // TODO: verify against Kie's actual price list and replace with exact figures.

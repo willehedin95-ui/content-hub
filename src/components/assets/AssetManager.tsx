@@ -10,8 +10,9 @@ import VideoSwiper from "./VideoSwiper";
 import ImageSwiper from "./ImageSwiper";
 import BeforeAfterGenerator from "./BeforeAfterGenerator";
 import PostProductionStandalone from "./PostProductionStandalone";
+import RelabelTool from "./RelabelTool";
 
-const VALID_VIEWS: AssetView[] = ["images", "videos", "swipe-image", "swipe-video", "before-after", "post-production"];
+const VALID_VIEWS: AssetView[] = ["images", "videos", "swipe-image", "swipe-video", "before-after", "post-production", "relabel"];
 
 interface Props {
   initialAssets: Asset[];
@@ -92,6 +93,9 @@ function AssetManagerInner({ initialAssets }: Props) {
               onAssetCreated={(asset) => setAssets(prev => [asset, ...prev])}
               defaultProduct={null}
             />
+          )}
+          {activeView === "relabel" && (
+            <RelabelTool onAssetCreated={(asset) => setAssets(prev => [asset, ...prev])} />
           )}
           {activeView === "post-production" && (
             <PostProductionStandalone
