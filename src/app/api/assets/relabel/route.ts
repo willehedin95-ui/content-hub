@@ -43,6 +43,12 @@ async function detectAspectRatio(imageUrl: string): Promise<string> {
   }
 }
 
+export type RelabelMode = "relabel" | "swap";
+
+/**
+ * Relabel mode: our own bottle already in the photo, only the label surface
+ * changes. The reference is a packshot of the bottle wearing the new label.
+ */
 function buildRelabelPrompt(textSpec: string | null, notes: string | null): string {
   let prompt = `TASK: Product label replacement (photo edit).
 Image 1 is the original photo. Image 2 is a studio packshot of the SAME bottle wearing the NEW label design.
@@ -59,38 +65,82 @@ Copy the new label's design faithfully from Image 2, including every piece of te
   return prompt;
 }
 
+/**
+ * Swap mode: a DIFFERENT product (competitor, stock photo) is in the photo and
+ * gets replaced by our bottle. Unlike relabel, the replacement has different
+ * proportions than what it replaces, so hands and contact shadows must adapt
+ * rather than stay pixel-identical.
+ */
+function buildSwapPrompt(textSpec: string | null, notes: string | null): string {
+  let prompt = `TASK: Product replacement (photo composite).
+Image 1 is the original photo, which features some other brand's product. Image 2 is a studio packshot of OUR product - the exact bottle that must replace it.
+Remove the original product completely and put OUR bottle from Image 2 in its place. Everything else in Image 1 stays exactly as it is: the same person, face, skin, hair, clothing, body pose, background, props, camera angle, framing, colour grading and lighting direction.
+Placement rules:
+- Our bottle occupies the same position in the frame and is held or placed the same way, at a realistic size relative to the hands and body. Our bottle is a tall slim 500 ml cylinder - if the product it replaces had different proportions, adjust the grip and the bottle's footprint so the result looks physically natural, never stretched or squashed to fit the old silhouette.
+- Hands must wrap around our bottle correctly: fingers in front where they were in front, thumb where it was, with realistic skin compression at the contact points. Do not leave fingers floating, detached or amputated.
+- Relight our bottle to match the scene: same light direction and softness, matching highlights on the plastic, and a contact shadow consistent with the surrounding shadows.
+- Match the photographic character of Image 1 - if it is a casual phone photo keep it casual and grainy, do not upgrade the bottle to a crisp studio render pasted into the scene.
+Product fidelity:
+- Reproduce our bottle exactly as in Image 2: opaque off-white plastic body, white ribbed screw cap, the wraparound label in the same band of the body, same proportions.
+- NO dosing cup or measuring cup on top of the cap. Do not add a glass, liquid, box or any prop that is not already in Image 1.
+- Copy the label design and every piece of text exactly from Image 2. Do not invent, translate or rearrange any text. No text from the original product may survive anywhere in the image.`;
+
+  if (textSpec?.trim()) {
+    prompt += `\n${textSpec.trim()}`;
+  }
+  if (notes?.trim()) {
+    prompt += `\nAdditional instructions: ${notes.trim()}`;
+  }
+  return prompt;
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { image_url, reference_url, text_spec, notes } = body as {
+  const { image_url, reference_url, text_spec, notes, mode = "relabel" } = body as {
     image_url?: string;
     reference_url?: string;
     text_spec?: string;
     notes?: string;
+    mode?: RelabelMode;
   };
 
   if (!image_url) {
     return NextResponse.json({ error: "image_url is required" }, { status: 400 });
   }
+  if (mode !== "relabel" && mode !== "swap") {
+    return NextResponse.json({ error: `Unknown mode "${mode}"` }, { status: 400 });
+  }
 
   // Fall back to the workspace's saved relabel settings so the UI only has
-  // to configure the reference once.
+  // to configure the references once. Each mode has its own reference:
+  // relabel needs the label packshot, swap needs the full product packshot.
   const settings = await getWorkspaceSettings();
   const relabelSettings = (settings.relabel ?? {}) as {
     reference_url?: string;
+    product_url?: string;
     text_spec?: string;
   };
-  const refUrl = reference_url || relabelSettings.reference_url;
+  const savedRef = mode === "swap" ? relabelSettings.product_url : relabelSettings.reference_url;
+  const refUrl = reference_url || savedRef;
   const spec = text_spec ?? relabelSettings.text_spec ?? null;
 
   if (!refUrl) {
     return NextResponse.json(
-      { error: "No label reference configured. Upload a reference image first." },
+      {
+        error:
+          mode === "swap"
+            ? "No product packshot configured. Upload one under Product packshot first."
+            : "No label reference configured. Upload a reference image first.",
+      },
       { status: 400 }
     );
   }
 
   const db = createServerSupabase();
-  const prompt = buildRelabelPrompt(spec, notes ?? null);
+  const prompt =
+    mode === "swap"
+      ? buildSwapPrompt(spec, notes ?? null)
+      : buildRelabelPrompt(spec, notes ?? null);
 
   // Stream NDJSON so the UI gets progress + the Vercel function isn't
   // limited by a single response timeout window.
@@ -104,7 +154,10 @@ export async function POST(req: NextRequest) {
 
   (async () => {
     try {
-      await emit({ step: "generating", message: "Generating relabeled image..." });
+      await emit({
+        step: "generating",
+        message: mode === "swap" ? "Swapping in our product..." : "Generating relabeled image...",
+      });
 
       const aspectRatio = await detectAspectRatio(image_url);
 
@@ -131,6 +184,7 @@ export async function POST(req: NextRequest) {
           task_id: taskId,
           aspect_ratio: aspectRatio,
           reference_url: refUrl,
+          mode,
         },
       });
 

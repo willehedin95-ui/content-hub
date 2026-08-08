@@ -22,6 +22,24 @@ import { useProducts } from "@/hooks/useProducts";
 
 type JobStatus = "queued" | "uploading" | "generating" | "done" | "error";
 
+/** relabel = our bottle, new label. swap = someone else's product becomes ours. */
+type Mode = "relabel" | "swap";
+
+const MODES: { id: Mode; label: string; blurb: string }[] = [
+  {
+    id: "relabel",
+    label: "Byt etikett",
+    blurb:
+      "Bilden visar redan vår flaska med den gamla etiketten. Allt i bilden behålls, bara etiketten byts.",
+  },
+  {
+    id: "swap",
+    label: "Byt ut produkten",
+    blurb:
+      "Bilden visar någon annans produkt. Den ersätts av vår flaska - person, pose, bakgrund och ljus behålls.",
+  },
+];
+
 interface RelabelJob {
   id: string;
   fileName: string;
@@ -29,6 +47,8 @@ interface RelabelJob {
   sourcePreview: string;
   sourceFile: File | null;
   sourceUrl: string | null;
+  /** Frozen at enqueue time so changing the mode never rewrites running jobs */
+  mode: Mode;
   status: JobStatus;
   resultUrl: string | null;
   error: string | null;
@@ -37,7 +57,10 @@ interface RelabelJob {
 }
 
 interface RelabelSettings {
+  /** Packshot of our bottle wearing the new label (relabel mode) */
   reference_url?: string;
+  /** Clean packshot of the whole product on white (swap mode) */
+  product_url?: string;
   text_spec?: string;
 }
 
@@ -59,13 +82,19 @@ export default function RelabelTool({ onAssetCreated }: Props) {
   const products = useProducts();
 
   // Reference settings (persisted per workspace)
+  const [mode, setMode] = useState<Mode>("relabel");
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
+  const [productUrl, setProductUrl] = useState<string | null>(null);
   const [textSpec, setTextSpec] = useState("");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [uploadingRef, setUploadingRef] = useState(false);
+  const [uploadingRef, setUploadingRef] = useState<Mode | null>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
+  const productInputRef = useRef<HTMLInputElement>(null);
+
+  /** The reference the currently selected mode consumes */
+  const activeRef = mode === "swap" ? productUrl : referenceUrl;
 
   // Job queue
   const [jobs, setJobs] = useState<RelabelJob[]>([]);
@@ -84,16 +113,27 @@ export default function RelabelTool({ onAssetCreated }: Props) {
       .then((settings) => {
         const relabel = (settings?.relabel ?? {}) as RelabelSettings;
         if (relabel.reference_url) setReferenceUrl(relabel.reference_url);
+        if (relabel.product_url) setProductUrl(relabel.product_url);
         if (relabel.text_spec) setTextSpec(relabel.text_spec);
-        // Open settings automatically when no reference is configured yet
-        if (!relabel.reference_url) setSettingsOpen(true);
+        // Open settings automatically when nothing is configured yet
+        if (!relabel.reference_url && !relabel.product_url) setSettingsOpen(true);
       })
       .catch(() => {})
       .finally(() => setSettingsLoaded(true));
   }, []);
 
+  /**
+   * Settings are a single JSONB key, so always send the whole relabel object -
+   * a partial write would drop the other mode's reference.
+   */
   const persistSettings = useCallback(
-    async (next: RelabelSettings) => {
+    async (patch: Partial<RelabelSettings>) => {
+      const next: RelabelSettings = {
+        reference_url: referenceUrl ?? undefined,
+        product_url: productUrl ?? undefined,
+        text_spec: textSpec,
+        ...patch,
+      };
       setSavingSettings(true);
       try {
         await fetch("/api/settings", {
@@ -105,34 +145,38 @@ export default function RelabelTool({ onAssetCreated }: Props) {
         setSavingSettings(false);
       }
     },
-    []
+    [productUrl, referenceUrl, textSpec]
   );
 
   const handleReferenceUpload = useCallback(
-    async (file: File) => {
+    async (file: File, target: Mode) => {
       setError(null);
-      setUploadingRef(true);
+      setUploadingRef(target);
       try {
         const formData = new FormData();
         formData.append("file", file);
         const res = await fetch("/api/upload-temp", { method: "POST", body: formData });
         if (!res.ok) throw new Error("Failed to upload reference image");
         const { url } = await res.json();
-        setReferenceUrl(url);
-        await persistSettings({ reference_url: url, text_spec: textSpec });
+        if (target === "swap") {
+          setProductUrl(url);
+          await persistSettings({ product_url: url });
+        } else {
+          setReferenceUrl(url);
+          await persistSettings({ reference_url: url });
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Reference upload failed");
       } finally {
-        setUploadingRef(false);
+        setUploadingRef(null);
       }
     },
-    [persistSettings, textSpec]
+    [persistSettings]
   );
 
   const handleSaveTextSpec = useCallback(async () => {
-    if (!referenceUrl) return;
-    await persistSettings({ reference_url: referenceUrl, text_spec: textSpec });
-  }, [persistSettings, referenceUrl, textSpec]);
+    await persistSettings({ text_spec: textSpec });
+  }, [persistSettings, textSpec]);
 
   // ------------------------------------------------------------------
   // Queue processing
@@ -167,6 +211,7 @@ export default function RelabelTool({ onAssetCreated }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             image_url: sourceUrl,
+            mode: job.mode,
             notes: notes.trim() || undefined,
           }),
         });
@@ -237,8 +282,12 @@ export default function RelabelTool({ onAssetCreated }: Props) {
 
   const enqueueFiles = useCallback(
     (files: File[]) => {
-      if (!referenceUrl) {
-        setError("Upload a label reference first (open Reference settings).");
+      if (!activeRef) {
+        setError(
+          mode === "swap"
+            ? "Ladda upp en produktbild (packshot) först - öppna Referenser."
+            : "Ladda upp en etikettreferens först - öppna Referenser."
+        );
         setSettingsOpen(true);
         return;
       }
@@ -253,6 +302,7 @@ export default function RelabelTool({ onAssetCreated }: Props) {
           sourcePreview: URL.createObjectURL(file),
           sourceFile: file,
           sourceUrl: null,
+          mode,
           status: "queued",
           resultUrl: null,
           error: null,
@@ -268,7 +318,7 @@ export default function RelabelTool({ onAssetCreated }: Props) {
       // Let state settle before pumping
       setTimeout(pumpQueue, 0);
     },
-    [pumpQueue, referenceUrl]
+    [activeRef, mode, pumpQueue]
   );
 
   const handleDrop = useCallback(
@@ -363,9 +413,38 @@ export default function RelabelTool({ onAssetCreated }: Props) {
           Relabel
         </h2>
         <p className="text-sm text-gray-500 mt-1">
-          Upload photos of the bottle with the old label — Nano Banana Pro regenerates them
-          with the new label from the reference packshot. Everything else in the photo stays identical.
+          Återanvänd gamla bilder med den nya etiketten. Nano Banana Pro behåller scenen och
+          byter bara ut produkten.
         </p>
+      </div>
+
+      {/* Mode picker */}
+      <div className="grid grid-cols-2 gap-3">
+        {MODES.map((m) => {
+          const isActive = mode === m.id;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setMode(m.id)}
+              className={cn(
+                "text-left p-3.5 rounded-lg border transition-colors",
+                isActive
+                  ? "border-indigo-300 bg-indigo-50/60 ring-1 ring-indigo-200"
+                  : "border-gray-200 bg-white hover:border-gray-300"
+              )}
+            >
+              <span
+                className={cn(
+                  "block text-sm font-medium",
+                  isActive ? "text-indigo-700" : "text-gray-700"
+                )}
+              >
+                {m.label}
+              </span>
+              <span className="block text-xs text-gray-500 mt-1 leading-relaxed">{m.blurb}</span>
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -383,76 +462,100 @@ export default function RelabelTool({ onAssetCreated }: Props) {
         >
           <span className="flex items-center gap-2">
             <Settings2 className="w-4 h-4 text-gray-400" />
-            Label reference
-            {settingsLoaded && !referenceUrl && (
-              <span className="text-xs font-normal text-amber-600">— not configured</span>
+            Referenser
+            {settingsLoaded && !activeRef && (
+              <span className="text-xs font-normal text-amber-600">
+                — saknas för det här läget
+              </span>
             )}
           </span>
-          {referenceUrl && !settingsOpen && (
+          {activeRef && !settingsOpen && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={referenceUrl} alt="Reference" className="w-8 h-8 rounded object-cover border border-gray-200" />
+            <img src={activeRef} alt="Referens" className="w-8 h-8 rounded object-cover border border-gray-200" />
           )}
         </button>
         {settingsOpen && (
-          <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-4">
-            <div className="flex items-start gap-4">
-              {referenceUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={referenceUrl}
-                  alt="Label reference"
-                  className="w-32 h-32 rounded-lg object-cover border border-gray-200"
-                />
-              ) : (
-                <div className="w-32 h-32 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-xs text-gray-400 text-center px-2">
-                  No reference yet
+          <div className="px-4 pb-4 space-y-5 border-t border-gray-100 pt-4">
+            {([
+              {
+                target: "relabel" as Mode,
+                url: referenceUrl,
+                inputRef: refInputRef,
+                title: "Etikettreferens",
+                usedBy: "Byt etikett",
+                help: "Studiobild på flaskan med den NYA etiketten (en mockup-render fungerar utmärkt). Ger modellen både grafiken och hur etiketten sitter på flaskan.",
+              },
+              {
+                target: "swap" as Mode,
+                url: productUrl,
+                inputRef: productInputRef,
+                title: "Produktbild (packshot)",
+                usedBy: "Byt ut produkten",
+                help: "Ren packshot av HELA produkten mot vit bakgrund, utan doseringskopp, glas eller kartong. Den här bilden avgör flaskans form och proportioner i alla genereringar.",
+              },
+            ]).map((slot) => (
+              <div key={slot.target} className="flex items-start gap-4">
+                {slot.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={slot.url}
+                    alt={slot.title}
+                    className="w-32 h-32 rounded-lg object-contain bg-gray-50 border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-32 h-32 shrink-0 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-xs text-gray-400 text-center px-2">
+                    Ingen bild än
+                  </div>
+                )}
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm font-medium text-gray-700">
+                    {slot.title}
+                    <span className="ml-2 text-[11px] font-normal text-gray-400">
+                      används av &quot;{slot.usedBy}&quot;
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-500 leading-relaxed">{slot.help}</p>
+                  <button
+                    onClick={() => slot.inputRef.current?.click()}
+                    disabled={uploadingRef !== null}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-50"
+                  >
+                    {uploadingRef === slot.target ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    {slot.url ? "Byt bild" : "Ladda upp"}
+                  </button>
+                  <input
+                    ref={slot.inputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleReferenceUpload(file, slot.target);
+                      e.target.value = "";
+                    }}
+                  />
                 </div>
-              )}
-              <div className="flex-1 space-y-2">
-                <p className="text-xs text-gray-500">
-                  Use a studio packshot of the bottle wearing the NEW label (a mockup render works
-                  great). This gives the model both the artwork and how the label sits on the bottle.
-                </p>
-                <button
-                  onClick={() => refInputRef.current?.click()}
-                  disabled={uploadingRef}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-50"
-                >
-                  {uploadingRef ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="w-3.5 h-3.5" />
-                  )}
-                  {referenceUrl ? "Replace reference" : "Upload reference"}
-                </button>
-                <input
-                  ref={refInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleReferenceUpload(file);
-                    e.target.value = "";
-                  }}
-                />
               </div>
-            </div>
+            ))}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                Label text spec (optional — improves text fidelity)
+                Etikettens text (valfritt — höjer textprecisionen)
               </label>
               <textarea
                 value={textSpec}
                 onChange={(e) => setTextSpec(e.target.value)}
                 onBlur={handleSaveTextSpec}
                 rows={5}
-                placeholder={`The label's exact texts (copy character by character):\n- Wordmark: "..."\n- Heading: "..."`}
+                placeholder={`Etikettens exakta texter (tecken för tecken):\n- Wordmark: "..."\n- Rubrik: "..."`}
                 className="w-full text-xs border border-gray-200 rounded-lg p-2.5 font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <p className="text-[11px] text-gray-400 mt-1">
-                List every text string on the label exactly as written. Saved automatically
-                {savingSettings ? " — saving..." : "."}
+                Lista varje textsträng på etiketten exakt som den står. Sparas automatiskt
+                {savingSettings ? " — sparar..." : "."} Används av båda lägena.
               </p>
             </div>
           </div>
@@ -468,10 +571,12 @@ export default function RelabelTool({ onAssetCreated }: Props) {
       >
         <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
         <p className="text-sm font-medium text-gray-700">
-          Drop images with the old label here
+          {mode === "swap"
+            ? "Släpp bilder med någon annans produkt här"
+            : "Släpp bilder med den gamla etiketten här"}
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          or click to browse — multiple files supported, paste works too
+          eller klicka för att bläddra — flera filer funkar, och paste också
         </p>
         <input
           ref={fileInputRef}
@@ -519,7 +624,7 @@ export default function RelabelTool({ onAssetCreated }: Props) {
         </div>
         {(activeCount > 0 || queuedCount > 0) && (
           <p className="text-xs text-gray-500 pb-2.5">
-            {activeCount} running{queuedCount > 0 ? `, ${queuedCount} queued` : ""}
+            {activeCount} kör{queuedCount > 0 ? `, ${queuedCount} i kö` : ""}
           </p>
         )}
       </div>
@@ -529,7 +634,12 @@ export default function RelabelTool({ onAssetCreated }: Props) {
         {jobs.map((job) => (
           <div key={job.id} className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-gray-700 truncate">{job.fileName}</p>
+              <p className="text-sm font-medium text-gray-700 truncate flex items-center gap-2">
+                {job.fileName}
+                <span className="shrink-0 text-[10px] font-normal uppercase tracking-wider text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">
+                  {job.mode === "swap" ? "Produktbyte" : "Etikett"}
+                </span>
+              </p>
               <div className="flex items-center gap-2">
                 {job.status === "done" && job.resultUrl && (
                   <>
@@ -582,7 +692,7 @@ export default function RelabelTool({ onAssetCreated }: Props) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">
-                  Original
+                  Före
                 </p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -593,7 +703,7 @@ export default function RelabelTool({ onAssetCreated }: Props) {
               </div>
               <div>
                 <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5">
-                  New label
+                  Efter
                 </p>
                 {job.status === "done" && job.resultUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
