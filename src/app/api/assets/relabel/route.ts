@@ -78,8 +78,13 @@ Remove the original product completely and put OUR bottle from Image 2 in its pl
 Placement rules:
 - Our bottle occupies the same position in the frame and is held or placed the same way, at a realistic size relative to the hands and body. Our bottle is a tall slim 500 ml cylinder - if the product it replaces had different proportions, adjust the grip and the bottle's footprint so the result looks physically natural, never stretched or squashed to fit the old silhouette.
 - Hands must wrap around our bottle correctly: fingers in front where they were in front, thumb where it was, with realistic skin compression at the contact points. Do not leave fingers floating, detached or amputated.
-- Relight our bottle to match the scene: same light direction and softness, matching highlights on the plastic, and a contact shadow consistent with the surrounding shadows.
-- Match the photographic character of Image 1 - if it is a casual phone photo keep it casual and grainy, do not upgrade the bottle to a crisp studio render pasted into the scene.
+Integration - this is what decides whether the result looks real or pasted:
+- Image 2 is a studio packshot. It is a REFERENCE for what the product looks like, never a cut-out to drop into the scene. Re-photograph the bottle inside Image 1's world instead of compositing it.
+- Relight it completely with the scene's own light: same direction, same softness, same colour temperature. Highlights on the glossy plastic must fall where the room's light actually is, and the label picks up the same ambient colour cast as everything else.
+- The bottle must sit in the same focal plane as whatever it touches. If the photo is soft, slightly grainy or slightly out of focus, the bottle is equally soft and grainy. Never let it be the sharpest, cleanest object in a soft frame - that single mismatch is what reads as fake.
+- Ground it with contact: a soft occlusion shadow where fingers wrap the bottle, a cast shadow falling onto the clothing, hand or surface behind it, and darkening in the gaps between fingers and plastic.
+- Fingers overlap the bottle's silhouette in front, so the outline is broken by skin rather than being a clean cut-out edge. A faint reflection of the hand and the room appears on the glossy surface.
+- Match the photographic character of Image 1 - if it is a casual phone photo keep it casual and grainy, do not upgrade the bottle to a crisp studio render.
 Product fidelity:
 - Reproduce our bottle exactly as in Image 2: opaque off-white plastic body, white ribbed screw cap, the wraparound label in the same band of the body, same proportions.
 - NO dosing cup or measuring cup on top of the cap. Do not add a glass, liquid, box or any prop that is not already in Image 1.
