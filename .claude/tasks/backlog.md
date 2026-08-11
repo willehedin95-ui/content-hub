@@ -1,5 +1,5 @@
 # Content Hub - Task Backlog
-Updated: 2026-08-04 - Onsjö-advertorialen publicerad (separat projekt, se `onsjo/`). doginwork-punkterna nedan orörda sedan 31/7.
+Updated: 2026-08-11 - Vox-videolanen: grindar, bilddomare, rollback av hooken (se izabella-v2 + journalen 2026-08-11). Onsjö/doginwork orörda.
 
 ## 2026-08-04 - Onsjö 415A: advertorial live, funnel kvar (projekt `onsjo/`, EJ content-hub)
 
@@ -23,10 +23,46 @@ genererade via Genesis + Mario-bottarnas diagnos, funnel-planen skriven för Erl
 - [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
   möblerade, detaljplan/bygglov för verksamhetsbyggnaden.
 
+## 2026-08-11 - VOX-VIDEOLANEN (projekt `izabella-v2`, EJ content-hub)
+
+**Startdokument: `izabella-v2/docs/HEALTH-HANDOVER.md`, sedan journalen 2026-08-11.**
+Kön är **PAUSAD** (`# PAUSAD` i crontab). Återgångspunkt: taggen `natt-utgangslage`.
+
+Kedjan går hela vägen själv. Tre studier byggda, två godkända av grindarna, en
+underkänd automatiskt på både beat-antal och dötid.
+
+- [ ] 🔴 **William ser de tre senaste videorna** - hans dom kalibrerar grindarnas
+      trösklar. Talen säger att dötiden är borta, inte att videon är bra.
+- [ ] Kör 2-3 studier på otestade pelare (P2/P3/P6) - allt är testat på mat och sömn
+- [ ] Hooken: han vill mer lockande men sa vänta. Oprövad idé: tre UTKLIPP med
+      hårda klipp, alltså energin från den kapade helbildsversionen i kollagets värld
+- [ ] Telegram-godkännande (**ett** kort per kväll) + `/videoprod`-skill - designat
+      och godkänt i princip, medvetet inte byggt än ("vi väntar med skillen")
+- [ ] `mashed-food` läser som grå massa; svep biblioteket med bilddomaren igen
+- [ ] Bilddomaren failar öppet om JSON inte går att parsa - överväg om det är rätt
+- [ ] Starta kön igen när William säger till
+
+## 2026-08-06 - HEALTH-kontot: publicering och mätning
+
+**Startdokument: `izabella-v2/docs/HEALTH-HANDOVER.md`.**
+
+- [x] IG-konto + token - klart, kontot är live sedan 2026-08-07
+- [x] Publish-steget + cron - klart (nu pausat)
+- [ ] Graph API insights-läsning (stänger mätloopen för BÅDA kontona)
+- [ ] Bevaka claim-tonen i health-byggen ("modest and checkable") - läkemedelsgrinden
+      byggd 2026-08-10, men tonen i övrigt är fortfarande obevakad
+- [ ] Vinkel skärps på data efter fler scrapes - **nischen låses dag 30 på data**
+- [ ] YouTube: uppladdningarna är PRIVATA tills auditen är klar. Två testvideor
+      ligger privata på kanalen (`niBx7i1ElNw`, `wgAgikH18ZU`) - William raderar i
+      Studio, koden kan inte (bara upload-scope)
+
 ## 2026-08-02 - Izabella: Groundwork Studio (projekt `izabella-v2`, EJ content-hub)
 
 Live: `izabella-v2.pages.dev/studio`. Handover: `izabella-v2/docs/STUDIO-HANDOVER.md`. Memory: `izabella-studio.md`.
-Hela kedjan fungerar verifierat mot prod: swipe -> dekonstruktion -> generering -> bucket. 29 konkurrentposts inne.
+Omgjord 2026-08-06 i sex varv: EN Build-knapp, konceptsidor, JSON-prompting, 4 flikar (Today borta).
+- [ ] 🔴 Delningsarket på Izabellas iPhone (enda otestade länken)
+- [ ] Nischmening + datum för första posten (Williams) - två chrome era-koncept väntar på Make
+- [ ] Börja posta: verktyget är inte flaskhalsen
 
 - [ ] **TikTok-poster saknar outlier-score.** Hashtag-skrapning ger 1-2 poster per konto, median kräver 4+.
       Kör tvåfas: hashtag för att upptäcka konton, sen `--accounts` för djup. Skript: `izabella-v2/tools/ingest.py`.
