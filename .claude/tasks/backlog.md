@@ -1,5 +1,5 @@
 # Content Hub - Task Backlog
-Updated: 2026-08-11 - Vox-videolanen: grindar, bilddomare, rollback av hooken (se izabella-v2 + journalen 2026-08-11). Onsjö/doginwork orörda.
+Updated: 2026-08-12 - Vox-videolanen: kortmodell, shapes, miniatyr, granskning i kedjan, självreparation (se izabella-v2 + journalen 2026-08-12). Onsjö/doginwork orörda.
 
 ## 2026-08-04 - Onsjö 415A: advertorial live, funnel kvar (projekt `onsjo/`, EJ content-hub)
 
@@ -23,24 +23,40 @@ genererade via Genesis + Mario-bottarnas diagnos, funnel-planen skriven för Erl
 - [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
   möblerade, detaljplan/bygglov för verksamhetsbyggnaden.
 
-## 2026-08-11 - VOX-VIDEOLANEN (projekt `izabella-v2`, EJ content-hub)
+## 2026-08-12 - VOX-VIDEOLANEN (projekt `izabella-v2`, EJ content-hub)
 
-**Startdokument: `izabella-v2/docs/HEALTH-HANDOVER.md`, sedan journalen 2026-08-11.**
-Kön är **PAUSAD** (`# PAUSAD` i crontab). Återgångspunkt: taggen `natt-utgangslage`.
+**Startdokument: `izabella-v2/docs/HEALTH-HANDOVER.md`** (första stycket är skrivet
+för överlämningen), sedan journalen 2026-08-12.
+Kön är **PAUSAD och TOM**. Återgång: `git reset --hard natt-2026-08-11-utgangslage`.
 
-Kedjan går hela vägen själv. Tre studier byggda, två godkända av grindarna, en
-underkänd automatiskt på både beat-antal och dötid.
+Kedjan är åtta steg med ett tjugotal grindar. Tre videor byggda med kortmodellen,
+alla rena. William har sett och kommenterat samtliga.
 
-- [ ] 🔴 **William ser de tre senaste videorna** - hans dom kalibrerar grindarnas
-      trösklar. Talen säger att dötiden är borta, inte att videon är bra.
-- [ ] Kör 2-3 studier på otestade pelare (P2/P3/P6) - allt är testat på mat och sömn
-- [ ] Hooken: han vill mer lockande men sa vänta. Oprövad idé: tre UTKLIPP med
-      hårda klipp, alltså energin från den kapade helbildsversionen i kollagets värld
-- [ ] Telegram-godkännande (**ett** kort per kväll) + `/videoprod`-skill - designat
-      och godkänt i princip, medvetet inte byggt än ("vi väntar med skillen")
-- [ ] `mashed-food` läser som grå massa; svep biblioteket med bilddomaren igen
-- [ ] Bilddomaren failar öppet om JSON inte går att parsa - överväg om det är rätt
-- [ ] Starta kön igen när William säger till
+- [x] William såg videorna - hela sessionen drevs av hans domar
+- [x] Kortmodellen (en stor bild eller ett par, hela kortet byts på en gång)
+- [x] Shapes: pil, kryss, graf - en roll var, avmättas i kod
+- [x] Miniatyr som ruta noll, med rubriken inbakad i den genererade bilden
+- [x] Granskningen kopplad in i kedjan (steg 5 av 8)
+- [x] Självreparation: granskningen får byta bilder och rendera om, en omgång
+- [x] Manusstruktur hook/itch/proof/payoff/move + ställningstagande + loop
+- [x] Otestade pelare: P3 (ägg) och P1 (fettlever) körda
+
+- [ ] 🔴 **Rösten kan inte anropas från cron** (Higgsfield-MCP kräver agent-session).
+      Detta är det enda som hindrar verklig automatik - fas 2 måste köras vid datorn.
+      Kie har API-nyckel i pipelinen redan och bör undersökas som TTS-väg.
+- [ ] 🔴 **Självreparationen har aldrig fullbordat en lyckad omgång.** Första skarpa
+      körningen rullades tillbaka (två byten valde samma slug). Båda felen lagade,
+      fixen okörd.
+- [ ] **Fyll kön och slå på cron** - kontot har 5 poster, alla byggda med den gamla
+      maskinen. Vi optimerar mot en enda datapunkt (87% completion, noll delningar).
+      Williams beslut, frågan är ställd.
+- [ ] `shape-check` och `shape-circle` definierade men saknar triggers
+- [ ] `chart-up` vs `chart-bars`: linje vid riktning, staplar vid jämförelse - regeln
+      finns, men bara testad på ett manus
+- [ ] Parlayouten är svag punkten: två bilder à 684px ryms inte i 1080, krocklösaren
+      krymper dem. Fler par kräver att `SLOTS[2]` räknas om
+- [ ] Bilddomaren failar öppet om JSON inte går att parsa
+- [ ] Telegram-godkännande (**ett** kort per kväll) + `/videoprod` - medvetet ej byggt
 
 ## 2026-08-06 - HEALTH-kontot: publicering och mätning
 
