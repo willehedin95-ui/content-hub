@@ -1,29 +1,61 @@
+## Vox-lanen (izabella-v2) - efter 2026-08-13
+
+- [ ] **BRÅDSKANDE: bygg om sockervideon (PMID 33684506) före 11:00 2026-08-14** — kön pekar på gammal fil med svag hook. Manus omskrivet, röst genererad, bygget hanns aldrig köras.
+- [ ] **Facebook-publicering klart** — `fb.py` byggd, use case tillagt, men token saknar `pages_manage_posts` och `/me/accounts` är tomt (sidan ligger i business-portfölj). LÄS METAS DOKUMENTATION FÖRST - fyra godkännanderundor brändes på gissningar.
+- [ ] **Mät om hookramverket bet** — snitt-tid på 08-14 och 08-15 mot baslinjen 1,9-8,8s
+- [ ] **YouTube compliance-audit** — Shorts är private tills API-projektet godkänts. Williams formulär, jag kan skriva svaren.
+- [ ] **Kritikern ska ersätta, inte släppa** när ett bortfall bryter täthetsgolvet - två byggen föll på det
+- [ ] **Ord-captionsens placering** — 18-19% från botten, inne i Metas täckta band. Geometriombyggnad, Williams beslut.
+- [ ] **`second-helping`** har missbildad hand vid närbild, bör genereras om
+
 # Content Hub - Task Backlog
-Updated: 2026-08-13 - Onsjö: hela funneln byggd och kopplad (egen domän, formulär, mejlflow, bokning, utträde). Se journalen 2026-08-13-onsjo-funnel + `onsjo/HANDOVER-2026-08-12.md`. Vox-lanen orörd sedan `b691c95`.
+Updated: 2026-08-13 (kväll) - Onsjö: annonskonto, sida, pixel, Clarity och kampanjutkast klara. Genesis-körningen gav oanvändbart material, två frågor ligger hos William. Se `2026-08-13-onsjo-annonser-genesis.md` + `onsjo/HANDOVER-2026-08-12.md`.
 
-## 2026-08-13 - Onsjö 415A: funneln klar, kvar är innehåll och annonskonto (projekt `onsjo/`, EJ content-hub)
+## 2026-08-13 - Onsjö 415A: allt utom annonsmaterialet klart (projekt `onsjo/`, EJ content-hub)
 
-Live på **`stefanhedin.se`** (egen domän, noindex). **Läs `onsjo/HANDOVER-2026-08-12.md` först**,
-den är uppdaterad genom hela bygget. Memory: `onsjo-advertorial.md`.
+Live på **`stefanhedin.se`** (noindex). **Läs `onsjo/HANDOVER-2026-08-12.md` först.**
+Memory: `onsjo-advertorial.md`.
 
-Klart: egen domän med DNS på Cloudflare och mejl hos Hostinger (MX, SPF, DKIM), artikeln med
-skarpt formulär som sparar i Supabase och lägger i MailerLite, underlagssida med 49 foton och
-tre planritningar, bokningssida med cal.com, fem mejl i MailerLite, utträde ur sekvensen när
-någon bokar samtal (testat skarpt), läsvy för Stefans korrektur på `/onsjo-415/mejlen/`.
+Klart: domän med DNS på Cloudflare och mejl hos Hostinger, artikeln med skarpt formulär, underlag
+med 49 foton och tre planritningar, bokning via cal.com, fem mejl i MailerLite, utträde vid
+bokning, läsvy för Stefans korrektur. **Nytt 2026-08-13 kväll:** annonskonto
+`act_1023872310418716`, FB-sida `1339413035915987`, pixel `1061946796309495`, Clarity
+`y1qfzxt9fa`, spårning i `onsjo/spar.js` (pixel + Clarity, båda mätta skarpt), kampanjutkast med
+webbplats som konverteringsplats och `Lead` som händelse, samt workspace `onsjo` i hubben med
+produkten `onsjo-415a` och 18 produktbilder.
 
 **Erling: får nämnas som faktauppgift, men inget ska styra folk till honom.** Alla går via
-Stefan först, som sållar innan de skickas vidare till visning.
+Stefan först.
 
-- [ ] **Driftkostnaden saknar villans fastighetsskatt** - Stefans 109 258 har bara
-  verksamhetsbyggnadens 9 760, inte småhusenhetens 8 524. Riktig total ~117 800. Siffran står
-  på underlagssidan och i mejl 2. Stäm av med Stefan.
+**BLOCKERAR ALLT ANNONSMATERIAL, två frågor hos William:**
+
+- [ ] **Hook-dedup i Genesis.** `generateVettedConcepts` kör `generateHooks` en gång före loopen
+  och delar samma hook-array till alla koncept, loopen varierar bara `angle`. Hook-mångfald inom
+  en batch är arkitektoniskt omöjlig. Första körningen gav två koncept med identisk hook och
+  delvis ordagrant samma brödtext. **Laga i `genesis-pipeline.ts` (ca tio rader, gäller alla
+  workspaces) eller kringgå med hookBan i segmentfältet per körning?**
+- [ ] **Referensbilder används inte.** `reference_image_count: 0`, `reference_strategy: "none"`
+  på alla fem genererade bilder. De 18 fotona användes aldrig, ingen bild föreställer
+  fastigheten. **Tvinga `referenceStrategy: "product"` för workspacet?**
+
+**Övrigt kvar:**
+
+- [ ] **Driftkostnaden är fel på underlagssidan.** Står 109 258. Mäklarens 8 524 är takbeloppet
+  för kalenderår **2021**, verifierat mot Skatteverkets tabell. Rätt för 2026 är 10 425 och
+  riktig total ~119 700. Stäm av med Stefan, siffran ligger publikt och underskattar.
+- [ ] **Intäktspåstående i copyn** - "genererar intäkter" i koncept 2 bryter projektregeln.
+  Domaren bad om **mer** intäktsbevis, den känner inte till regeln.
+- [ ] **Två genererade bilder är trasiga** - en skrev ut sina instruktionsetiketter som synlig
+  engelsk text ("LEFT SIDE PAIN STATE"), en har förvrängda bokstäver i "OM DU".
+- [ ] **Visningsdatan från Marie och Stefan** - de var med på alla privata visningar men har inte
+  tillfrågats om vad spekulanterna ville göra med stället. Enda riktiga målgruppsdatan som finns.
+- [ ] **Budget och betalmetod** - står på standard 125 kr/dag, Stefans kort saknas på kontot.
 - [ ] **Stefans feedback på mejlen** via läsvyn, sedan justera i `onsjo/bygg-mejl-zip.py`.
 - [ ] **Rumsnamn till planritningen** från Stefan, och porträtt till bokningssidan.
-- [ ] **Boksluten publikt eller inte** - finns nu, rekommendation: nej, hör hemma i samtalet.
-- [ ] **Nytt ad-konto + FB-sida + pixel** innan första annonskronan. OBS: doginwork ligger under
-  egen Meta-portfolio, inte Milentum. Kolla Special Ad Category i kampanjbyggaren.
+- [ ] **Boksluten publikt eller inte** - rekommendation: nej, hör hemma i samtalet.
 - [ ] **Slå på automationen** i MailerLite och **ta bort noindex + robots-disallow**.
-- [ ] **Clarity-projekt** för sidan, varianten som custom tag.
+- [ ] Valfritt: Browser Cache TTL i Cloudflare till "Respect Existing Headers", annars tar ett
+  id-byte i `spar.js` upp till fyra timmar för återvändande besökare.
 - [ ] **Rubrik-A/B** när William vill (varianter i `onsjo/genesis/ALLA-RUBRIKER.md` + `out4/`).
 - [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
   möblerade, detaljplan/bygglov för verksamhetsbyggnaden.

@@ -1,61 +1,64 @@
-# Session: 2026-08-13 - Onsjö 415A, hela funneln byggd och kopplad
+# Läget 2026-08-13 - TVÅ parallella sessioner samma dag
 
-Allt arbete ligger i `onsjo/`, **ej content-hub**. Full detalj i
-`onsjo/HANDOVER-2026-08-12.md`, som är uppdaterad genom hela sessionen och är den fil
-nästa agent ska läsa först.
+Två spår kördes samtidigt. Läs det som rör din uppgift, båda handoffs finns i sin helhet:
 
-## Läget just nu
+- **Vox / izabella-v2:** `.claude/journal/2026-08-13-hookar-kvarhallning-facebook.md`
+- **Onsjö / annonser:** `.claude/journal/2026-08-13-onsjo-annonser-genesis.md`
+  (funneldelen tidigare samma dag: `2026-08-13-onsjo-funnel.md`)
 
-Tekniken är klar och verifierad. Kvar är innehållsbeslut och annonskontot.
+---
 
-| Del | Status |
-|---|---|
-| Domän `stefanhedin.se` | live, noindex, DNS på Cloudflare |
-| Artikeln | live, formuläret skarpt |
-| Underlagssidan `/onsjo-415/underlag/` | live, hero-bild, 49 foton, 3 planritningar, bokning |
-| Bokningssidan `/boka/` | live, cal.com inbäddad |
-| Läsvy för Stefan `/onsjo-415/mejlen/` | live, alla fem mejl |
-| Mejlflow i MailerLite | fem mejl klara, **inaktiverat** |
-| Utträde vid bokning | byggt och testat skarpt |
-| Mejl in och ut på domänen | MX, SPF, DKIM klara |
+## BRÅDSKANDE, deadline 11:00 den 14 augusti
 
-## Det viktigaste nästa agent behöver veta
+`iz_queue` 2026-08-14 pekar på en **gammal** sockervideo (PMID 33684506) med den svaga öppningen
+"You think sugar is sugar...". Manuset är omskrivet i `scratchpad/draft-33684506.json` och rösten
+genererad, men **bygget hanns aldrig köras**. Görs det inte före 11:00 går den svaga hooken ut.
+Kommando och detaljer i vox-journalen.
 
-**Erling får nämnas som faktauppgift men inget ska styra folk till honom.** Alla ska gå via
-Stefan först, som sållar innan de skickas vidare till visning. Hans namn står kvar i artikeln
-och underlaget, men ingen kontaktväg finns någonstans, och bokningssidan säger bara "Pris och
-budgivning hör till mäklaren".
+---
 
-**All mejltext genereras av `onsjo/bygg-mejl-zip.py`.** Skriv aldrig direkt i MailerLites
-kodeditor: den autokompletterar taggar och lämnar `p>` synligt i mejlet, och deras AI-agent
-förstörde brevet när den ombads städa. ZIP-import är den enda väg som fungerar.
+## Vox i tre rader
 
-**Mejl 2-5 inleds med en påminnelse om vem Stefan är.** Kom från Williams test: efter tre dagar
-minns folk inte vem som hör av sig.
+**Kvarhållningen stryper räckvidden, inte kvaliteten.** Snitt-tid mättes för första gången idag:
+1,9 till 8,8 sekunder. `REEL_METRICS` hade begärt `ig_reels_avg_watch_time` sedan dag ett men
+`iz_results` saknade kolumn, så svaret lästes och slängdes. Kolumnerna finns nu. Hookramverket
+ligger i `docs/HOOK-FRAMEWORK.md`, fyra grindar och varje enskild fångade befintliga fel.
+Facebook är halvklart och blockerat på saknad `pages_manage_posts`, **läs Metas dokumentation
+innan något klickas**, fyra godkännanderundor brändes på gissningar.
 
-## Fällor som kostade tid
+---
 
-- `create_automation` i MailerLite-connectorn kastar fel på sitt eget svar men skapar
-  automationen ändå. Kolla med `list_automations` innan du gör om anropet.
-- `update_automation_email`s `step_index` följer inte stegordningen och är inte stabil mellan
-  anrop. Skicka innehållet direkt i `create_automation` i stället.
-- Cloudflare Pages serverar fallback-HTML för okända sökvägar, även för bildförfrågningar.
-  Det gav en sida utan bilder på `/onsjo-415`. Löst med `dist/_redirects`.
-- `UID` är reserverat i zsh och dödar skript som hanterar cal.coms boknings-uid.
-- MailerLites domänverifiering kräver en TXT-post som varken API:t eller deras dokumentation
-  nämner. Den syns bara i det manuella flödet bakom "Or manually authenticate your domain".
+## Onsjö: allt utom annonsmaterialet är klart
 
-## Öppna fakta som måste redas ut före annonsering
+Arbetet ligger i `onsjo/`, **läs `onsjo/HANDOVER-2026-08-12.md` först**. Ingen content-hub-kod
+ändrad, bygget verifierat grönt.
 
-1. **Driftkostnaden saknar villans fastighetsskatt.** Stefans 109 258 innehåller bara
-   verksamhetsbyggnadens 9 760, inte småhusenhetens 8 524. Riktig total runt 117 800. Siffran
-   står på underlagssidan och i mejl 2.
-2. Hallandspostens hero-bild i artikeln ligger publikt utan tillstånd.
-3. Årtalskrocken 2022 mot 2023, och om rummen fortfarande är möblerade.
-4. Boksluten för Milentum Group AB finns nu. Beslut saknas om de ska ligga publikt.
-   Rekommendation: nej, de hör hemma i samtalet med Stefan.
+Klart och verifierat: domän, formulär, mejlflow, bokning, spårning (`spar.js`, pixel + Clarity,
+båda mätta skarpt), annonskonto `act_1023872310418716`, sida `1339413035915987`, pixel
+`1061946796309495`, Clarity `y1qfzxt9fa`, kampanjutkast med webbplats som konverteringsplats och
+`Lead` som händelse. **Kampanjen är inte publicerad.**
 
-## Nästa steg
+Nytt workspace `onsjo` i hubben med produkten `onsjo-415a` och 18 produktbilder som pekar rakt på
+underlagssidans publika URL:er.
 
-Stefans feedback på mejlen, rumsnamn till planritningen, porträtt till bokningssidan. Sedan
-annonskonto och Facebook-sida, slå på automationen och ta bort noindex.
+### Två frågor ligger obesvarade hos William och blockerar allt annonsmaterial
+
+1. **Hook-dedup.** `generateVettedConcepts` kör `generateHooks` en gång före loopen och delar
+   samma hook-array till alla koncept, loopen varierar bara `angle`. Hook-mångfald inom en batch
+   är arkitektoniskt omöjlig, och första körningen gav två koncept med identisk hook och delvis
+   ordagrant samma brödtext. Laga i `genesis-pipeline.ts` (ca tio rader, gäller alla workspaces)
+   eller kringgå med hookBan i segmentfältet per körning?
+2. **Referensbilderna.** `reference_image_count: 0` och `reference_strategy: "none"` på alla fem
+   genererade bilder. De 18 fotona användes aldrig och **ingen bild föreställer fastigheten**.
+   Tvinga `referenceStrategy: "product"` för workspacet?
+
+### Övrigt öppet
+
+- Driftkostnaden på underlagssidan säger 109 258 men saknar villans fastighetsavgift. Mäklarens
+  8 524 är takbeloppet för **2021**, verifierat mot Skatteverkets tabell. Rätt för 2026 är
+  10 425 och riktig total ~119 700. Stäm av med Stefan.
+- Copyn innehåller ett intäktspåstående ("genererar intäkter") som projektets regel förbjuder.
+  Domaren bad om **mer** intäktsbevis, den känner inte till regeln.
+- Marie och Stefan var med på alla privata visningar förra gången men har inte tillfrågats om vad
+  spekulanterna sa att de ville göra med stället. Enda riktiga målgruppsdatan som finns.
+- Budget står på standard 125 kr/dag, Stefans kort saknas som betalmetod, noindex kvar.
