@@ -97,7 +97,7 @@ async function main() {
   }
 
   const annonser: Annons[] = JSON.parse(
-    readFileSync(join(BILDMAPP, "annonser.json"), "utf8"),
+    readFileSync(join(BILDMAPP, process.env.ONSJO_MANIFEST ?? "annonser.json"), "utf8"),
   );
   console.log(`${annonser.length} annonser att lägga upp\n`);
 

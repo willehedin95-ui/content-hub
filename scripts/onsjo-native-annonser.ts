@@ -65,7 +65,10 @@ async function main() {
       namn: `native-${sak.key}`,
       vinkel: sak.vinkel,
       koncept: copy.nr,
-      bild: bild.original_url,
+      // Lokal sökväg relativt annonsbilder/, eftersom onsjo-publicera-meta.ts laddar upp
+      // filer och inte URL:er. Supabase-URL:en behålls som referens.
+      bild: `native/${sak.key === "bordet-klockan-fyra" ? "bordet-fyra" : sak.key}.jpg`,
+      bild_url: bild.original_url,
       rubrik: copy.rubriker.find((r) => !TREDJE_PERSON.test(r)) ?? copy.rubriker[0] ?? "",
       brodtext: copy.brodtext,
     });
