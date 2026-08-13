@@ -1,5 +1,5 @@
 # Content Hub - Task Backlog
-Updated: 2026-08-12 - Vox-videolanen: kortmodell, shapes, miniatyr, granskning i kedjan, självreparation (se izabella-v2 + journalen 2026-08-12). Onsjö/doginwork orörda.
+Updated: 2026-08-13 - Vox-videolanen: Claude skriver manusen, nya grindar mot uppmätta fel, bildkritikern inkopplad i build (se izabella-v2 `b691c95` + journalen 2026-08-13). Onsjö/doginwork orörda.
 
 ## 2026-08-04 - Onsjö 415A: advertorial live, funnel kvar (projekt `onsjo/`, EJ content-hub)
 
@@ -23,40 +23,43 @@ genererade via Genesis + Mario-bottarnas diagnos, funnel-planen skriven för Erl
 - [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
   möblerade, detaljplan/bygglov för verksamhetsbyggnaden.
 
-## 2026-08-12 - VOX-VIDEOLANEN (projekt `izabella-v2`, EJ content-hub)
+## 2026-08-13 - VOX-VIDEOLANEN (projekt `izabella-v2`, EJ content-hub)
 
-**Startdokument: `izabella-v2/docs/HEALTH-HANDOVER.md`** (första stycket är skrivet
-för överlämningen), sedan journalen 2026-08-12.
-Kön är **PAUSAD och TOM**. Återgång: `git reset --hard natt-2026-08-11-utgangslage`.
+**Startdokument: `izabella-v2/docs/HEALTH-HANDOVER.md`**, sedan journalen 2026-08-13.
+Kön är **PAUSAD**. Fyra videor byggda, en köad (33479499).
 
-Kedjan är åtta steg med ett tjugotal grindar. Tre videor byggda med kortmodellen,
-alla rena. William har sett och kommenterat samtliga.
+**LÄS FÖRST: `izabella-v2/docs/qc-facit.json`.** Williams enda kriterium, ordagrant
+2026-08-13: *"Det enda jag bryr mig om är att bilderna matchar det som sägs i videon."*
+Stil, färg och textur bryr han sig **inte** om. Jag brände en natt på stildetektion och
+fick *"jag tror du är helt ute och cyklar"* + *"vi ska inte generera om ett skit"*.
 
-- [x] William såg videorna - hela sessionen drevs av hans domar
-- [x] Kortmodellen (en stor bild eller ett par, hela kortet byts på en gång)
-- [x] Shapes: pil, kryss, graf - en roll var, avmättas i kod
-- [x] Miniatyr som ruta noll, med rubriken inbakad i den genererade bilden
-- [x] Granskningen kopplad in i kedjan (steg 5 av 8)
-- [x] Självreparation: granskningen får byta bilder och rendera om, en omgång
-- [x] Manusstruktur hook/itch/proof/payoff/move + ställningstagande + loop
-- [x] Otestade pelare: P3 (ägg) och P1 (fettlever) körda
+- [x] Claude skriver manusen (`--phase candidates` 25/query + citeringar + jäv-screening)
+- [x] Tystnadsgrind (fångade Williams 2,02s paus), täthet på riktiga ordtider
+- [x] Rubriklängd, sista-ordet-grinden (6 av 12 historiska utkast hade felet)
+- [x] Listkort med tre bilder, takeaway-paus, sifferkortets färg låst
+- [x] **Bildkritikern körs nu även i build-fasen** - den slutade tyst köra när jag tog
+      över manusen, och det är grinden som äger Williams kriterium
+- [x] Reparationen passerar kritikern + tre spärrar (hook fredad, dubblett, återställning)
+- [x] Kontaktkarta med en ruta per bild (12 rutor gav 2 fynd, 30 gav 12)
+- [x] `docs/run-log.tsv` - bekräftade fel per video: 1, 1, 0
 
-- [ ] 🔴 **Rösten kan inte anropas från cron** (Higgsfield-MCP kräver agent-session).
-      Detta är det enda som hindrar verklig automatik - fas 2 måste köras vid datorn.
-      Kie har API-nyckel i pipelinen redan och bör undersökas som TTS-väg.
-- [ ] 🔴 **Självreparationen har aldrig fullbordat en lyckad omgång.** Första skarpa
-      körningen rullades tillbaka (två byten valde samma slug). Båda felen lagade,
-      fixen okörd.
-- [ ] **Fyll kön och slå på cron** - kontot har 5 poster, alla byggda med den gamla
-      maskinen. Vi optimerar mot en enda datapunkt (87% completion, noll delningar).
-      Williams beslut, frågan är ställd.
-- [ ] `shape-check` och `shape-circle` definierade men saknar triggers
-- [ ] `chart-up` vs `chart-bars`: linje vid riktning, staplar vid jämförelse - regeln
-      finns, men bara testad på ett manus
-- [ ] Parlayouten är svag punkten: två bilder à 684px ryms inte i 1080, krocklösaren
-      krymper dem. Fler par kräver att `SLOTS[2]` räknas om
-- [ ] Bilddomaren failar öppet om JSON inte går att parsa
-- [ ] Telegram-godkännande (**ett** kort per kväll) + `/videoprod` - medvetet ej byggt
+- [ ] 🔴 **Kör en ny kedja och mät om Williams invändningar försvinner** nu när
+      bildkritikern faktiskt körs. Enda sättet att veta om fixen räcker.
+- [ ] 🔴 **`vox_audit` inriktning trasig.** Rätt fix: låt BYGGET skriva sin egen
+      tidslinje (vilken prop ligger i rutan när) i stället för att gissa ur
+      Higgsfields tidsstämplar, som driver ~ett beat. Enda kontrollen som fångade
+      tomaten - värd att få rätt.
+- [ ] Duplicerade konstanter mellan `vox_render` och `vox_validate` gick isär två
+      gånger på en dag och kostade ett bygge var. Bör bli en källa.
+- [ ] Captionplacering: editorn hävdar att ett ord i taget längst ned skadar retention,
+      föreslår 3-5 ord under bilden. **Williams beslut, ej rört.**
+- [ ] Facebook-publicering ej byggd (Instagram Login-token når inte graph.facebook.com,
+      kod 190). Kräver FB Login + sidtoken + `/{page-id}/video_reels`.
+- [ ] Fyll kön och slå på cron - Williams beslut.
+
+**Mätta fakta:** Kie släpper ljud tyst (svarar "you did not provide an audio clip").
+Higgsfields `video_analysis` HÖR och kostar **noll** på Ultimate. Röst ~4 HF-credits,
+prop 4 Kie-credits på lite / 8 på nano-banana-2. Saldon: HF 681, Kie ~13 500.
 
 ## 2026-08-06 - HEALTH-kontot: publicering och mätning
 
