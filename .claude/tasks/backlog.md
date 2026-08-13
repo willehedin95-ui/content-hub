@@ -1,25 +1,30 @@
 # Content Hub - Task Backlog
-Updated: 2026-08-13 - Vox-videolanen: Claude skriver manusen, nya grindar mot uppmätta fel, bildkritikern inkopplad i build (se izabella-v2 `b691c95` + journalen 2026-08-13). Onsjö/doginwork orörda.
+Updated: 2026-08-13 - Onsjö: hela funneln byggd och kopplad (egen domän, formulär, mejlflow, bokning, utträde). Se journalen 2026-08-13-onsjo-funnel + `onsjo/HANDOVER-2026-08-12.md`. Vox-lanen orörd sedan `b691c95`.
 
-## 2026-08-04 - Onsjö 415A: advertorial live, funnel kvar (projekt `onsjo/`, EJ content-hub)
+## 2026-08-13 - Onsjö 415A: funneln klar, kvar är innehåll och annonskonto (projekt `onsjo/`, EJ content-hub)
 
-Live: `onsjo415a.pages.dev` (noindex). Handover: `onsjo/HANDOVER-2026-08-04.md`.
-Memory: `onsjo-advertorial.md`. Funnel-plan: `onsjo/plan-intresseanmalningar.md`.
+Live på **`stefanhedin.se`** (egen domän, noindex). **Läs `onsjo/HANDOVER-2026-08-12.md` först**,
+den är uppdaterad genom hela bygget. Memory: `onsjo-advertorial.md`.
 
-Klart: advertorial-korpusen läst och sammanfattad (`onsjo/MALL-advertorial.md`), texten godkänd
-av William, sidan byggd i karma-layout och deployad till CF Pages, Stefans egna tillägg
-inarbetade (Maries kursgårds-fråga, sångerskan, personalen, kommersiell taxering), 80 rubriker
-genererade via Genesis + Mario-bottarnas diagnos, funnel-planen skriven för Erling-avstämning.
+Klart: egen domän med DNS på Cloudflare och mejl hos Hostinger (MX, SPF, DKIM), artikeln med
+skarpt formulär som sparar i Supabase och lägger i MailerLite, underlagssida med 49 foton och
+tre planritningar, bokningssida med cal.com, fem mejl i MailerLite, utträde ur sekvensen när
+någon bokar samtal (testat skarpt), läsvy för Stefans korrektur på `/onsjo-415/mejlen/`.
 
-- [ ] **Blockerat på Erling Miles** - fem frågor i planen, fråga två (får Stefan prata drift med
-  spekulanter?) avgör om mellansteget finns kvar. Marie och Stefan tar det.
-- [ ] **Formuläret skarpt** när Erling svarat: Content Hubs formulärsystem (`forms` /
-  `form_submissions` + embed på CF-sidan), två kvalificeringsfrågor, variant som dolt fält.
+**Erling: får nämnas som faktauppgift, men inget ska styra folk till honom.** Alla går via
+Stefan först, som sållar innan de skickas vidare till visning.
+
+- [ ] **Driftkostnaden saknar villans fastighetsskatt** - Stefans 109 258 har bara
+  verksamhetsbyggnadens 9 760, inte småhusenhetens 8 524. Riktig total ~117 800. Siffran står
+  på underlagssidan och i mejl 2. Stäm av med Stefan.
+- [ ] **Stefans feedback på mejlen** via läsvyn, sedan justera i `onsjo/bygg-mejl-zip.py`.
+- [ ] **Rumsnamn till planritningen** från Stefan, och porträtt till bokningssidan.
+- [ ] **Boksluten publikt eller inte** - finns nu, rekommendation: nej, hör hemma i samtalet.
+- [ ] **Nytt ad-konto + FB-sida + pixel** innan första annonskronan. OBS: doginwork ligger under
+  egen Meta-portfolio, inte Milentum. Kolla Special Ad Category i kampanjbyggaren.
+- [ ] **Slå på automationen** i MailerLite och **ta bort noindex + robots-disallow**.
 - [ ] **Clarity-projekt** för sidan, varianten som custom tag.
-- [ ] **Underlaget**: planritningar m.m. från Erling, Stefans drift-genomgång, rundvandringsfilm.
-- [ ] **Nytt ad-konto + FB-sida + pixel** innan första annonskronan.
 - [ ] **Rubrik-A/B** när William vill (varianter i `onsjo/genesis/ALLA-RUBRIKER.md` + `out4/`).
-- [ ] **Ta bort noindex + robots-disallow** vid skarp start.
 - [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
   möblerade, detaljplan/bygglov för verksamhetsbyggnaden.
 
