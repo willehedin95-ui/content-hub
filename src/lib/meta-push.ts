@@ -334,10 +334,14 @@ async function pushConceptToMetaInner(
   const conceptName = job.name.replace(/^#\d+\s*/, "").replace(/^R\d+\s*/, "").toLowerCase();
 
   // Load default schedule time from workspace settings (e.g. "03:00")
-  // OR activate immediately when caller passes activateNow=true (manual push
-  // from launchpad UI). Without a startTime, ad sets are created PAUSED — fine
-  // for cron/autopilot pushes (user reviews before going live), wrong for
-  // manual UI pushes ("I clicked Push, why isn't it on?").
+  // OR activate immediately when caller passes activateNow=true.
+  //
+  // Without a startTime the ad set is created PAUSED. Every caller that pushes
+  // an approved, launch-pad-queued concept must pass activateNow (the cron
+  // included): approval already happened upstream, and a paused ad set drops
+  // off the launch pad in the same run, so nobody ever sees it again. Leaving
+  // it out cost doginwork 13 fully built ad sets sitting dark for 9 days.
+  // Only a workspace with an explicit meta_default_schedule_time should defer.
   let scheduledStartTime: string | null = null;
   const wsSettings = opts?.wsSettings ?? await getWorkspaceSettings();
   const scheduleHHMM = wsSettings.meta_default_schedule_time as string | undefined;

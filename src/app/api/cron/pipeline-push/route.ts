@@ -290,11 +290,18 @@ export async function GET(req: NextRequest) {
                   }
                 } else {
                   // Image push (original logic with concept_lifecycle)
+                  // activateNow unless the workspace has an explicit schedule
+                  // time: a concept only reaches this cron after it was both
+                  // approved AND queued on the launch pad, so there is nothing
+                  // left to review. Without this the ad set is created PAUSED
+                  // and disappears from the launch pad in the same run —
+                  // invisible dead stock in Ads Manager.
                   const pushResult = await pushConceptToMeta(concept.conceptId, {
                     languages: [lang],
                     workspaceId: wsId,
                     metaConfig,
                     wsSettings,
+                    activateNow: !wsSettings?.meta_default_schedule_time,
                   });
                   const langResult = pushResult.results.find((r) => r.language === lang)
                     ?? pushResult.results[0]; // Fallback to first result if language lookup fails
