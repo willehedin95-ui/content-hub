@@ -1,7 +1,34 @@
+## Vox-lanen efter 2026-08-16 - hook-ramverket
+
+**Läs `izabella-v2/docs/HANDOFF-2026-08-16.md` före allt annat i lanen.**
+
+- [ ] **Kör `tools/hooks.py` och låt William peka.** Enda signalen jag inte kan få
+      fram själv. `python3 tools/hooks.py --pillar P1_food_reality --studies 3`
+- [ ] **Visuella hookar - fyra spår, inget byggt.** I kostnadsordning:
+      (1) ljud-hook i sekund noll, `assets/vox-sfx` har redan fem effekter på
+      beat-inträden - en riser på beat 0 är en rad.
+      (2) färg: tillåtet upp till 0,55 mättnad sedan 08-12, men
+      genereringsprompten ber fortfarande om "black and white". Biblioteket
+      ligger på median 0,09.
+      (3) öppningens bildbyten frikopplade från hookens ord - kravet på tre
+      bilder var rätt, kopplingen till ankarord tvingade fram uppräkningar.
+      (4) hookbildens beskrivning måste både ha en människa OCH få de två
+      föremålen att sitta ihop ("lamp is not on the meal" x6).
+- [ ] **Videon från 08-16** (PMID 35106618, ljus vid middagen) ligger köad UTAN
+      publiceringsdatum, `iz_queue` rad `22ace100-2de8-4815-a7dc-ab488988d255`.
+      Godkänn eller kasta.
+- [ ] **Bygg-cronen är av sedan 10 augusti.** Sätt på när det finns något att köra.
+- [ ] **Mät "Did you know" mot biblioteket** innan regeln rörs - bannlyst i
+      grinden men återkom i tre toppar hos konton vi valde bort.
+- [ ] **Fyll på hook-biblioteket.** 19 kurerade av 94. Fler vinnare = bättre
+      prompt. `hook_library.py --tiktok` + `tiktok_find.py`.
+- [ ] **Apify slut för månaden** (free-plan, 5 USD). Påverkar bara Instagram-
+      skrapning; TikTok går via yt-dlp.
+
 ## Vox-lanen (izabella-v2) - efter 2026-08-13
 
-- [ ] **BRÅDSKANDE: bygg om sockervideon (PMID 33684506) före 11:00 2026-08-14** — kön pekar på gammal fil med svag hook. Manus omskrivet, röst genererad, bygget hanns aldrig köras.
-- [ ] **Facebook-publicering klart** — `fb.py` byggd, use case tillagt, men token saknar `pages_manage_posts` och `/me/accounts` är tomt (sidan ligger i business-portfölj). LÄS METAS DOKUMENTATION FÖRST - fyra godkännanderundor brändes på gissningar.
+- [x] **KLART 08-16: sockervideon ombyggd** (PMID 33684506) — — kön pekar på gammal fil med svag hook. Manus omskrivet, röst genererad, bygget hanns aldrig köras.
+- [x] **KLART 08-16: Facebook-publicering fungerar** — permanent sidtoken, `fb.py --check` mäter mot Meta i stället för mot env.
 - [ ] **Mät om hookramverket bet** — snitt-tid på 08-14 och 08-15 mot baslinjen 1,9-8,8s
 - [ ] **YouTube compliance-audit** — Shorts är private tills API-projektet godkänts. Williams formulär, jag kan skriva svaren.
 - [ ] **Kritikern ska ersätta, inte släppa** när ett bortfall bryter täthetsgolvet - två byggen föll på det
@@ -9,7 +36,7 @@
 - [ ] **`second-helping`** har missbildad hand vid närbild, bör genereras om
 
 # Content Hub - Task Backlog
-Updated: 2026-08-13 (kväll) - Onsjö: annonskonto, sida, pixel, Clarity och kampanjutkast klara. Genesis-körningen gav oanvändbart material, två frågor ligger hos William. Se `2026-08-13-onsjo-annonser-genesis.md` + `onsjo/HANDOVER-2026-08-12.md`.
+Updated: 2026-08-16 (kväll) - hook-ramverket ombyggt på nischdata, grindarna nedsläppta. Se `izabella-v2/docs/HANDOFF-2026-08-16.md`. Föregående: 2026-08-13 (kväll) - Onsjö: annonskonto, sida, pixel, Clarity och kampanjutkast klara. Genesis-körningen gav oanvändbart material, två frågor ligger hos William. Se `2026-08-13-onsjo-annonser-genesis.md` + `onsjo/HANDOVER-2026-08-12.md`.
 
 ## 2026-08-13 - Onsjö 415A: allt utom annonsmaterialet klart (projekt `onsjo/`, EJ content-hub)
 
