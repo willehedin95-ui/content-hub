@@ -60,7 +60,7 @@ annat i lanen.** Journal: `2026-08-17-10-13.md`.
 - [ ] **`second-helping`** har missbildad hand vid närbild, bör genereras om
 
 # Content Hub - Task Backlog
-Updated: 2026-08-17 (morgon) - hooken går nu att välja för hand (--hook), öppningen byggs ur hooken, och kedjan visade sig kunna skriva ett OSANT manus utan att någon grind såg det. Föregående: 2026-08-16 (kväll) - hook-ramverket ombyggt på nischdata, grindarna nedsläppta. Se `izabella-v2/docs/HANDOFF-2026-08-16.md`. Föregående: 2026-08-13 (kväll) - Onsjö: annonskonto, sida, pixel, Clarity och kampanjutkast klara. Genesis-körningen gav oanvändbart material, två frågor ligger hos William. Se `2026-08-13-onsjo-annonser-genesis.md` + `onsjo/HANDOVER-2026-08-12.md`.
+Updated: 2026-08-17 (eftermiddag) - Onsjö: båda blockerande Genesis-frågorna besvarade, sex koncept och tio native-bilder klara, attribution och notiser live, artikeln indexerbar. Annonserna levererar dock inte. Kontospärren orsakades av webbläsarautomation mot Ads Manager. Se `2026-08-17-14-50.md` + `onsjo/HANDOVER-2026-08-12.md` 7i-7n. Föregående: 2026-08-17 (morgon) - vox-lanen, hooken går att välja för hand, se `izabella-v2/docs/HANDOFF-2026-08-16.md`.
 
 ## 2026-08-13 - Onsjö 415A: allt utom annonsmaterialet klart (projekt `onsjo/`, EJ content-hub)
 
@@ -78,38 +78,60 @@ produkten `onsjo-415a` och 18 produktbilder.
 **Erling: får nämnas som faktauppgift, men inget ska styra folk till honom.** Alla går via
 Stefan först.
 
-**BLOCKERAR ALLT ANNONSMATERIAL, två frågor hos William:**
+**BÅDA BLOCKERANDE FRÅGORNA BESVARADE 2026-08-17.** Se `onsjo/HANDOVER-2026-08-12.md` 7i-7n.
 
-- [ ] **Hook-dedup i Genesis.** `generateVettedConcepts` kör `generateHooks` en gång före loopen
-  och delar samma hook-array till alla koncept, loopen varierar bara `angle`. Hook-mångfald inom
-  en batch är arkitektoniskt omöjlig. Första körningen gav två koncept med identisk hook och
-  delvis ordagrant samma brödtext. **Laga i `genesis-pipeline.ts` (ca tio rader, gäller alla
-  workspaces) eller kringgå med hookBan i segmentfältet per körning?**
-- [ ] **Referensbilder används inte.** `reference_image_count: 0`, `reference_strategy: "none"`
-  på alla fem genererade bilder. De 18 fotona användes aldrig, ingen bild föreställer
-  fastigheten. **Tvinga `referenceStrategy: "product"` för workspacet?**
+- [x] **Hook-dedup.** Kringgås per körning, `genesis-pipeline.ts` orörd. `count: 1` per vinkel ger
+  egen hook-batch, plus ackumulerad hookBan. Pipelinen delas med Hydro13 som har levande annonser.
+- [x] **Referensbilder.** Tvingas INTE. Mätt med `scripts/onsjo-reftest.ts`: nano-banana garblar
+  skyltarna och hittar på fasaddetaljer, alltså en förfalskning av objektet. AI-bilder föreställer
+  aldrig fastigheten eller en namngiven person, riktiga foton används när huset ska synas.
 
-**Övrigt kvar:**
+**Levererat 2026-08-17:** sex koncept (#6-#11, ett per drivkraft), tio native unaware-bilder
+(hubbjobb #12), tjugo annonsbilder av riktiga foton, attribution lead->annons i `onsjo_leads`,
+Telegram-notiser, artikeln registrerad som landningssida i hubben, indexering öppnad.
 
+**Kvar, i prioritetsordning:**
+
+- [ ] **ANNONSERNA LEVERERAR INTE.** Kampanjen står på men noll impressions och noll spend. Kolla
+  Delivery-kolumnen på fliken Ads. Troligast opublicerade utkast eller annonser av på annonsnivå.
 - [ ] **Driftkostnaden är fel på underlagssidan.** Står 109 258. Mäklarens 8 524 är takbeloppet
   för kalenderår **2021**, verifierat mot Skatteverkets tabell. Rätt för 2026 är 10 425 och
   riktig total ~119 700. Stäm av med Stefan, siffran ligger publikt och underskattar.
-- [ ] **Intäktspåstående i copyn** - "genererar intäkter" i koncept 2 bryter projektregeln.
-  Domaren bad om **mer** intäktsbevis, den känner inte till regeln.
-- [ ] **Två genererade bilder är trasiga** - en skrev ut sina instruktionsetiketter som synlig
-  engelsk text ("LEFT SIDE PAIN STATE"), en har förvrängda bokstäver i "OM DU".
-- [ ] **Visningsdatan från Marie och Stefan** - de var med på alla privata visningar men har inte
-  tillfrågats om vad spekulanterna ville göra med stället. Enda riktiga målgruppsdatan som finns.
-- [ ] **Budget och betalmetod** - står på standard 125 kr/dag, Stefans kort saknas på kontot.
-- [ ] **Stefans feedback på mejlen** via läsvyn, sedan justera i `onsjo/bygg-mejl-zip.py`.
+  (Handovern säger ~117 800 på ett ställe, den siffran är äldre och sämre.)
+- [ ] **MailerLite-trialen går ut runt 2026-08-27.** Kontot låg på 14-dagars trial, inte
+  gratisplanen som handovern sa. Automationer stryps först på gratisnivån. `mailerlite.md`.
+- [ ] **2026-08-20 11:51: verifiera utträdesfixen.** En kvarliggande körning ligger med mejl 2
+  schemalagt. Kommer inget mejl håller `exit_when_no_longer_matches`. Kommer det ett behövs en
+  annan lösning.
 - [ ] **Rumsnamn till planritningen** från Stefan, och porträtt till bokningssidan.
 - [ ] **Boksluten publikt eller inte** - rekommendation: nej, hör hemma i samtalet.
-- [ ] **Slå på automationen** i MailerLite och **ta bort noindex + robots-disallow**.
-- [ ] Valfritt: Browser Cache TTL i Cloudflare till "Respect Existing Headers", annars tar ett
-  id-byte i `spar.js` upp till fyra timmar för återvändande besökare.
 - [ ] **Rubrik-A/B** när William vill (varianter i `onsjo/genesis/ALLA-RUBRIKER.md` + `out4/`).
-- [ ] Öppna fakta: Hallandspostens hero-bild (tillstånd), 2022 vs 2023-årtalet, om rummen är
-  möblerade, detaljplan/bygglov för verksamhetsbyggnaden.
+- [ ] Öppna fakta: 2022 vs 2023-årtalet, om rummen är möblerade, detaljplan/bygglov för
+  verksamhetsbyggnaden.
+
+**BLOCKERAT, rör inte:** `workspaces.settings.meta_config` för onsjo är `null` sedan 2026-08-17,
+backup i `onsjo/meta_config-backup.json`. Den togs bort för att tre cron-jobb (`pipeline-push`,
+`ad-performance-sync`, `daily-snapshot`) hämtar alla workspaces med `meta_config` och går mot
+kontot varje dag. **Återställ inte förrän kontot har egen spend-historik.**
+
+**Avfört:**
+
+- [x] Slå på automationen i MailerLite. Gjord av William, utträdesvillkoret fixat via Chrome.
+- [x] Stefans feedback på mejlen. Han korrekturläste 2026-08-17.
+- [x] Betalmetod på annonskontot. Kortet är inne.
+- [x] Ta bort noindex + robots-disallow. Artikeln är indexerbar, undersidorna medvetet inte.
+- [x] Browser Cache TTL i Cloudflare. Behövdes inte: zonen skriver över `max-age` men respekterar
+  `no-store`, som nu ligger i `dist/_headers`. `cloudflare-pages.md`.
+- [x] Visningsdatan från Marie och Stefan. Ligger i `products.target_audience` (40 plus,
+  kapitalkravet, trött på vardagen).
+- [x] Intäktspåståendet och de två trasiga bilderna. Gäller körning 1, som är ersatt. Koncept #2
+  taggat, native-banan förbjuder text i bild helt.
+- [x] Hallandspostens hero-bild. **William har beslutat att den ska användas. Dra inte upp det.**
+
+**Kontospärren, för historiken:** annonskontot spärrades 2026-08-13 med `disable_reason: 1`
+(ADS_INTEGRITY_POLICY) och en gång till efter första granskningen. Orsaken var webbläsarautomation
+mot Ads Manager i Williams inloggade Chrome, inte copyn och inte crönen. Regel:
+`feedback_never_browser_automate_meta.md`.
 
 ## 2026-08-13 - VOX-VIDEOLANEN (projekt `izabella-v2`, EJ content-hub)
 
