@@ -1,29 +1,53 @@
-## Vox-lanen efter 2026-08-16 - hook-ramverket
+## Vox-lanen efter 2026-08-17 - hooken vald av William
 
-**Läs `izabella-v2/docs/HANDOFF-2026-08-16.md` före allt annat i lanen.**
+**Läs `izabella-v2/docs/HANDOFF-2026-08-16.md` (avsnittet längst ner) före allt
+annat i lanen.** Journal: `2026-08-17-10-13.md`.
 
-- [ ] **Kör `tools/hooks.py` och låt William peka.** Enda signalen jag inte kan få
-      fram själv. `python3 tools/hooks.py --pillar P1_food_reality --studies 3`
-- [ ] **Visuella hookar - fyra spår, inget byggt.** I kostnadsordning:
-      (1) ljud-hook i sekund noll, `assets/vox-sfx` har redan fem effekter på
-      beat-inträden - en riser på beat 0 är en rad.
-      (2) färg: tillåtet upp till 0,55 mättnad sedan 08-12, men
-      genereringsprompten ber fortfarande om "black and white". Biblioteket
-      ligger på median 0,09.
-      (3) öppningens bildbyten frikopplade från hookens ord - kravet på tre
-      bilder var rätt, kopplingen till ankarord tvingade fram uppräkningar.
-      (4) hookbildens beskrivning måste både ha en människa OCH få de två
-      föremålen att sitta ihop ("lamp is not on the meal" x6).
-- [ ] **Videon från 08-16** (PMID 35106618, ljus vid middagen) ligger köad UTAN
-      publiceringsdatum, `iz_queue` rad `22ace100-2de8-4815-a7dc-ab488988d255`.
-      Godkänn eller kasta.
-- [ ] **Bygg-cronen är av sedan 10 augusti.** Sätt på när det finns något att köra.
-- [ ] **Mät "Did you know" mot biblioteket** innan regeln rörs - bannlyst i
-      grinden men återkom i tre toppar hos konton vi valde bort.
-- [ ] **Fyll på hook-biblioteket.** 19 kurerade av 94. Fler vinnare = bättre
-      prompt. `hook_library.py --tiktok` + `tiktok_find.py`.
-- [ ] **Apify slut för månaden** (free-plan, 5 USD). Påverkar bara Instagram-
-      skrapning; TikTok går via yt-dlp.
+- [ ] **RIKTNINGSGRIND: kollar någon om påståendet är sant?** Nej. Kedjan skrev
+      "bright light caused a higher blood sugar spike" när studien mätte motsatsen
+      (307 mot 394, p=0,009), och claim-grinden skrev om claimet till den FALSKA
+      versionen. Jag fångade det för hand. Förslag ligger hos William: separat
+      modellanrop, abstract + varje sifferbärande påstående, svarar stödjer /
+      motsäger / står inte i abstractet. **Dyraste luckan i lanen** - kontots enda
+      differentiering är att det citerar studier.
+- [ ] **Williams stilval.** Tre-vägs-prov i `izabella-v2/reports/stilprov-2026-08-17/`.
+      Papperskonturen kvar plus färg är hans egen gissning och den håller.
+      Ombyggnad av en video ~90 credits (hela propcachen är i gammal stil), saldo 641.
+- [ ] **Bygg om lampvideon** i vald stil. Öppningsregeln och captionfixen kom EFTER
+      bygget, så den köade filen har hamburgare + gaffel med väckarklocka i
+      öppningen och noll mörker, trots att hooken handlar om att äta i mörker.
+- [ ] **KONTROLLERA `scheduled_for` efter varje manuellt bygge.** `--phase build`
+      satte dagens datum på rad `93eebad7` och videon hade gått live 11:00 utan
+      Williams dom. Nollad nu. Raden `22ace100` från 08-16 ligger också kvar utan datum.
+- [ ] **Mät `HOOK_SUBJECT_WORDS` mot fler videor.** Listan har utökats två gånger
+      (möbler i somras, ljus 08-16) och kommer sakna nästa ämne på samma sätt.
+- [ ] **MEMORY.md är över byte-gränsen** (20K mot 17K, 140 rader). Tailen tappas,
+      alltså kan topic-pekarna längst ner sluta laddas. Behöver en medveten
+      hygien-pass, inte en snabbfix i slutet av en session.
+- [ ] **Bygg-cronen är av sedan 10 augusti.**
+- [ ] **Mät "Did you know" mot biblioteket** innan regeln rörs.
+- [ ] **Fyll på hook-biblioteket.** 19 kurerade av 94. `hook_library.py --tiktok`
+      + `tiktok_find.py`.
+- [ ] **Apify slut för månaden** (free-plan, 5 USD). Bara Instagram-skrapning; TikTok
+      går via yt-dlp.
+- [x] **KLART 08-17: `--hook` bron från hooks.py till bygget.** Låser raden
+      ordagrant med grind på att den inte skrivs om. Plus `--angle` och `--pmid`
+      till `--phase script`.
+- [x] **KLART 08-17: öppningens fyra spår.** Kravet på tre bilder togs bort ur
+      prompten (det var det som tvingade fram uppräkningar i copyn), `hook_extra`
+      placeras på tid utan ankarord, hookbildens två föremål måste sitta ihop,
+      och öppningsbilden byggs ur hooken i stället för ur claimet.
+- [x] **KLART 08-17: captionen går från ord ett.** `HOOK_TEXT_SECS` släckte de
+      ordvisa captionsen under hooken och visade rubriken i stället - två olika
+      meningar sedan hooken blev vald för hand.
+- [x] **KLART 08-17: ankarfel lagas i kod.** Bildlagaren kunde aldrig laga dem;
+      tre varv gav tre nya bilder på samma ankare och kandidaten dog.
+- [x] **DÖD 08-17: ljud-hook i sekund noll.** Byggd, mätt, kastad. William: "Ingen
+      jävla riser. Du är värdelös på ljudeffekter så försök inte ens." **Bygg inte
+      ljud i denna lane.**
+- [x] **AVSTÄNGD 08-17: färg på miniatyren.** `VOX_THUMB_COLOR` finns men ligger av
+      - svartvitt vann kontrastmätningen (95,9 mot 91,6), och kontrast är det enda
+      mätta som avgör om en miniatyr syns i ett flöde.
 
 ## Vox-lanen (izabella-v2) - efter 2026-08-13
 
@@ -36,7 +60,7 @@
 - [ ] **`second-helping`** har missbildad hand vid närbild, bör genereras om
 
 # Content Hub - Task Backlog
-Updated: 2026-08-16 (kväll) - hook-ramverket ombyggt på nischdata, grindarna nedsläppta. Se `izabella-v2/docs/HANDOFF-2026-08-16.md`. Föregående: 2026-08-13 (kväll) - Onsjö: annonskonto, sida, pixel, Clarity och kampanjutkast klara. Genesis-körningen gav oanvändbart material, två frågor ligger hos William. Se `2026-08-13-onsjo-annonser-genesis.md` + `onsjo/HANDOVER-2026-08-12.md`.
+Updated: 2026-08-17 (morgon) - hooken går nu att välja för hand (--hook), öppningen byggs ur hooken, och kedjan visade sig kunna skriva ett OSANT manus utan att någon grind såg det. Föregående: 2026-08-16 (kväll) - hook-ramverket ombyggt på nischdata, grindarna nedsläppta. Se `izabella-v2/docs/HANDOFF-2026-08-16.md`. Föregående: 2026-08-13 (kväll) - Onsjö: annonskonto, sida, pixel, Clarity och kampanjutkast klara. Genesis-körningen gav oanvändbart material, två frågor ligger hos William. Se `2026-08-13-onsjo-annonser-genesis.md` + `onsjo/HANDOVER-2026-08-12.md`.
 
 ## 2026-08-13 - Onsjö 415A: allt utom annonsmaterialet klart (projekt `onsjo/`, EJ content-hub)
 
