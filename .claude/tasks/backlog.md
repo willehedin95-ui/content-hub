@@ -1,24 +1,30 @@
-## Vox-lanen efter 2026-08-17 - hooken vald av William
+## Vox-lanen efter 2026-08-18 - tre videor ute, bildvalet omskrivet
 
-**Läs `izabella-v2/docs/HANDOFF-2026-08-16.md` (avsnittet längst ner) före allt
-annat i lanen.** Journal: `2026-08-17-10-13.md`.
+**Läs minnesfilen `vox-video-lane.md` (de två översta avsnitten) före allt annat
+i lanen.** Journal: `2026-08-18-08-00.md`. Commit `bb160bb`.
 
-- [ ] **RIKTNINGSGRIND: kollar någon om påståendet är sant?** Nej. Kedjan skrev
-      "bright light caused a higher blood sugar spike" när studien mätte motsatsen
-      (307 mot 394, p=0,009), och claim-grinden skrev om claimet till den FALSKA
-      versionen. Jag fångade det för hand. Förslag ligger hos William: separat
-      modellanrop, abstract + varje sifferbärande påstående, svarar stödjer /
-      motsäger / står inte i abstractet. **Dyraste luckan i lanen** - kontots enda
-      differentiering är att det citerar studier.
-- [ ] **Williams stilval.** Tre-vägs-prov i `izabella-v2/reports/stilprov-2026-08-17/`.
-      Papperskonturen kvar plus färg är hans egen gissning och den håller.
-      Ombyggnad av en video ~90 credits (hela propcachen är i gammal stil), saldo 641.
-- [ ] **Bygg om lampvideon** i vald stil. Öppningsregeln och captionfixen kom EFTER
-      bygget, så den köade filen har hamburgare + gaffel med väckarklocka i
-      öppningen och noll mörker, trots att hooken handlar om att äta i mörker.
+**KÖR `python3 tools/vox_cards.py --video X.mp4 --spec Y.json` OCH LÄS VARJE KORT
+före varje video som visas för William.** Två videor gick ut med fel som inte
+syns på en kontaktkarta.
+
+- [ ] **RIKTNINGSGRIND: kollar någon om påståendet är sant?** Fortfarande nej, och
+      handkollen hittade ett faktafel i VARJE av dagens tre videor: "triggers your
+      defenses" utan stöd, "settled faster, woke less" påhittat, "is just a mineral
+      shortage" som orsakspåstående. Förslag: separat modellanrop, abstract plus
+      varje sifferbärande påstående, svarar stödjer / motsäger / står inte i
+      abstractet. **Dyraste luckan i lanen.**
+- [ ] **Varje bygge skapar en ny kö- och concept-rad.** 18 döda rader plus 18
+      föräldralösa concepts städades för hand 08-18. Låt `--phase build` återanvända
+      raden i stället.
+- [ ] **Mät de nya grindarna mot `docs/qc-facit.json`** innan de anses klara:
+      MIN_VISIBLE 1,2s, MAX_OPENING_HOLD 4,0s, sifferkortsklippet, hookbildsgrinden.
+- [ ] **Lampvideorna `93eebad7` och `22ace100` väntar fortfarande på Williams dom**
+      sedan 08-16. Öppningen har hamburgare plus väckarklocka trots att hooken
+      handlar om att äta i mörker.
+- [ ] **`docs/seed-studies.json`: 30 studier kvar**, alltså fyra veckors material.
+      `python3 tools/hooks.py --seed --studies 6` ger menyn. P7_viral_trend först.
 - [ ] **KONTROLLERA `scheduled_for` efter varje manuellt bygge.** `--phase build`
-      satte dagens datum på rad `93eebad7` och videon hade gått live 11:00 utan
-      Williams dom. Nollad nu. Raden `22ace100` från 08-16 ligger också kvar utan datum.
+      sätter dagens datum, och videon går live 11:00 utan Williams dom.
 - [ ] **Mät `HOOK_SUBJECT_WORDS` mot fler videor.** Listan har utökats två gånger
       (möbler i somras, ljus 08-16) och kommer sakna nästa ämne på samma sätt.
 - [ ] **MEMORY.md är över byte-gränsen** (20K mot 17K, 140 rader). Tailen tappas,
