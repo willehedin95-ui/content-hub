@@ -1,3 +1,15 @@
+## NYTT efter 2026-08-18/19-sessionen (2/dag igång)
+
+- [ ] **AKUT 19/8: armhävningsvideon står på 17:00 utan Williams ja** - fråga honom.
+- [ ] **Röstgrind i vox_build**: mät tysta luckor i tagningen (>1,5s = ta om) INNAN
+      bilderna genereras. Gjordes för hand 08-18 (tagning med 3,5s-hål kasserades).
+- [ ] **Respec-stöd för enbildsbyte**: dagens försök blev full ombyggnad med nya
+      tärningar och föll. Byt EN prop utan att röra spec/kritiker/hook.
+- [ ] **Ensamhets-hookar härnäst** (20716644), sen sömnkvalitet, D-vitamin, steg.
+      EN i taget. Insatsregeln: förödande, inte inkrementellt (hooks.py regel 3b).
+- [ ] **Kolla iz_results per publiceringstid om ~3 veckor** - 11:00 vs 17:00, och
+      ämneskategorier (bredd-först-strategin ska mätas, inte tyckas).
+
 ## Vox-lanen efter 2026-08-18 - tre videor ute, bildvalet omskrivet
 
 **Läs minnesfilen `vox-video-lane.md` (de två översta avsnitten) före allt annat
@@ -7,12 +19,9 @@ i lanen.** Journal: `2026-08-18-08-00.md`. Commit `bb160bb`.
 före varje video som visas för William.** Två videor gick ut med fel som inte
 syns på en kontaktkarta.
 
-- [ ] **RIKTNINGSGRIND: kollar någon om påståendet är sant?** Fortfarande nej, och
-      handkollen hittade ett faktafel i VARJE av dagens tre videor: "triggers your
-      defenses" utan stöd, "settled faster, woke less" påhittat, "is just a mineral
-      shortage" som orsakspåstående. Förslag: separat modellanrop, abstract plus
-      varje sifferbärande påstående, svarar stödjer / motsäger / står inte i
-      abstractet. **Dyraste luckan i lanen.**
+- [x] **KLART 08-18: SANNINGSGRINDEN.** `sp.check_facts` - abstract + ALLA meningar,
+      contradicted = hårt fel med kirurgisk meningslagning (`fix_fact_sentence`),
+      fältfel lagas fältvis (`fix_field_errors`). Fångade äkta fel i tre manus.
 - [ ] **Varje bygge skapar en ny kö- och concept-rad.** 18 döda rader plus 18
       föräldralösa concepts städades för hand 08-18. Låt `--phase build` återanvända
       raden i stället.
