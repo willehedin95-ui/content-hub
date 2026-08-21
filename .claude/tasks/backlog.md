@@ -1,14 +1,29 @@
-## NYTT efter 2026-08-18/19-sessionen (2/dag igång)
+# Backlog
 
-- [ ] **AKUT 19/8: armhävningsvideon står på 17:00 utan Williams ja** - fråga honom.
-- [ ] **Röstgrind i vox_build**: mät tysta luckor i tagningen (>1,5s = ta om) INNAN
-      bilderna genereras. Gjordes för hand 08-18 (tagning med 3,5s-hål kasserades).
-- [ ] **Respec-stöd för enbildsbyte**: dagens försök blev full ombyggnad med nya
-      tärningar och föll. Byt EN prop utan att röra spec/kritiker/hook.
-- [ ] **Ensamhets-hookar härnäst** (20716644), sen sömnkvalitet, D-vitamin, steg.
-      EN i taget. Insatsregeln: förödande, inte inkrementellt (hooks.py regel 3b).
-- [ ] **Kolla iz_results per publiceringstid om ~3 veckor** - 11:00 vs 17:00, och
-      ämneskategorier (bredd-först-strategin ska mätas, inte tyckas).
+- [ ] **Vakten: varje timme + tysta notiser?** Andringen nekades 2026-08-20, oklart
+      vilken del. Uppgiften heter `healthgraph-vakt` i Scheduled-panelen.
+- [ ] **Ensamhetsvideon om med oppning E** (fullskarm, vit text i morkt tomrum,
+      utzoomning). William gillar formen men vill se den i sitt sammanhang.
+- [ ] **Fa William att klarmarkera pa sidan** - kon har 6 videor, 0 godkanda, och
+      vakten publicerar bara det han tryckt klar pa. Kon tar slut annars.
+- [ ] **Tre korta videor + mat andel sedd** mot dagens 6 %. Kortformatet gar att
+      bygga sedan 2026-08-21 (VOX_WORDS / VOX_TAIL).
+- [ ] **Hookgeneratorn skriver miniatyrrubriken**, matt mot `docs/hook-title-facit.json`
+      (3 godkanda, 23 underkanda med Williams egna skal).
+- [ ] **Research som fyller idebanken** automatiskt; 74 ideer utan beslut just nu.
+- [ ] **Monsterlasning** av vad William godkanner - meningsfull forst efter ett par
+      dussin hookval, loggen finns.
+- [x] KLART 08-21: kortformatet - fyra grindar var tal kalibrerade for 40-50s
+- [x] KLART 08-21: driftsida med ko, kalender, idebank, utfall och skrivknappar
+- [x] KLART 08-21: vakt som routine (08/11/14/17/20)
+- [x] KLART 08-20: tittartiden matt - median 6 % sedd, avgor allt annat
+- [x] KLART 08-20: kandisregeln pa alla fem ytor
+- [x] KLART 08-20: kommatecken = 0,5s tystnad, grind + promptregel
+- [x] KLART 08-19: gul glodande miniatyr som standard, namngivet foremal
+- [x] KLART 08-19: loopen borttagen
+- [x] KLART 08-19: jav-screening fangar branschband, inte bara bolagsnamn
+- [x] KLART 08-19: kostnad per bygge mats (credits-kolumn i run-log)
+- [x] KLART 08-19: AKUT armhavningsvideon - avdaterad, ligger oschemalagd
 
 ## Vox-lanen efter 2026-08-18 - tre videor ute, bildvalet omskrivet
 
