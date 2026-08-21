@@ -53,7 +53,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // --- check definitions ---------------------------------------------------
 const DNS_CHECKS = [
   { name: 'swedishbalance.se', host: 'swedishbalance.se', expect: SHOPIFY_IP },
-  { name: 'get-renew.com', host: 'get-renew.com', expect: SHOPIFY_IP },
   { name: 'doginwork.se', host: 'doginwork.se', expect: SHOPIFY_IP },
   // swedishbalance.dk intentionally NOT checked - it now 301-redirects to
   // swedishbalance.se/da-dk via Hostinger forwarding (apex on 2.57.91.91) and
@@ -62,12 +61,14 @@ const DNS_CHECKS = [
 
 const STATUS_CHECKS = [
   { name: 'SwedishBalance home', url: 'https://swedishbalance.se' },
-  { name: 'Renew home', url: 'https://get-renew.com' },
   { name: 'doginwork.se', url: 'https://doginwork.se' },
 ];
 
+// Renew / get-renew.com bevakas INTE langre (William 2026-08-21). Butiken star
+// bakom Shopifys losenordssida - PDP:n 302:ar till /password, sa content-checken
+// larmade varje timme pa Telegram utan att nagot var trasigt. Lagg tillbaka
+// DNS-, status- och PDP-checken nar butiken oppnas igen.
 const CONTENT_CHECKS = [
-  { name: 'Hydro13 PDP', url: 'https://get-renew.com/products/hydro13', must: ['product-form'], minBytes: 100000 },
   { name: 'HappySleep SE PDP', url: 'https://swedishbalance.se/products/happysleep', must: ['product-form'], minBytes: 100000 },
   { name: 'HappySleep DK PDP', url: 'https://swedishbalance.se/da-dk/products/happysleep', must: ['product-form'], minBytes: 100000 },
   { name: 'HappySleep NO PDP', url: 'https://swedishbalance.se/no-no/products/happysleep', must: ['product-form'], minBytes: 100000 },
