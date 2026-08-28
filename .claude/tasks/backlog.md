@@ -25,6 +25,39 @@
 - [x] KLART 08-19: kostnad per bygge mats (credits-kolumn i run-log)
 - [x] KLART 08-19: AKUT armhavningsvideon - avdaterad, ligger oschemalagd
 
+## Izabella-studion (izabella-v2/studio) - efter 2026-08-27
+
+Handover: `izabella-v2/docs/STUDIO-HANDOVER.md`. Deploy `studio-81-20260827`.
+
+- [ ] 🔴 **Kor en post och en pair-post och TITTA pa bilderna.** Farg-, liv-,
+      material- och gardinfixarna ar resonerade, INTE matta mot genererade
+      bilder. Fragan: gar bada materialen att peka ut i varje rum, och kanns
+      rummen levande? Racker de inte ar det prompten som ska andras, inte
+      modellen.
+- [ ] **Fraga Izabella vad hon menade med "mer liv"** - kan vara rorelse, och
+      rorelse ar last sedan 2026-08-05 ("det forstor").
+- [ ] **Bestam postningstakten.** Malet ar 3/dag, utfallet 4-6 i VECKAN.
+      Korpusen (Hootsuite) sager att rackvidd inte beror pa frekvens, och
+      tillvaxtradet ar dagligt i ETT format i 30 dagar. William har inte tagit
+      stallning.
+- [ ] **Postningsassistent (Telegram el. likn.)** - diskuterad, inte byggd.
+      Loser sista milen (AirDrop + minnet + notisstressen) men bara om det finns
+      en ko att jobba ur.
+- [ ] **Gomda flikar ljuger om kostnaden**: `renderMake` och `renderConceptPage`
+      sager "18 credits" for en bild som kostar 4, och pekar pa Swipe/Make som
+      inte finns. Ratta samma dag nagon flik tas tillbaka.
+- [ ] **MEMORY.md ar 18,8 KB / 145 rader** mot gransen ~17 KB / 140. Behover en
+      riktig konsolideringsrunda (flytta till topicfiler), inte mer klippande.
+- [x] KLART 08-27: caption (`/api/caption`) - den enda delen hon gjorde helt for hand
+- [x] KLART 08-27: kostnad pa ETT stalle + kronor + saldo (`/api/credits`)
+- [x] KLART 08-27: tangentbordsbedomning K/B i forstoringen
+- [x] KLART 08-27: stilregler som chips i modal (`iz_style_rules`)
+- [x] KLART 08-27: materialpar-formatet som eget lage + `/api/pairs`
+- [x] KLART 08-27: biblioteket - bra bilder fran en post gar att anvanda i en annan
+- [x] KLART 08-26: skott och ljus varierar over posten (det var darfor alla bilder sag lika ut)
+- [x] KLART 08-26: skugg- och textstorleksreglage
+- [x] REVS 08-27: batchning - bilderna kraver anda granskning en och en
+
 ## Vox-lanen efter 2026-08-18 - tre videor ute, bildvalet omskrivet
 
 **Läs minnesfilen `vox-video-lane.md` (de två översta avsnitten) före allt annat
