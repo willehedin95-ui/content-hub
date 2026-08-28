@@ -109,7 +109,7 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 
 At the start of a session, check `.claude/journal/LATEST.md` and `.claude/tasks/backlog.md` for context from previous sessions. This prevents wasting time re-establishing what was already done.
 
-At the end of a session, run `/wrap-up` to commit code, journal what happened, and update memory.
+At the end of a session, run `/wrap-up` to commit code, journal what happened, file business context to the Obsidian vault, and update memory. The skill is global (`~/.claude/skills/wrap-up/`) and works in every project - it detects the build command and deploy posture from this file, so keep the build/push rules above accurate.
 
 ## Product context
 
