@@ -24,8 +24,13 @@ const TMP = "src/app/api/assets/before-after/_envana-prompt.tmp.ts";
 const OUT = "/private/tmp/claude-501/-Users-williamhedin-Claude-Code/dabb60f3-6575-4148-bce2-1e0179af819f/scratchpad/envana-ba";
 
 // 1:1 output => each half is 1:2 portrait, matching the existing Envana cards.
-const ASPECT = "1:1";
-const RESOLUTION = "2K";
+const ASPECT = process.argv.includes("--aspect")
+  ? process.argv[process.argv.indexOf("--aspect") + 1]
+  : "16:9";
+const RESOLUTION = "1K";
+const MODEL = process.argv.includes("--model")
+  ? process.argv[process.argv.indexOf("--model") + 1]
+  : "nano-banana-2";
 
 type Shot = {
   id: string;
@@ -42,14 +47,8 @@ type Shot = {
 // biggest zone in the category, hair is second and we had none, neck and nails
 // were missing entirely. Card 12 is deliberately a non-transformation.
 const PLAN: Shot[] = [
-  { id: "05-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "moderate", cameraAngle: "head_on", label: "Hals" },
-  { id: "06-neck", zoneKey: "neck_decolletage", gender: "woman", age: "51-55", ethnicity: "south_asian", intensity: "moderate", cameraAngle: "above", label: "Hals, sydasiatisk" },
-  { id: "07-hair", zoneKey: "hair_scalp", gender: "woman", age: "56-60", intensity: "moderate", label: "Hår kvinna" },
-  { id: "08-hair", zoneKey: "hair_scalp", gender: "man", age: "51-55", ethnicity: "north_european", intensity: "moderate", label: "Hår man" },
-  { id: "09-nails", zoneKey: "nails", gender: "woman", age: "61-65", intensity: "moderate", label: "Naglar" },
-  { id: "10-eye", zoneKey: "eye_area", gender: "woman", age: "46-50", ethnicity: "east_asian", intensity: "moderate", cameraAngle: "tight_crop", label: "Ögonparti, östasiatisk" },
-  { id: "11-chest", zoneKey: "chest_macro", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "head_on", label: "Dekolletage" },
-  { id: "12-nochange", zoneKey: "full_face_front", gender: "woman", age: "51-55", intensity: "subtle", cameraAngle: "head_on", label: "Helansikte, minimal skillnad" },
+  { id: "m-eye", zoneKey: "eye_area", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "tight_crop", label: "Ogonparti" },
+  { id: "m-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "moderate", cameraAngle: "head_on", label: "Hals" },
 ];
 
 const SAMPLE_IDS = ["05-neck"];
@@ -119,12 +118,13 @@ async function main() {
 
     process.stdout.write(`  ${shot.id.padEnd(13)} ${shot.label.padEnd(30)} `);
     try {
-      const taskId = await createImageTask(prompt, [], ASPECT, RESOLUTION);
+      const taskId = await createImageTask(prompt, [], ASPECT, RESOLUTION, MODEL);
       const { urls } = await pollTaskResult(taskId);
       if (!urls.length) throw new Error("inga bilder tillbaka");
       const res = await fetch(urls[0]);
       const buf = Buffer.from(await res.arrayBuffer());
-      const file = join(OUT, `${shot.id}.png`);
+      const suffix = process.argv.includes("--suffix") ? process.argv[process.argv.indexOf("--suffix") + 1] : "";
+      const file = join(OUT, `${shot.id}${suffix}.png`);
       writeFileSync(file, buf);
       results.push({ id: shot.id, label: shot.label, file });
       console.log(`OK  ${(buf.length / 1024).toFixed(0)} KB`);

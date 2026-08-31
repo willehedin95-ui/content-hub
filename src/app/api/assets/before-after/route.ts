@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { CLAUDE_MODEL } from "@/lib/constants";
+import { CLAUDE_MODEL, KIE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
 import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import {
@@ -28,9 +28,9 @@ const ASPECT_RATIOS = ["16:9", "4:5", "1:1", "9:16"] as const;
 type AspectRatio = (typeof ASPECT_RATIOS)[number];
 const DEFAULT_ASPECT_RATIO: AspectRatio = "16:9";
 
-const RESOLUTIONS = ["1K", "2K"] as const;
-type Resolution = (typeof RESOLUTIONS)[number];
-const DEFAULT_RESOLUTION: Resolution = "1K";
+// 1K throughout. 2K costs more per image and buys nothing here - the output
+// is a two-up split that gets cropped anyway.
+const RESOLUTION = "1K";
 // Stay under Vercel Hobby's 300s function cap so we fail with a clear error
 // instead of being killed mid-poll (which leaves the stream dead and the UI
 // stuck on a spinner forever).
@@ -816,7 +816,7 @@ export async function POST(req: NextRequest) {
     hair_color,
     camera_angle,
     aspect_ratio,
-    resolution,
+    image_model,
     source_demographic,
     source_spec,
   } = body as {
@@ -831,7 +831,7 @@ export async function POST(req: NextRequest) {
     hair_color?: string;
     camera_angle?: string;
     aspect_ratio?: string;
-    resolution?: string;
+    image_model?: string;
     source_demographic?: {
       age?: string | null;
       ethnicity?: string | null;
@@ -845,9 +845,10 @@ export async function POST(req: NextRequest) {
   const aspectRatio: AspectRatio = (ASPECT_RATIOS as readonly string[]).includes(aspect_ratio ?? "")
     ? (aspect_ratio as AspectRatio)
     : DEFAULT_ASPECT_RATIO;
-  const outputResolution: Resolution = (RESOLUTIONS as readonly string[]).includes(resolution ?? "")
-    ? (resolution as Resolution)
-    : DEFAULT_RESOLUTION;
+
+  // Image model. Unknown values fall back to the project default rather than
+  // being forwarded to Kie.
+  const imageModel = IMAGE_MODEL_IDS.includes(image_model ?? "") ? (image_model as string) : KIE_MODEL;
 
   // Camera angle (optional, face-only). If user picks a specific angle, both
   // halves use it. If random/undefined, the buildPrompt picks DIFFERENT
@@ -976,18 +977,18 @@ export async function POST(req: NextRequest) {
       });
 
       const referenceImages = image_url ? [image_url] : [];
-      const taskId = await createImageTask(prompt, referenceImages, aspectRatio, outputResolution);
+      const taskId = await createImageTask(prompt, referenceImages, aspectRatio, RESOLUTION, imageModel);
 
       // Log the Kie cost IMMEDIATELY after task creation - the image is paid
       // for once the task exists, so a poll timeout must not hide the spend.
       await db.from("usage_logs").insert({
         type: "before_after",
-        model: "nano-banana-2",
+        model: imageModel,
         cost_usd: KIE_IMAGE_COST,
         metadata: {
           task_id: taskId,
           aspect_ratio: aspectRatio,
-          resolution: outputResolution,
+          resolution: RESOLUTION,
           body_zone,
           intensity,
           has_source: Boolean(image_url),

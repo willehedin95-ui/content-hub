@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ASSET_CATEGORIES, type Asset, type AssetCategory, type Product } from "@/types";
+import { IMAGE_MODELS } from "@/lib/constants";
 import { useProducts } from "@/hooks/useProducts";
 import PostProductionPanel from "./PostProductionPanel";
 
@@ -87,10 +88,6 @@ const ASPECT_RATIO_OPTIONS = [
   { value: "9:16", label: "9:16 vertical" },
 ];
 
-const RESOLUTION_OPTIONS = [
-  { value: "1K", label: "1K" },
-  { value: "2K", label: "2K" },
-];
 
 // Zones the API never reads a camera angle for: it branches on nails/hair
 // before the angle is used, so any value picked here is silently discarded.
@@ -154,7 +151,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [hairColor, setHairColor] = useState<string>("");
   const [cameraAngle, setCameraAngle] = useState<string>("");
   const [aspectRatio, setAspectRatio] = useState<string>("16:9");
-  const [resolution, setResolution] = useState<string>("1K");
+  const [imageModel, setImageModel] = useState<string>("nano-banana-2");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusMessage, setStatusMessage] = useState("");
@@ -423,7 +420,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             hair_color: hairColor.trim() || undefined,
             camera_angle: CAMERA_ANGLE_IGNORED_ZONES.includes(bodyZone) ? undefined : cameraAngle || undefined,
             aspect_ratio: aspectRatio,
-            resolution,
+            image_model: imageModel,
             source_demographic: sourceDemographic ?? undefined,
             source_spec: sourceSpec ?? undefined,
           }),
@@ -480,7 +477,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setPhase("upload");
       }
     },
-    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, cameraAngle, aspectRatio, resolution, sourceDemographic, sourceSpec]
+    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, cameraAngle, aspectRatio, imageModel, sourceDemographic, sourceSpec]
   );
 
   const handleGenerate = useCallback(() => {
@@ -624,7 +621,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setHairColor("");
     setCameraAngle("");
     setAspectRatio("16:9");
-    setResolution("1K");
+    setImageModel("nano-banana-2");
     setError(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
@@ -817,31 +814,36 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             />
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Aspect ratio</label>
-            <select
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-            >
-              {ASPECT_RATIO_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[11px] text-gray-500 mb-1">Resolution</label>
-            <select
-              value={resolution}
-              onChange={(e) => setResolution(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-            >
-              {RESOLUTION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+        <div className="mt-3">
+          <label className="block text-[11px] text-gray-500 mb-1">Model</label>
+          <select
+            value={imageModel}
+            onChange={(e) => setImageModel(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+          >
+            {IMAGE_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label} - {m.description}</option>
+            ))}
+          </select>
+          {imageModel === "nano-banana-2-lite" && (
+            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">
+              Lite is cheaper and faster but loses the tight zone crops - measured 2026-08-31 it
+              turned a tight_crop eye_area into a full-face shot. Fine for neck and hair, check the
+              framing on eye area, forehead and cheek.
+            </p>
+          )}
+        </div>
+        <div className="mt-3">
+          <label className="block text-[11px] text-gray-500 mb-1">Aspect ratio</label>
+          <select
+            value={aspectRatio}
+            onChange={(e) => setAspectRatio(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+          >
+            {ASPECT_RATIO_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
         {aspectRatio !== "16:9" && (
           <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-2">
