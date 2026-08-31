@@ -56,6 +56,13 @@ const INTENSITIES: { value: Intensity; label: string; description: string }[] = 
   { value: "dramatic", label: "Dramatic", description: "Striking improvement, stops short of unreal" },
 ];
 
+// Woman is the default and is listed first. There is deliberately no "Random"
+// option - a man is only ever generated when explicitly picked.
+const GENDER_OPTIONS = [
+  { value: "woman", label: "Woman" },
+  { value: "man", label: "Man" },
+];
+
 const AGE_OPTIONS = [
   { value: "", label: "Random" },
   { value: "30-35", label: "30-35" },
@@ -122,6 +129,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [intensity, setIntensity] = useState<Intensity>("moderate");
   const [notes, setNotes] = useState("");
   const [age, setAge] = useState<string>("");
+  const [gender, setGender] = useState<string>("woman");
   const [ethnicity, setEthnicity] = useState<string>("scandinavian");
   const [hairColor, setHairColor] = useState<string>("");
   const [cameraAngle, setCameraAngle] = useState<string>("");
@@ -388,6 +396,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             intensity,
             notes: notes.trim() || undefined,
             age: age || undefined,
+            gender: gender || undefined,
             ethnicity: ethnicity || undefined,
             hair_color: hairColor.trim() || undefined,
             camera_angle: cameraAngle || undefined,
@@ -586,6 +595,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setIntensity("moderate");
     setNotes("");
     setAge("");
+    setGender("woman");
     setEthnicity("scandinavian");
     setHairColor("");
     setCameraAngle("");
@@ -733,7 +743,19 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">
           Customize person <span className="text-gray-400 font-normal">(optional)</span>
         </summary>
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Gender</label>
+            <select
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            >
+              {GENDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-[11px] text-gray-500 mb-1">Age</label>
             <select

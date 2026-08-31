@@ -166,6 +166,18 @@ const ACCENTS: (string | null)[] = [
   "slight warm undertone in the skin",
 ];
 
+// Same list minus the makeup entries, which read as female-coded on a man.
+const MALE_ACCENTS: (string | null)[] = [
+  null,
+  null,
+  null,
+  null,
+  "subtle freckles across the nose and cheeks",
+  "slight warm undertone in the skin",
+  "a day or two of light stubble",
+  "faint sun-weathering across the forehead",
+];
+
 const TOPS = [
   "heather grey crew-neck t-shirt",
   "soft white cotton tee",
@@ -231,6 +243,45 @@ const HAIR_ARRANGEMENTS = [
   "hair slightly more tucked in than usual",
 ];
 
+// Gender. Woman is the DEFAULT everywhere and stays the default no matter what
+// else is passed - the avatar is women 40+ and a missing/invalid value must
+// never silently produce a man. Man is opt-in only, via an explicit override.
+type Gender = "woman" | "man";
+const DEFAULT_GENDER: Gender = "woman";
+
+// Male hair styles + tops. The default HAIR_STYLES list is entirely
+// female-coded (bob, low bun, long worn down), and 3 of the 10 TOPS are too
+// (blouse, dusty-pink, lounge top), so a man needs his own pools rather than
+// just a swapped noun.
+const MALE_HAIR_STYLES = [
+  "short cropped hair, neatly trimmed",
+  "short hair with a natural side parting",
+  "slightly grown-out short hair, pushed back",
+  "close-cropped hair, greying at the temples",
+  "medium-short hair, tousled without product",
+  "short back and sides, a little length on top",
+];
+
+const MALE_TOPS = [
+  "heather grey crew-neck t-shirt",
+  "soft white cotton tee",
+  "navy blue v-neck sweater",
+  "black thin-knit top",
+  "olive green casual tee",
+  "soft sage-green crew neck",
+  "faded charcoal marl t-shirt",
+  "plain dark grey sweatshirt",
+];
+
+const MALE_HAIR_ARRANGEMENTS = [
+  "hair sitting slightly flatter on one side",
+  "a few short strands out of place near the crown",
+  "hair pushed back away from the forehead",
+  "hair looking freshly slept on, not styled",
+  "short strands catching the light near one temple",
+  "hair sitting a touch neater than usual",
+];
+
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -245,6 +296,7 @@ function pickPair<T>(arr: readonly T[]): [T, T] {
 
 interface Demographic {
   age: string;
+  gender: Gender;
   ethnicity: Ethnicity;
   hair_color: string;
   hair_style: string;
@@ -255,6 +307,7 @@ interface Demographic {
 
 interface DemographicOverrides {
   age?: string;
+  gender?: Gender;
   ethnicity?: Ethnicity;
   hair_color?: string;
 }
@@ -262,21 +315,24 @@ interface DemographicOverrides {
 function randomDemographic(overrides?: DemographicOverrides): Demographic {
   const ethnicity = overrides?.ethnicity ?? "scandinavian";
   const profile = ETHNICITY_PROFILES[ethnicity];
+  // Woman unless a man was explicitly asked for.
+  const gender: Gender = overrides?.gender === "man" ? "man" : DEFAULT_GENDER;
   return {
     age: overrides?.age ?? pick(RANDOM_AGE_POOL),
+    gender,
     ethnicity,
     hair_color: overrides?.hair_color ?? pick(profile.hair_colors),
-    hair_style: pick(HAIR_STYLES),
+    hair_style: pick(gender === "man" ? MALE_HAIR_STYLES : HAIR_STYLES),
     eye_color: pick(profile.eye_colors),
     skin_tone: pick(profile.skin_tones),
-    accent: pick(ACCENTS),
+    accent: pick(gender === "man" ? MALE_ACCENTS : ACCENTS),
   };
 }
 
 function demographicToString(d: Demographic): string {
   const accent = d.accent ? `, ${d.accent}` : "";
   const ethnicityLabel = ETHNICITY_PROFILES[d.ethnicity].label;
-  return `${ethnicityLabel} woman, ${d.age} years old, ${d.hair_color} ${d.hair_style}, ${d.eye_color} eyes, ${d.skin_tone}${accent}`;
+  return `${ethnicityLabel} ${d.gender}, ${d.age} years old, ${d.hair_color} ${d.hair_style}, ${d.eye_color} eyes, ${d.skin_tone}${accent}`;
 }
 
 // Intensity prompts use a FEATURE LADDER, not an adverb ladder. Diffusion
@@ -463,15 +519,20 @@ function buildPrompt(args: {
   const isNails = zoneKey === "nails";
   const isHair = zoneKey === "hair_scalp";
   const isFace = !isNails && !isHair;
+  const isMan = demographic.gender === "man";
+  // Noun used wherever the prompt has to name the subject. Woman unless the
+  // caller explicitly asked for a man.
+  const person = isMan ? "man" : "woman";
+  const personUpper = person.toUpperCase();
 
-  const [beforeTop, afterTop] = pickPair(TOPS);
+  const [beforeTop, afterTop] = pickPair(isMan ? MALE_TOPS : TOPS);
   // Lighting can VARY between halves (real customer testimonials show
   // different lighting on different days). We forbid the warm-tired-BEFORE /
   // cool-rested-AFTER marketing trope via ANTI_TROPE_LIGHTING_RULE in
   // hard_constraints, not by locking to a single pick.
   const [beforeLight, afterLight] = pickPair(LIGHTING_VARIANTS);
   const [beforeTilt, afterTilt] = pickHeadTilts();
-  const [beforeHair, afterHair] = pickPair(HAIR_ARRANGEMENTS);
+  const [beforeHair, afterHair] = pickPair(isMan ? MALE_HAIR_ARRANGEMENTS : HAIR_ARRANGEMENTS);
   const bodyOrientation = pick(BODY_ORIENTATIONS);
   const [beforeHandPose, afterHandPose] = pickPair(NAIL_HAND_POSES);
   const [beforeNailBg, afterNailBg] = pickPair(NAIL_BACKGROUNDS);
@@ -560,6 +621,7 @@ function buildPrompt(args: {
           "Single image, side-by-side split. Left half shows the 'before' state, right half shows the 'after' state. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The two halves should be cleanly divided (subtle vertical seam) but read as one cohesive photo. These are TWO SEPARATE photos of the same person taken on different days - NOT two halves of one studio session. CRITICAL: the output is EXACTLY ONE 16:9 image containing EXACTLY TWO photos (one BEFORE on the left, one AFTER on the right) with ONE vertical seam down the middle. Do NOT tile the composition. Do NOT stack the B/A pair vertically. Do NOT repeat or duplicate the image. The output is never a 2x2 grid, never four photos, never six photos - it is two photos side by side, period.",
         subject: {
           demographic: demographicToString(demographic),
+          gender: `The subject is a ${person}. This is fixed - BOTH halves show the same ${person}. Never render a ${isMan ? "woman" : "man"} in either half.`,
           body_zone_framing: zone,
           expression: expressionRule,
           hair: "same hair color, same general hair style and length in both halves, but with natural between-photos variation in how loose strands fall (see before_half/after_half hair_arrangement)",
@@ -643,7 +705,7 @@ function buildPrompt(args: {
         style: sharedStyle,
         hard_constraints: isNails
           ? [
-              `SAME WOMAN'S HAND IN BOTH HALVES (HIGHEST PRIORITY - read this first): both halves show the EXACT SAME individual woman's hand. Same skin tone, same skin texture, same hand size, same finger thickness and length proportions, same knuckle and joint structure, same vein pattern visible on the back of the hand, same age signs (same wrinkle depth, same sun spots / age marks in the same locations), same hair pattern (or lack thereof) on the fingers. This is a WOMAN's hand, NOT a man's hand. The AFTER hand is NOT a different person and NOT a younger version - it is the SAME hand, weeks later, slightly different pose.`,
+              `SAME ${personUpper}'S HAND IN BOTH HALVES (HIGHEST PRIORITY - read this first): both halves show the EXACT SAME individual ${person}'s hand. Same skin tone, same skin texture, same hand size, same finger thickness and length proportions, same knuckle and joint structure, same vein pattern visible on the back of the hand, same age signs (same wrinkle depth, same sun spots / age marks in the same locations), same hair pattern (or lack thereof) on the fingers. This is a ${personUpper}'s hand, NOT a ${isMan ? "woman" : "man"}'s hand. The AFTER hand is NOT a different person and NOT a younger version - it is the SAME hand, weeks later, slightly different pose.`,
               "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: any distinctive skin mark, sun spot, scar, vein bulge, or knuckle wrinkle visible in one half must appear in EXACTLY THE SAME LOCATION and at the SAME SIZE in the other half. The model must NOT add a new mark in one half that does not exist in the other. The model must NOT remove a mark that should be in both.",
               "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. The image MUST show ONLY a tight close-up of fingernails on one hand. The frame does NOT include the face, body, wrist, or arm. Both halves use the SAME tight nail crop.",
               "EXACTLY TWO PHOTOS IN OUTPUT: the result is ONE 16:9 image containing exactly two photos (one BEFORE on the left half, one AFTER on the right half) divided by a single vertical seam. NEVER tile the composition. NEVER stack the B/A pair vertically. NEVER duplicate or repeat the image. NEVER output a 2x2 grid or four photos.",
@@ -679,14 +741,14 @@ function buildPrompt(args: {
                     "HAIR LENGTH STAYS THE SAME between halves: hair grows about 1cm per month - across the implied weeks-apart timeframe the hair length is the SAME in BEFORE and AFTER. NEVER show longer hair in the AFTER. The improvement is in DENSITY and REGROWTH at the parting/hairline, not length.",
                     "BABY HAIRS IN AFTER = NEW GROWTH (positive signal, not breakage): if the AFTER half shows soft short wispy strands standing up at the hairline or along the parting line, those are SOFT-TIPPED tapered new-growth hairs - NOT blunt-end broken hairs scattered across the head. Place them specifically at the HAIRLINE and PART EDGES, not as random frizz throughout. In the BEFORE half there are NO baby hairs visible - the regrowth only appears in AFTER.",
                     "PARTING LINE WIDTH is the primary improvement signal: BEFORE half = wide parting line with clearly visible scalp skin between strands. AFTER half = noticeably narrower parting line with less scalp showing through. This is the dominant marketing cue in the category (Nutrafol, Viviscal, Vital Proteins all use this). Do not skip it.",
-                    "Hair COLOR stays identical between halves - same warm honey blonde, same scandinavian-blonde, same brunette, etc. The supplement does not change hair color. The AFTER half is NOT a different woman with different hair.",
+                    `Hair COLOR stays identical between halves - same warm honey blonde, same scandinavian-blonde, same brunette, etc. The supplement does not change hair color. The AFTER half is NOT a different ${person} with different hair.`,
                   ]
                 : []),
             ],
         instruction: isNails
           ? "Generate a single before/after split image of fingernails on the SAME hand, taken weeks apart. FIRST, lock the zone framing: the image MUST be a tight close-up of fingernails ONLY - no face, no body, no wrist. The hand pose is similar between halves so the nails are comparable. BEFORE half = weak/short/ridged nails per intensity. AFTER half = healthier/longer/smoother nails per intensity. Both halves show natural bare nails (NO polish, NO gel, NO salon manicure). ABSOLUTELY NO TEXT IN THE IMAGE."
           : isHair
-            ? "Generate a single before/after split image of the SAME woman's hair parting, taken weeks apart. FIRST, lock the zone framing: top-down or 3-quarter angle on the central hair parting, no face in frame (maybe a hint of forehead at the bottom edge). BEFORE half = wider parting with visible scalp, no new-growth baby hairs, flat/limp look per intensity. AFTER half = narrower parting with less scalp showing, soft tapered new-growth 'baby hairs' at the hairline and part edges, subtle volume per intensity. Hair LENGTH and COLOR are IDENTICAL in both halves - only density and regrowth differ. ABSOLUTELY NO TEXT IN THE IMAGE."
+            ? `Generate a single before/after split image of the SAME ${person}'s hair parting, taken weeks apart. FIRST, lock the zone framing: top-down or 3-quarter angle on the central hair parting, no face in frame (maybe a hint of forehead at the bottom edge). BEFORE half = wider parting with visible scalp, no new-growth baby hairs, flat/limp look per intensity. AFTER half = narrower parting with less scalp showing, soft tapered new-growth 'baby hairs' at the hairline and part edges, subtle volume per intensity. Hair LENGTH and COLOR are IDENTICAL in both halves - only density and regrowth differ. ABSOLUTELY NO TEXT IN THE IMAGE.`
             : "Generate a single before/after split image. FIRST, lock the body zone framing from 'zone_framing' - crop tightly to the specified zone, do not default to a full-face portrait. Both halves show the SAME body zone with the SAME tight crop and from the SAME side (no mirroring). Then vary outfit, lighting, and slight head angle between halves to look like two selfies the same person took weeks apart. ABSOLUTELY NO TEXT IN THE IMAGE.",
       };
 
@@ -712,6 +774,7 @@ export async function POST(req: NextRequest) {
     notes,
     ethnicity,
     age,
+    gender,
     hair_color,
     camera_angle,
     source_demographic,
@@ -724,6 +787,7 @@ export async function POST(req: NextRequest) {
     notes?: string;
     ethnicity?: string;
     age?: string;
+    gender?: string;
     hair_color?: string;
     camera_angle?: string;
     source_demographic?: {
@@ -766,8 +830,13 @@ export async function POST(req: NextRequest) {
   const hairColorOverride = hair_color?.trim() || undefined;
   const hairColorFromSource = source_demographic?.hair_color?.trim() || undefined;
 
+  // Only the literal string "man" opts out of the default. Anything else -
+  // missing, misspelt, or a value detected from a source image - stays woman.
+  const genderOverride: Gender | undefined = gender === "man" ? "man" : undefined;
+
   const overrides: DemographicOverrides = {
     age: ageOverride ?? ageFromSource,
+    gender: genderOverride,
     ethnicity: ethnicityOverride ?? ethnicityFromSource,
     hair_color: hairColorOverride ?? hairColorFromSource,
   };
