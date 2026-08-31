@@ -76,6 +76,10 @@ const AGE_OPTIONS = [
   { value: "71-75", label: "71-75" },
 ];
 
+// Zones the API never reads a camera angle for: it branches on nails/hair
+// before the angle is used, so any value picked here is silently discarded.
+const CAMERA_ANGLE_IGNORED_ZONES = ["nails", "hair_scalp"];
+
 const CAMERA_ANGLE_OPTIONS = [
   { value: "", label: "Random (varies per half)" },
   { value: "head_on", label: "Head-on eye-level" },
@@ -399,7 +403,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             gender: gender || undefined,
             ethnicity: ethnicity || undefined,
             hair_color: hairColor.trim() || undefined,
-            camera_angle: cameraAngle || undefined,
+            camera_angle: CAMERA_ANGLE_IGNORED_ZONES.includes(bodyZone) ? undefined : cameraAngle || undefined,
             source_demographic: sourceDemographic ?? undefined,
             source_spec: sourceSpec ?? undefined,
           }),
@@ -791,24 +795,27 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             />
           </div>
         </div>
-        <div className="mt-3">
-          <label className="block text-[11px] text-gray-500 mb-1">
-            Camera angle <span className="text-gray-400 font-normal">(face zones only)</span>
-          </label>
-          <select
-            value={cameraAngle}
-            onChange={(e) => setCameraAngle(e.target.value)}
-            className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
-          >
-            {CAMERA_ANGLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <p className="text-[10px] text-gray-400 mt-1">
-            Random varies the angle PER HALF (BEFORE and AFTER look like two separate selfies on different days).
-            Pick a specific angle to lock both halves to it.
-          </p>
-        </div>
+        {/* Nails and Hair ignore the camera angle entirely (the API branches on
+            zone before it is read), so showing a dropdown you are forced to
+            answer is just a trap. Hide it instead of labelling it. */}
+        {!CAMERA_ANGLE_IGNORED_ZONES.includes(bodyZone) && (
+          <div className="mt-3">
+            <label className="block text-[11px] text-gray-500 mb-1">Camera angle</label>
+            <select
+              value={cameraAngle}
+              onChange={(e) => setCameraAngle(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            >
+              {CAMERA_ANGLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Random varies the angle PER HALF (BEFORE and AFTER look like two separate selfies on different days).
+              Pick a specific angle to lock both halves to it.
+            </p>
+          </div>
+        )}
       </details>
     </>
   );
