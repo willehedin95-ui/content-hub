@@ -41,13 +41,17 @@ type Shot = {
 // biggest zone in the category, hair is second and we had none, neck and nails
 // were missing entirely. Card 12 is deliberately a non-transformation.
 const PLAN: Shot[] = [
-  { id: "03-eye", zoneKey: "eye_area", gender: "woman", age: "41-45", ethnicity: "east_asian", intensity: "moderate", label: "Ögonparti, yngre (omkörning)" },
-  { id: "06-neck", zoneKey: "neck_decolletage", gender: "woman", age: "56-60", intensity: "dramatic", label: "Hals (omkörning, starkare)" },
-  { id: "10-nails", zoneKey: "nails", gender: "woman", age: "56-60", intensity: "moderate", label: "Naglar (omkörning)" },
-  { id: "11-profile", zoneKey: "face_profile", gender: "woman", age: "51-55", intensity: "moderate", label: "Profil (omkörning, ingen telefon)" },
+  { id: "05-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "dramatic", label: "Hals" },
+  { id: "06-neck", zoneKey: "neck_decolletage", gender: "woman", age: "51-55", ethnicity: "south_asian", intensity: "moderate", label: "Hals, sydasiatisk" },
+  { id: "07-hair", zoneKey: "hair_scalp", gender: "woman", age: "56-60", intensity: "moderate", label: "Hår kvinna" },
+  { id: "08-hair", zoneKey: "hair_scalp", gender: "man", age: "51-55", ethnicity: "north_european", intensity: "moderate", label: "Hår man" },
+  { id: "09-nails", zoneKey: "nails", gender: "woman", age: "61-65", intensity: "moderate", label: "Naglar" },
+  { id: "10-eye", zoneKey: "eye_area", gender: "woman", age: "46-50", ethnicity: "east_asian", intensity: "moderate", label: "Ögonparti, östasiatisk" },
+  { id: "11-chest", zoneKey: "chest_macro", gender: "woman", age: "56-60", intensity: "moderate", label: "Dekolletage" },
+  { id: "12-nochange", zoneKey: "full_face_front", gender: "woman", age: "51-55", intensity: "subtle", label: "Helansikte, minimal skillnad" },
 ];
 
-const SAMPLE_IDS = ["03-eye"];
+const SAMPLE_IDS = ["05-neck"];
 
 function extractPromptLogic() {
   const py = `

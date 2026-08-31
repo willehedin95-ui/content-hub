@@ -349,6 +349,25 @@ const INTENSITY_PROMPTS: Record<Intensity, string> = {
     "BEFORE half: undereye shadow + redness around the nose and cheeks + uneven blotchy skin tone + prominent visible pore texture + dull / tired-looking skin overall. AFTER half: clean undereye + even tone everywhere + visibly smoother (but still natural) skin texture + soft natural glow + a brighter, more awake look around the eyes. This is the maximum delta - still realistic (NOT a filter, NOT cosmetic surgery, NOT smoothing) but clearly improved across multiple features at once.",
 };
 
+// Body zones (neck, chest, arm, leg, hands) need their own ladder. The skin
+// ladder above is written entirely around the undereye area, the nose and the
+// cheeks - none of which are in frame on a neck or chest crop, so the model
+// got no feature to change and every generation came out looking the same.
+//
+// The features below are what the competitors actually show. Measured against
+// Zooki "M" (day 0/90 neck), Absolute Collagen's Hayley (neck & dec) and
+// Debbie (chest lines), 2026-08-31: the bands never disappear, they get
+// shallower; the chest creases flatten; and pigment is left completely alone
+// (Hayley's AFTER half actually shows MORE freckles than her BEFORE).
+const BODY_INTENSITY_PROMPTS: Record<Intensity, string> = {
+  subtle:
+    "BEFORE half: the horizontal neck bands (or vertical chest creases, depending on the zone) are etched and cast a clear shadow line. AFTER half: the SAME lines in the SAME places, but shallower - less depth, softer shadow. The lines are still clearly present and countable. Everything else is IDENTICAL between halves: same skin texture, same freckles, moles and sun spots in the same positions, same tendon and collarbone prominence, same skin tone. A viewer should think 'the lines look less deep' and not be able to name a second change.",
+  moderate:
+    "BEFORE half: etched horizontal neck bands / vertical chest creases with clear shadow + slightly crepey skin surface between the lines. AFTER half: the same lines, shallower and softer, + the skin between them reads flatter and more even, less crepey. Freckles, moles, sun spots and pigmentation are IDENTICAL in both halves - same count, same positions, same intensity. Tendons and collarbones are anatomy, not skin: they look the same in both halves. Do NOT smooth the skin into a filtered look.",
+  dramatic:
+    "BEFORE half: deeply etched neck bands / chest creases with strong shadows + crepey slack skin surface + loose-looking texture. AFTER half: the same lines still visible but clearly shallower, the skin between them noticeably flatter and firmer-looking, crepiness reduced. This is the maximum delta and it stops well short of a smooth neck - the bands must never be erased, because a line-free neck at this age reads as retouching. Freckles, moles, sun spots and tendon prominence stay IDENTICAL between halves - they are the proof it is the same person.",
+};
+
 const NAIL_INTENSITY_PROMPTS: Record<Intensity, string> = {
   subtle:
     "BEFORE half: ragged uneven free edge with dry-looking cuticle area, slightly hangnail-y at the sides of the nails, no clear white tip. AFTER half: SAME LENGTH NAILS but with a cleaner, more even free edge (still natural, NOT filed-to-perfect) and slightly less dry cuticle area. Nail surface, color, shape, and OVERALL LENGTH stay IDENTICAL between halves. CRITICAL: do NOT make the nails longer in the AFTER half - the ONLY visible delta is cuticle and edge cleanliness.",
@@ -518,6 +537,9 @@ function buildPrompt(args: {
   const { zone, zoneKey, demographic, intensity, vision, hasSource, notes, cameraAngle } = args;
   const isNails = zoneKey === "nails";
   const isHair = zoneKey === "hair_scalp";
+  // Zones where no part of the face is in frame, so the undereye/nose/cheek
+  // ladder in INTENSITY_PROMPTS has nothing to act on.
+  const isBody = (["neck_decolletage", "chest_macro", "arm_skin", "leg_thigh", "hands"] as string[]).includes(zoneKey);
   const isFace = !isNails && !isHair;
   const isMan = demographic.gender === "man";
   // Noun used wherever the prompt has to name the subject. Woman unless the
@@ -701,7 +723,9 @@ function buildPrompt(args: {
           ? NAIL_INTENSITY_PROMPTS[intensity]
           : isHair
             ? HAIR_INTENSITY_PROMPTS[intensity]
-            : INTENSITY_PROMPTS[intensity],
+            : isBody
+              ? BODY_INTENSITY_PROMPTS[intensity]
+              : INTENSITY_PROMPTS[intensity],
         style: sharedStyle,
         hard_constraints: isNails
           ? [
