@@ -17,8 +17,20 @@ import {
 
 export const maxDuration = 800;
 
-const ASPECT_RATIO = "16:9";
-const RESOLUTION = "1K";
+// 16:9 is the default for a reason: each half then lands at 8:9, which is
+// roughly square and fits the wide zones (forehead strip, eye area, neck) the
+// prompt asks for. Squarer output makes each half a narrow 1:2 portrait, and
+// the model responds by zooming out to a face portrait that fits the shape -
+// measured 2026-08-31, where 1:1 turned a tight_crop eye_area into a full-face
+// shot and tiled a forehead into a 2x2 grid. Only pick something else when the
+// target placement really needs it, and check the zone framing when you do.
+const ASPECT_RATIOS = ["16:9", "4:5", "1:1", "9:16"] as const;
+type AspectRatio = (typeof ASPECT_RATIOS)[number];
+const DEFAULT_ASPECT_RATIO: AspectRatio = "16:9";
+
+const RESOLUTIONS = ["1K", "2K"] as const;
+type Resolution = (typeof RESOLUTIONS)[number];
+const DEFAULT_RESOLUTION: Resolution = "1K";
 // Stay under Vercel Hobby's 300s function cap so we fail with a clear error
 // instead of being killed mid-poll (which leaves the stream dead and the UI
 // stuck on a spinner forever).
@@ -803,6 +815,8 @@ export async function POST(req: NextRequest) {
     gender,
     hair_color,
     camera_angle,
+    aspect_ratio,
+    resolution,
     source_demographic,
     source_spec,
   } = body as {
@@ -816,6 +830,8 @@ export async function POST(req: NextRequest) {
     gender?: string;
     hair_color?: string;
     camera_angle?: string;
+    aspect_ratio?: string;
+    resolution?: string;
     source_demographic?: {
       age?: string | null;
       ethnicity?: string | null;
@@ -823,6 +839,15 @@ export async function POST(req: NextRequest) {
     } | null;
     source_spec?: Record<string, unknown> | null;
   };
+
+  // Output format. Anything unrecognised falls back to the default rather
+  // than being passed through to Kie.
+  const aspectRatio: AspectRatio = (ASPECT_RATIOS as readonly string[]).includes(aspect_ratio ?? "")
+    ? (aspect_ratio as AspectRatio)
+    : DEFAULT_ASPECT_RATIO;
+  const outputResolution: Resolution = (RESOLUTIONS as readonly string[]).includes(resolution ?? "")
+    ? (resolution as Resolution)
+    : DEFAULT_RESOLUTION;
 
   // Camera angle (optional, face-only). If user picks a specific angle, both
   // halves use it. If random/undefined, the buildPrompt picks DIFFERENT
@@ -951,7 +976,7 @@ export async function POST(req: NextRequest) {
       });
 
       const referenceImages = image_url ? [image_url] : [];
-      const taskId = await createImageTask(prompt, referenceImages, ASPECT_RATIO, RESOLUTION);
+      const taskId = await createImageTask(prompt, referenceImages, aspectRatio, outputResolution);
 
       // Log the Kie cost IMMEDIATELY after task creation - the image is paid
       // for once the task exists, so a poll timeout must not hide the spend.
@@ -961,8 +986,8 @@ export async function POST(req: NextRequest) {
         cost_usd: KIE_IMAGE_COST,
         metadata: {
           task_id: taskId,
-          aspect_ratio: ASPECT_RATIO,
-          resolution: RESOLUTION,
+          aspect_ratio: aspectRatio,
+          resolution: outputResolution,
           body_zone,
           intensity,
           has_source: Boolean(image_url),

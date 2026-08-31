@@ -76,6 +76,22 @@ const AGE_OPTIONS = [
   { value: "71-75", label: "71-75" },
 ];
 
+// Output format. 16:9 is the default because each half then lands at roughly
+// square, which is what the wide zone crops (forehead strip, eye area, neck)
+// need. Squarer output makes each half a narrow 1:2 portrait and the model
+// zooms out to a face portrait to fill the shape.
+const ASPECT_RATIO_OPTIONS = [
+  { value: "16:9", label: "16:9 (best zone accuracy)" },
+  { value: "4:5", label: "4:5" },
+  { value: "1:1", label: "1:1 square" },
+  { value: "9:16", label: "9:16 vertical" },
+];
+
+const RESOLUTION_OPTIONS = [
+  { value: "1K", label: "1K" },
+  { value: "2K", label: "2K" },
+];
+
 // Zones the API never reads a camera angle for: it branches on nails/hair
 // before the angle is used, so any value picked here is silently discarded.
 const CAMERA_ANGLE_IGNORED_ZONES = ["nails", "hair_scalp"];
@@ -137,6 +153,8 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
   const [ethnicity, setEthnicity] = useState<string>("scandinavian");
   const [hairColor, setHairColor] = useState<string>("");
   const [cameraAngle, setCameraAngle] = useState<string>("");
+  const [aspectRatio, setAspectRatio] = useState<string>("16:9");
+  const [resolution, setResolution] = useState<string>("1K");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusMessage, setStatusMessage] = useState("");
@@ -404,6 +422,8 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             ethnicity: ethnicity || undefined,
             hair_color: hairColor.trim() || undefined,
             camera_angle: CAMERA_ANGLE_IGNORED_ZONES.includes(bodyZone) ? undefined : cameraAngle || undefined,
+            aspect_ratio: aspectRatio,
+            resolution,
             source_demographic: sourceDemographic ?? undefined,
             source_spec: sourceSpec ?? undefined,
           }),
@@ -460,7 +480,7 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
         setPhase("upload");
       }
     },
-    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, cameraAngle, sourceDemographic, sourceSpec]
+    [sourceFile, sourceUrl, bodyZone, customZone, intensity, notes, age, ethnicity, hairColor, cameraAngle, aspectRatio, resolution, sourceDemographic, sourceSpec]
   );
 
   const handleGenerate = useCallback(() => {
@@ -603,6 +623,8 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
     setEthnicity("scandinavian");
     setHairColor("");
     setCameraAngle("");
+    setAspectRatio("16:9");
+    setResolution("1K");
     setError(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
@@ -795,6 +817,40 @@ export default function BeforeAfterGenerator({ onAssetCreated, defaultProduct = 
             />
           </div>
         </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Aspect ratio</label>
+            <select
+              value={aspectRatio}
+              onChange={(e) => setAspectRatio(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            >
+              {ASPECT_RATIO_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Resolution</label>
+            <select
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+            >
+              {RESOLUTION_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {aspectRatio !== "16:9" && (
+          <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-2">
+            Squarer and vertical formats make each half a narrow portrait, and the model tends to
+            zoom out to a full-face shot instead of holding the tight zone crop. Check the framing
+            before you use the result. 16:9 plus a crop in Post Production is the safer route.
+          </p>
+        )}
+
         {/* Nails and Hair ignore the camera angle entirely (the API branches on
             zone before it is read), so showing a dropdown you are forced to
             answer is just a trap. Hide it instead of labelling it. */}
