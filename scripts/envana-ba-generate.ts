@@ -34,6 +34,7 @@ type Shot = {
   age: string;
   ethnicity?: string;
   intensity: "subtle" | "moderate" | "dramatic";
+  cameraAngle?: string;
   label: string;
 };
 
@@ -41,14 +42,14 @@ type Shot = {
 // biggest zone in the category, hair is second and we had none, neck and nails
 // were missing entirely. Card 12 is deliberately a non-transformation.
 const PLAN: Shot[] = [
-  { id: "05-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "dramatic", label: "Hals" },
-  { id: "06-neck", zoneKey: "neck_decolletage", gender: "woman", age: "51-55", ethnicity: "south_asian", intensity: "moderate", label: "Hals, sydasiatisk" },
+  { id: "05-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "moderate", cameraAngle: "head_on", label: "Hals" },
+  { id: "06-neck", zoneKey: "neck_decolletage", gender: "woman", age: "51-55", ethnicity: "south_asian", intensity: "moderate", cameraAngle: "above", label: "Hals, sydasiatisk" },
   { id: "07-hair", zoneKey: "hair_scalp", gender: "woman", age: "56-60", intensity: "moderate", label: "Hår kvinna" },
   { id: "08-hair", zoneKey: "hair_scalp", gender: "man", age: "51-55", ethnicity: "north_european", intensity: "moderate", label: "Hår man" },
   { id: "09-nails", zoneKey: "nails", gender: "woman", age: "61-65", intensity: "moderate", label: "Naglar" },
-  { id: "10-eye", zoneKey: "eye_area", gender: "woman", age: "46-50", ethnicity: "east_asian", intensity: "moderate", label: "Ögonparti, östasiatisk" },
-  { id: "11-chest", zoneKey: "chest_macro", gender: "woman", age: "56-60", intensity: "moderate", label: "Dekolletage" },
-  { id: "12-nochange", zoneKey: "full_face_front", gender: "woman", age: "51-55", intensity: "subtle", label: "Helansikte, minimal skillnad" },
+  { id: "10-eye", zoneKey: "eye_area", gender: "woman", age: "46-50", ethnicity: "east_asian", intensity: "moderate", cameraAngle: "tight_crop", label: "Ögonparti, östasiatisk" },
+  { id: "11-chest", zoneKey: "chest_macro", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "head_on", label: "Dekolletage" },
+  { id: "12-nochange", zoneKey: "full_face_front", gender: "woman", age: "51-55", intensity: "subtle", cameraAngle: "head_on", label: "Helansikte, minimal skillnad" },
 ];
 
 const SAMPLE_IDS = ["05-neck"];
@@ -113,6 +114,7 @@ async function main() {
       intensity: shot.intensity,
       vision: null,
       hasSource: false,
+      cameraAngle: shot.cameraAngle,
     });
 
     process.stdout.write(`  ${shot.id.padEnd(13)} ${shot.label.padEnd(30)} `);
