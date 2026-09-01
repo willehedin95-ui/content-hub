@@ -21,7 +21,7 @@ import { createImageTask, pollTaskResult } from "../src/lib/kie";
 
 const ROUTE = "src/app/api/assets/before-after/route.ts";
 const TMP = "src/app/api/assets/before-after/_envana-prompt.tmp.ts";
-const OUT = "/private/tmp/claude-501/-Users-williamhedin-Claude-Code/dabb60f3-6575-4148-bce2-1e0179af819f/scratchpad/envana-ba";
+const OUT = process.env.BA_OUT ?? "/private/tmp/claude-501/-Users-williamhedin-Claude-Code/dabb60f3-6575-4148-bce2-1e0179af819f/scratchpad/envana-ba";
 
 // 1:1 output => each half is 1:2 portrait, matching the existing Envana cards.
 const ASPECT = process.argv.includes("--aspect")
@@ -47,12 +47,12 @@ type Shot = {
 // biggest zone in the category, hair is second and we had none, neck and nails
 // were missing entirely. Card 12 is deliberately a non-transformation.
 const PLAN: Shot[] = [
-  { id: "t1-eye", zoneKey: "eye_area", gender: "woman", age: "51-55", intensity: "moderate", cameraAngle: "tight_crop", label: "Ogon tight" },
-  { id: "t2-forehead", zoneKey: "forehead", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "head_on", label: "Panna" },
-  { id: "t3-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "moderate", cameraAngle: "head_on", label: "Hals" },
+  { id: "04-forehead-56", zoneKey: "forehead", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "head_on", label: "Panna 56-60 (om)" },
+  { id: "13-nails-51", zoneKey: "nails", gender: "woman", age: "51-55", intensity: "moderate", label: "Naglar 51-55 (om)" },
+  { id: "18-arm-56", zoneKey: "arm_skin", gender: "woman", age: "56-60", intensity: "moderate", label: "Arm 56-60 (om)" },
 ];
 
-const SAMPLE_IDS = ["05-neck"];
+const SAMPLE_IDS = ["01-eye-51"];
 
 function extractPromptLogic() {
   const py = `
