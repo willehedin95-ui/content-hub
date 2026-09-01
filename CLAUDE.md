@@ -2,9 +2,17 @@
 
 ## After completing changes
 
-Always commit changes after finishing a task and push to `main`. The project auto-deploys to Vercel on push.
+Always commit changes after finishing a task. **Do not push without asking** - the push
+auto-deploys to Vercel (see Hard constraints below; the two rules used to contradict each
+other and a session pushed four commits to production on the strength of this line).
 
 **When pushing to Vercel**: Always tell the user the git short hash of the pushed commit (e.g. `508b6dd`) so they can verify the deploy is live by checking the version shown in the sidebar footer.
+
+**A green Vercel deploy does not mean the change is live.** `content-hub-nine-theta.vercel.app`
+sat on a February deploy for months because `autoAssignCustomDomains` was off, so the domain
+never followed new production deploys. Fixed 2026-09-01, but always confirm the build id
+actually changed before reporting a commit as live. `VERCEL_TOKEN` is in `.env.local` (the
+one in 1Password is for the EPS project and has no access here).
 
 ## Dev server management
 
@@ -88,6 +96,7 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 - **Page Swiper** (`/swiper`): Paste a competitor URL → Puppeteer fetches it → Claude (Anthropic) rewrites all copy for a selected product using product bank context → manual image replacement from product bank → save as new page in hub. Code: `src/lib/claude.ts` wraps Anthropic API with dynamic system prompt built from product bank data. Env var: `ANTHROPIC_API_KEY`.
 - **Forms** (`/forms`): Self-hosted support forms replacing Fillout (phase 1: Envana). Config-driven forms in `forms` table rendered by `public/forms-embed/v1.js` on Shopify pages; persist-first submissions in `form_submissions` with retry delivery to per-workspace helpdesk (`workspaces.settings.forms_helpdesk`, Freshdesk adapter + email fallback in `src/lib/form-delivery.ts`). Public routes: `/api/forms/{config,submit,upload}`, `/f/[workspace]/[slug]` (add `?test=1` for no-ticket test mode). Internal metadata goes to a PRIVATE Freshdesk note - never in the ticket description (agents quote it in replies). Full docs in auto memory `content-hub-forms.md`.
 - **Settings**: Configurable quality threshold, default languages, economy mode, notification email, Kie AI credit balance, Meta Ads connection test
+- **Before/After** (`/assets`): generates before/after testimonial images. `ASPECT_RATIO` matters more than it looks - at 16:9 each half lands near square, which the wide zone crops (forehead, eye area, neck) need; squarer output makes each half a narrow strip and the model zooms out to a portrait or tiles the pair into a 2x2 grid. The prompt is told the ratio so 1:1 works too, but 16:9 plus a crop in Post Production is the reliable route. Four intensity families keyed on zone: skin, nails, hair, and body (neck/chest/arm/leg/hands) - the skin ladder is written around undereye and nose redness and does nothing for a zone with no face in frame. Gender defaults hard to woman. Post-production (`src/lib/post-production.ts`) is Canvas API and cannot run in Node; `scripts/envana-postprod.ts` bundles the unchanged module with esbuild and runs it in headless Chrome rather than reimplementing the filter.
 - **Brand Check** (`/brand-check` authed; `/bcheck` public token-gated mobile, hidden — no sidebar link): brand-name screening tool. Per name: .com domain availability (15 prefix/suffix variants via RDAP), real web search via **Serper.dev** (`SERPER_API_KEY`), AI name generator (Claude, `src/lib/brand-ideas.ts`), and a pre-filtered TMview link (class 3/5/35 + offices + live marks). Saved shortlist in `brand_shortlist` table; 7-day cache in `brand_check_cache`. Code: `src/lib/brand-check.ts`, `src/app/brand-check/`, `src/app/bcheck/`, `src/app/api/{brand-check,bcheck,brand-shortlist,bcheck-shortlist,brand-ideas,bcheck-ideas}`. **KEY LESSON: server-side scraping of TMview/DuckDuckGo does NOT work from Vercel's datacenter IP (timeouts/blocks) though it works locally — TM is a browser deep-link, web search uses Serper API. Always test prod-reliant features against prod, not local.** Public routes whitelisted in `src/middleware.ts`. `BRAND_CHECK_TOKEN` env gates `/bcheck` (not set yet).
 
 ## Hard constraints (NEVER do these)

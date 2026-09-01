@@ -681,8 +681,18 @@ Tool in `/assets`. Architecture in `memory/before-after-tool.md`. Hard rule: `fe
 - [x] ~~Add Hair template based on Nutrafol/Viviscal/Vegamour research (parting-line narrowing + baby hairs as positive cues)~~ (commit `5f261e6`)
 - [x] ~~Random age pool starts at 46 (RANDOM_AGE_POOL filter)~~ (commit `ef333e9`)
 
+### Done (2026-09-01, Envana-PDP-sessionen, 6 commits)
+- [x] ~~Konsval i UI:t - kvinna hard default, `"man"` enda strangen som valjer bort~~ (`74a36094`)
+- [x] ~~Telefonforbud i prompten - kunden haller telefonen som tar bilden~~ (`155cb06a`)
+- [x] ~~Egen intensitetsfamilj for kroppszoner (hals, dekolletage, arm, ben, hander)~~ (`94dca11f`). Skin-familjen beskriver ogonringar och rodnad vid nasan, inget av det finns i bild pa en halscrop, sa alla halsbilder blev identiska korning efter korning.
+- [x] ~~Kameravinkeln dold for Nails och Hair~~ (`2b03e799`) - faltet lastes aldrig for de zonerna men gick inte att hoppa over
+- [x] ~~Bildformat och modell valjbara i UI, prompten vet vilket format den genererar i~~ (`fda7596b`, `53bf0b46`, `8dec8031`)
+- [x] ~~**Verify generation per zone after 2026-05-14 fixes**~~ - kort over alla zoner. **Tilingen var aldrig ett promptfel utan ett formatfel:** vid 1:1 blir varje halva en smal 1:2-remsa, modellen zoomar ut till portratt och kaklar breda utsnitt. Vid 16:9 landar varje halva nara kvadratisk och panna/ogon/kind blir ratt. 1:1 fungerar nu ocksa efter `8dec8031`, men **16:9 + crop i Post Production ar fortfarande den palitliga vagen**.
+
 ### Pending / open
-- [ ] **Verify next user generation per zone after 2026-05-14 fixes** - especially forehead (tiling), leg/arm (orientation), hair_scalp (parting-line + baby hairs), face/cheek/eye (pose regression check)
+- [ ] **Zonregeln racker inte hela vagen for riktiga makro-crops pa panna och ogon** - formatet loste det mesta, men den som vill ha tighta makron behover skruva sjalva zondefinitionen (added 2026-09-01)
+- [ ] **`2a8cfc5e` ar committad men opushad** - de tre Envana-skripten i `scripts/`. Pushen deployar, sa den holls per CLAUDE.md (added 2026-09-01)
+- [ ] **Overvag att gora `envana-ba-generate` / `envana-postprod` / `envana-label` till en skill** om samma flode kors igen - i dag ar de tre engangsskript. Bygg inte oombedd (added 2026-09-01)
 - [ ] **Resume swipe mode** when create mode settled - currently PAUSED per William. Options when revived: Higgsfield role-tagged `medias`, Replicate InsightFace face-swap, or accept as "style inspiration only"
 - [ ] Add more body zone templates if William wants more variety (he mentioned this after analyzing 48 competitor B/A images)
 - [ ] Remove unused `vision` parameter from `buildPrompt` in swipe branch (leftover from spec-based refactor)
