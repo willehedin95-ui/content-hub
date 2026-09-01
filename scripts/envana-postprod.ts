@@ -27,6 +27,7 @@ import { join, resolve } from "node:path";
 
 const IN = process.argv[2];
 const OUT = process.argv[3];
+const CROP_TO = process.env.PP_CROP || null;
 const RUNNER = process.argv[4] ?? "/private/tmp/claude-501/-Users-williamhedin-Claude-Code/dabb60f3-6575-4148-bce2-1e0179af819f/scratchpad/pp/runner.html";
 if (!IN || !OUT) { console.error("ange in-dir och out-dir"); process.exit(1); }
 
@@ -43,11 +44,11 @@ async function main() {
   const ready = await page.evaluate(() => typeof (window as any).run === "function" && !!(window as any).PP);
   if (!ready) throw new Error("runner-sidan laddade inte post-production-bundlen");
 
-  console.log(`${files.length} bilder, Subtle + vertikal divider\n`);
+  console.log(`${files.length} bilder, Subtle + vertikal divider${CROP_TO ? ` + crop till ${CROP_TO}` : ""}\n`);
   for (const f of files) {
     const raw = readFileSync(join(IN, f));
     const dataUrl = "data:image/png;base64," + raw.toString("base64");
-    const res = (await page.evaluate((d: string) => (window as any).run(d), dataUrl)) as { b64: string; type: string; w: number; h: number };
+    const res = (await page.evaluate((d: { url: string; crop: string | null }) => (window as any).run(d.url, d.crop), { url: dataUrl, crop: CROP_TO })) as { b64: string; type: string; w: number; h: number };
     const outBuf = Buffer.from(res.b64, "base64");
     const outName = f.replace(/\.png$/, ".jpg");
     writeFileSync(join(OUT, outName), outBuf);

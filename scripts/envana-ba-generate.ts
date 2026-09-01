@@ -47,9 +47,7 @@ type Shot = {
 // biggest zone in the category, hair is second and we had none, neck and nails
 // were missing entirely. Card 12 is deliberately a non-transformation.
 const PLAN: Shot[] = [
-  { id: "04-forehead-56", zoneKey: "forehead", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "head_on", label: "Panna 56-60 (om)" },
-  { id: "13-nails-51", zoneKey: "nails", gender: "woman", age: "51-55", intensity: "moderate", label: "Naglar 51-55 (om)" },
-  { id: "18-arm-56", zoneKey: "arm_skin", gender: "woman", age: "56-60", intensity: "moderate", label: "Arm 56-60 (om)" },
+  { id: "19-eye-41", zoneKey: "eye_area", gender: "woman", age: "40-45", intensity: "moderate", cameraAngle: "tight_crop", label: "Ogon 41-45 (om)" },
 ];
 
 const SAMPLE_IDS = ["01-eye-51"];
