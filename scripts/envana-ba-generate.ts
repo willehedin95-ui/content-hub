@@ -47,8 +47,9 @@ type Shot = {
 // biggest zone in the category, hair is second and we had none, neck and nails
 // were missing entirely. Card 12 is deliberately a non-transformation.
 const PLAN: Shot[] = [
-  { id: "m-eye", zoneKey: "eye_area", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "tight_crop", label: "Ogonparti" },
-  { id: "m-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "moderate", cameraAngle: "head_on", label: "Hals" },
+  { id: "t1-eye", zoneKey: "eye_area", gender: "woman", age: "51-55", intensity: "moderate", cameraAngle: "tight_crop", label: "Ogon tight" },
+  { id: "t2-forehead", zoneKey: "forehead", gender: "woman", age: "56-60", intensity: "moderate", cameraAngle: "head_on", label: "Panna" },
+  { id: "t3-neck", zoneKey: "neck_decolletage", gender: "woman", age: "61-65", intensity: "moderate", cameraAngle: "head_on", label: "Hals" },
 ];
 
 const SAMPLE_IDS = ["05-neck"];
@@ -114,6 +115,7 @@ async function main() {
       vision: null,
       hasSource: false,
       cameraAngle: shot.cameraAngle,
+      aspectRatio: ASPECT,
     });
 
     process.stdout.write(`  ${shot.id.padEnd(13)} ${shot.label.padEnd(30)} `);

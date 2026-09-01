@@ -545,8 +545,16 @@ function buildPrompt(args: {
   hasSource: boolean;
   notes?: string;
   cameraAngle?: FaceCameraAngleKey;
+  aspectRatio?: string;
 }): string {
-  const { zone, zoneKey, demographic, intensity, vision, hasSource, notes, cameraAngle } = args;
+  const { zone, zoneKey, demographic, intensity, vision, hasSource, notes, cameraAngle, aspectRatio } = args;
+  // The prompt has to know the shape of the canvas. At 16:9 each half lands
+  // close to square and the model behaves. At 1:1 or taller each half is a
+  // narrow vertical strip, and the model "fills" that awkward shape either by
+  // tiling the pair into a 2x2 grid or by zooming out to a portrait that fits
+  // more comfortably. Both failures have to be named explicitly.
+  const ratio = aspectRatio ?? "16:9";
+  const narrowHalves = ratio !== "16:9";
   const isNails = zoneKey === "nails";
   const isHair = zoneKey === "hair_scalp";
   // Zones where no part of the face is in frame, so the undereye/nose/cheek
@@ -651,6 +659,7 @@ function buildPrompt(args: {
         zone_framing_priority:
           "THE SINGLE MOST IMPORTANT INSTRUCTION. The body zone framing defines exactly what is visible in the image. Read 'zone_framing' carefully and crop tighter than feels natural. If it says 'ONLY cheek skin' or 'MUST NOT show eyes/mouth/forehead', the image MUST obey - do NOT default to a full-face portrait when a macro crop is specified. The two halves of the split image must show the SAME body zone with the SAME tight crop.",
         zone_framing: zone,
+        canvas: `The output canvas is ${ratio}. Each of the two halves is therefore ${narrowHalves ? "a narrow, tall strip - much taller than it is wide. Fit the subject by cropping in from the SIDES, not by zooming out to a wider shot and not by repeating the photo" : "close to square, the natural shape for this composition"}.`,
         format:
           "Single image, side-by-side split. Left half shows the 'before' state, right half shows the 'after' state. Both halves show the SAME body zone with the SAME tight crop (per 'zone_framing'). The two halves should be cleanly divided (subtle vertical seam) but read as one cohesive photo. These are TWO SEPARATE photos of the same person taken on different days - NOT two halves of one studio session. CRITICAL: the output is EXACTLY ONE 16:9 image containing EXACTLY TWO photos (one BEFORE on the left, one AFTER on the right) with ONE vertical seam down the middle. Do NOT tile the composition. Do NOT stack the B/A pair vertically. Do NOT repeat or duplicate the image. The output is never a 2x2 grid, never four photos, never six photos - it is two photos side by side, period.",
         subject: {
@@ -744,12 +753,17 @@ function buildPrompt(args: {
               `SAME ${personUpper}'S HAND IN BOTH HALVES (HIGHEST PRIORITY - read this first): both halves show the EXACT SAME individual ${person}'s hand. Same skin tone, same skin texture, same hand size, same finger thickness and length proportions, same knuckle and joint structure, same vein pattern visible on the back of the hand, same age signs (same wrinkle depth, same sun spots / age marks in the same locations), same hair pattern (or lack thereof) on the fingers. This is a ${personUpper}'s hand, NOT a ${isMan ? "woman" : "man"}'s hand. The AFTER hand is NOT a different person and NOT a younger version - it is the SAME hand, weeks later, slightly different pose.`,
               "PERMANENT IDENTITY DETAILS MUST MATCH EXACTLY: any distinctive skin mark, sun spot, scar, vein bulge, or knuckle wrinkle visible in one half must appear in EXACTLY THE SAME LOCATION and at the SAME SIZE in the other half. The model must NOT add a new mark in one half that does not exist in the other. The model must NOT remove a mark that should be in both.",
               "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. The image MUST show ONLY a tight close-up of fingernails on one hand. The frame does NOT include the face, body, wrist, or arm. Both halves use the SAME tight nail crop.",
-              "EXACTLY TWO PHOTOS IN OUTPUT: the result is ONE 16:9 image containing exactly two photos (one BEFORE on the left half, one AFTER on the right half) divided by a single vertical seam. NEVER tile the composition. NEVER stack the B/A pair vertically. NEVER duplicate or repeat the image. NEVER output a 2x2 grid or four photos.",
+              `EXACTLY TWO PHOTOS IN OUTPUT: the result is ONE ${ratio} image containing exactly two photos (one BEFORE on the left half, one AFTER on the right half) divided by a single vertical seam. NEVER tile the composition. NEVER stack the B/A pair vertically. NEVER duplicate or repeat the image. NEVER output a 2x2 grid or four photos.`,
               "NO MIRROR-FLIP between halves: BOTH halves show the BACK of the hand (knuckles / nail-side visible from above). NEVER show the palm in one half and the back in the other. NEVER horizontally flip the whole composition.",
               "HAND ORIENTATION CONSISTENCY: in both halves the hand extends in the SAME direction with the SAME edge of the wrist/sleeve area on the SAME side of the frame. Never invert, rotate 180°, or vertically flip the hand between halves.",
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text. NO 'Day 0' / 'Day 60' text. The image must be completely free of text.",
               "NO PHONE, NO SCREEN, NO CAMERA ANYWHERE IN FRAME: the subject is holding the phone that is taking this photo, so that phone can never appear inside the shot. FORBIDDEN: a phone in either hand, a phone resting on a counter/table/shelf in the background, a lit or dark screen of any kind, a visible camera, a mirror or window reflection that shows a phone or the act of photographing. Any hand that appears in frame is empty. This applies to BOTH halves.",
               `BEFORE half hand pose: ${beforeHandPose}. AFTER half hand pose: ${afterHandPose}. Both poses show the SAME side of the hand (the back) with only SUBTLE differences in finger curl. Do NOT pick two wildly different angles - this is the same hand on two days, both photographed from above.`,
+              ...(narrowHalves
+                ? [
+                    `ONE ROW, TWO PHOTOS - THE CANVAS IS ${ratio}: each half is a NARROW, TALL strip, much taller than it is wide. That shape is deliberate. There is ONE row and ONE vertical seam. There is NO second row, nothing stacked above or below. Count before finishing: two photos, one seam. Each half stays a single uncut photo - never split it horizontally, never place a smaller copy underneath, never build a 2x2 or 2x3 grid. If the subject does not fit the tall strip, crop the SIDES of the photo. Do NOT zoom out to a wider shot that fits the strip more comfortably - that is how the tight zone crop gets lost.`,
+                  ]
+                : []),
               `BEFORE half background: ${beforeNailBg}. AFTER half background: ${afterNailBg}. The two halves may show natural between-photo variation in lighting and angle within the same general home setting, but DO NOT pick wildly different locations (e.g. one studio + one kitchen). Both feel like casual home environments.`,
               `BEFORE half lighting: ${beforeLight}. AFTER half lighting: ${afterLight}. Lighting may vary as if taken on different days, but BOTH are casual unflattering home lighting. ${ANTI_TROPE_LIGHTING_RULE}`,
               "NAILS ARE BARE AND NATURAL in both halves: NO polish, NO gel, NO french manicure (the white tip in AFTER is the natural free edge of the nail, not painted), NO fake nails, NO acrylic tips. This is a casual phone close-up of natural unpainted nails.",
@@ -758,7 +772,12 @@ function buildPrompt(args: {
             ]
           : [
               "ZONE FRAMING IS HIGHEST PRIORITY: obey 'zone_framing' exactly. If it says 'EXTREME MACRO CROP on one cheek, MUST NOT show eyes/mouth/forehead', the generated image must show ONLY cheek skin - no full face. Crop tighter than feels natural. Both halves use the SAME body zone with the SAME tight crop.",
-              "EXACTLY TWO PHOTOS IN OUTPUT: the result is ONE 16:9 image containing exactly two photos (one BEFORE on the left half, one AFTER on the right half) divided by a single vertical seam. NEVER tile the composition. NEVER stack the B/A pair vertically. NEVER duplicate or repeat the image. NEVER output a 2x2 grid or four photos. This rule applies especially when the zone is a narrow horizontal slice (forehead, eye area, chest) - the slice fills the FULL HEIGHT of each half, the model does NOT 'fill space' by repeating the composition.",
+              `EXACTLY TWO PHOTOS IN OUTPUT: the result is ONE ${ratio} image containing exactly two photos (one BEFORE on the left half, one AFTER on the right half) divided by a single vertical seam. NEVER tile the composition. NEVER stack the B/A pair vertically. NEVER duplicate or repeat the image. NEVER output a 2x2 grid or four photos. This rule applies especially when the zone is a narrow horizontal slice (forehead, eye area, chest) - the slice fills the FULL HEIGHT of each half, the model does NOT 'fill space' by repeating the composition.`,
+              ...(narrowHalves
+                ? [
+                    `ONE ROW, TWO PHOTOS - THE CANVAS IS ${ratio}: each half is a NARROW, TALL strip, much taller than it is wide. That shape is deliberate. There is ONE row and ONE vertical seam. There is NO second row, nothing stacked above or below. Count before finishing: two photos, one seam. Each half stays a single uncut photo - never split it horizontally, never place a smaller copy underneath, never build a 2x2 or 2x3 grid. If the subject does not fit the tall strip, crop the SIDES of the photo. Do NOT zoom out to a wider shot that fits the strip more comfortably - that is how the tight zone crop gets lost.`,
+                  ]
+                : []),
               `NO MIRROR-FLIP between halves: BOTH halves use the EXACT SAME body orientation - "${bodyOrientation}". The torso, shoulders, and which-side-of-the-face-is-toward-the-camera are IDENTICAL between halves. If 'before' shows the right side of the face more prominent, 'after' also shows the right side more prominent (NEVER horizontally flipped). The HEAD itself, however, IS allowed to lean slightly differently (per head_position - this is a small ear-toward-shoulder lean, not a body turn). The whole composition must NOT be a mirror of the other half.`,
               "BODY PART ORIENTATION CONSISTENCY (critical for limb zones - arm, leg, hands): in both halves the body part extends in the SAME direction with clothing edges in the SAME position. If 'before' shows the leg with shorts edge at the TOP of the frame and thigh extending DOWN, 'after' shows the leg with shorts edge at the TOP and thigh extending DOWN. If 'before' shows an arm extending from upper-left to lower-right with sleeve at the top edge, 'after' shows the arm in the SAME direction with sleeve at the SAME edge. NEVER rotate the limb 180°. NEVER vertically flip the body part. NEVER swap which edge of the frame the clothing appears on.",
               "NEVER render any text, labels, watermarks, captions, or overlays. NO 'Before' or 'After' text anywhere. The image must be completely free of text.",
@@ -968,6 +987,7 @@ export async function POST(req: NextRequest) {
             hasSource: Boolean(image_url),
             notes,
             cameraAngle: cameraAngleOverride,
+            aspectRatio,
           });
 
       await emit({
