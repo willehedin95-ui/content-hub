@@ -8,6 +8,19 @@ other and a session pushed four commits to production on the strength of this li
 
 **When pushing to Vercel**: Always tell the user the git short hash of the pushed commit (e.g. `508b6dd`) so they can verify the deploy is live by checking the version shown in the sidebar footer.
 
+**The PAT baked into `origin` is dead** (revoked some time before 2026-09-01; `git push`
+returns "Invalid username or token"). Do not paste a working token back into `.git/config`.
+Push with the vault copy instead, which never touches disk:
+
+```
+export OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op/claude-sa-token)
+T=$(op item get "github token claude" --vault Dropship --format json | python3 -c "import json,sys; print(next(f['value'] for f in json.load(sys.stdin)['fields'] if f.get('id')in('credential','password') and f.get('value')))")
+git push "https://willehedin95-ui:${T}@github.com/willehedin95-ui/content-hub.git" main
+```
+
+`op read "op://Dropship/github token claude/credential"` does **not** work for this item -
+it has no field named `credential`, so read the fields as above.
+
 **A green Vercel deploy does not mean the change is live.** `content-hub-nine-theta.vercel.app`
 sat on a February deploy for months because `autoAssignCustomDomains` was off, so the domain
 never followed new production deploys. Fixed 2026-09-01, but always confirm the build id
