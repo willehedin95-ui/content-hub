@@ -64,3 +64,12 @@ describe("per-workspace CF project override", () => {
     expect(da).toBe("smarthelse");
   });
 });
+
+describe("extractTitleMarker", () => {
+  it("returns the normalised title text", async () => {
+    const { extractTitleMarker } = await import("../cloudflare-pages");
+    expect(extractTitleMarker("<html><head><title>\n  Kollagen bäst i test  2026 </title></head></html>")).toBe("Kollagen bäst i test 2026");
+    expect(extractTitleMarker("<html><head></head></html>")).toBeUndefined();
+    expect(extractTitleMarker("<title>ab</title>")).toBeUndefined();
+  });
+});

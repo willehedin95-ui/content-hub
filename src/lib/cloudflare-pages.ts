@@ -514,7 +514,10 @@ export async function publishPage(
   // Auto-inject countdown timer JS if any elements have countdown attributes
   html = injectCountdownScript(html);
 
-  const htmlPath = `/${slug}/index.html`;
+  // Root deploys (slug "") must land on /index.html, not "//index.html"
+  // (which CF stores but never serves - seen on the expertpanelen holding page).
+  const cleanSlug = slug.replace(/^\/+|\/+$/g, "");
+  const htmlPath = cleanSlug ? `/${cleanSlug}/index.html` : "/index.html";
   const htmlBuffer = Buffer.from(html, "utf-8");
   const htmlHash = md5hex(htmlBuffer);
 
@@ -581,14 +584,17 @@ export async function publishPage(
 
   // Get base URL (prefer custom domain)
   const baseUrl = await getProjectBaseUrl(accountId, apiToken, projectName, language);
-  const finalUrl = `${baseUrl}/${slug}`;
+  const finalUrl = cleanSlug ? `${baseUrl}/${cleanSlug}` : `${baseUrl}/`;
 
   // 2026-04-16: Verify the deployed URL actually serves valid HTML before we
   // report success. Would have caught the halsobladet manifest wipe on the
   // first bad deploy instead of after ~200 silent wipes. Non-fatal: we return
   // the URL regardless, but caller sees the warning in the result.
   // See resilience-audit-2026-04-16.md P1-1.
-  const verification = await verifyDeployedUrl(finalUrl);
+  // Also require that what the URL serves is OUR html: a parked or stale
+  // domain answers 200 with a valid page too (expertpanelen.se on Hostinger
+  // parking passed the old check with 32 kB of someone else's HTML).
+  const verification = await verifyDeployedUrl(finalUrl, extractTitleMarker(html));
 
   return {
     url: finalUrl,
@@ -603,8 +609,16 @@ export async function publishPage(
  * Returns {ok: true} on success or {ok: false, reason} on failure.
  * Never throws — caller decides whether to block on failure.
  */
+/** The <title> text of an HTML document, used as a content sentinel. */
+export function extractTitleMarker(html: string): string | undefined {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const t = m?.[1]?.replace(/\s+/g, " ").trim();
+  return t && t.length >= 4 ? t : undefined;
+}
+
 async function verifyDeployedUrl(
-  url: string
+  url: string,
+  expectedMarker?: string
 ): Promise<{ ok: boolean; status?: number; bodyBytes?: number; reason?: string }> {
   const MAX_ATTEMPTS = 3;
   const DELAY_MS = 2000;
@@ -642,6 +656,8 @@ async function verifyDeployedUrl(
           lastReason = `body too small (${body.length} bytes)`;
         } else if (!body.includes("</html>") && !body.includes("</HTML>")) {
           lastReason = "missing </html> tag";
+        } else if (expectedMarker && !body.includes(expectedMarker)) {
+          lastReason = `served page does not contain deployed <title> "${expectedMarker.slice(0, 60)}" (parked domain, stale edge or wrong project?)`;
         } else {
           return { ok: true, status: res.status, bodyBytes: body.length };
         }

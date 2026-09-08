@@ -6,6 +6,7 @@
  * route does. Run: npx tsx scripts/expertpanelen-holding-page.ts
  */
 process.loadEnvFile?.(".env.local");
+export {}; // module scope: keeps main() out of the global scope shared by other scripts
 
 async function main() {
   const { publishPage, runWithCfProjectOverride, cfOverrideFromWorkspaceSettings, getProjectName, getProjectCustomDomain } =
