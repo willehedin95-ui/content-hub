@@ -67,78 +67,11 @@
     ]
   },
   {
-    "slug": "kalla-collagen-plus",
-    "name": "Källa Collagen+",
-    "short": "Källa Collagen+",
-    "brand": "KÄLLA",
-    "role": "Bästa pulver",
-    "tagline": "Svensktillverkat kollagenpulver med 7 500 mg per dos, vitamin C, hyaluronsyra och en bred vitaminmix.",
-    "image": "https://cdn.shopify.com/s/files/1/0869/2085/5888/files/Why_you_ll_love_it_if_a_good_product_image_exists.jpg?v=1777538695",
-    "image_caption": "Produktfoto från tillverkaren. 288 g, 32 portioner.",
-    "form": "Pulver",
-    "collagen_mg": 7500,
-    "collagen_type": "Typ I och III",
-    "source": "Bovint (nöt)",
-    "made_in": "Sverige",
-    "vitamin_c": true,
-    "hyaluronic": true,
-    "biotin_zinc": true,
-    "sugar_free": true,
-    "price": 349,
-    "days": 32,
-    "price_per_day": 10.91,
-    "mg_per_kr": 688,
-    "dose_desc": "2 skopor (9 g) i ett glas vatten",
-    "actives": "Vitamin C 200 mg, hyaluronsyra 100 mg, biotin, zink, selen, vitamin A, niacin, koppar, B2",
-    "sweetening": "Steviolglykosider",
-    "store": "kalla.com",
-    "store_note": "299 kr med prenumeration (9,34 kr per dag)",
-    "buy_url": "https://kalla.com/products/collagen",
-    "scores": {
-      "dose": 8,
-      "uptake": 8,
-      "formula": 9,
-      "routine": 7,
-      "purity": 8,
-      "price": 7
-    },
-    "summary": "Det mest kompletta pulvret i testet: bra dos, vitamin C och hyaluronsyra i samma påse, svensk tillverkning och stevia i stället för sukralos. Du får mäta två skopor och blanda själv, och mängden biotin och zink är låg.",
-    "pros": [
-      "7 500 mg hydrolyserat kollagen av typ I och III per dos",
-      "Vitamin C 200 mg och hyaluronsyra 100 mg i samma produkt",
-      "Tillverkad i Sverige, sötad med stevia, inga konserveringsmedel",
-      "Smak av grapefrukt eller sommarbär som får bra kundomdömen",
-      "Under 11 kr per dag vid ordinarie pris"
-    ],
-    "cons": [
-      "Två skopor ska mätas och blandas varje dag",
-      "Biotin och zink bara på 15% av dagligt referensintag, för lite för att göra skillnad",
-      "Ingen allergen- eller sockeruppgift på produktsidan",
-      "Prenumeration är förvald i kassan, och 299 kr gäller bara prenumeration"
-    ],
-    "review_html": "<h4>Dosen och formulan</h4><p>Två skopor ger 9 g pulver med 7 500 mg kollagenpeptider från nöt, alltså typ I och III. Det ligger inom studiespannet. Vitamin C-dosen på 200 mg är generös, och hyaluronsyran på 100 mg är den högsta i testet. Vitaminmixen är bred men tunn: biotin, zink, selen, A-vitamin och koppar ligger på 15 till 25% av dagligt referensintag, tillräckligt för att få stå på etiketten, inte tillräckligt för att fylla en brist.</p><h4>Så är den att ta</h4><p>Pulvret ska blandas i ett glas vatten. Kunderna beskriver smaken som god och fruktig, och stevian ger ingen bitter eftersmak enligt omdömena. Två skopor per dag kräver att skopan hittas varje morgon; det är den vanligaste orsaken till att pulver hoppas över.</p><h4>Priset</h4><p>349 kr för 32 portioner är 10,91 kr per dag. Butiken visar 299 kr som reapris, men det är prenumerationspriset, som är förvalt i kassan. Kontrollera att du valt engångsköp om du inte vill ha återkommande leveranser.</p>",
-    "fit": "Passar dig som vill ha vitamin C och hyaluronsyra utan att betala för flytande form, och som inte har något emot att blanda ett pulver varje dag.",
-    "faq": [
-      [
-        "Är 299 kr ett kampanjpris?",
-        "Nej, 299 kr är priset med prenumeration. Engångsköp kostar 349 kr."
-      ],
-      [
-        "Innehåller Källa socker?",
-        "Inga sockerarter finns i ingredienslistan; pulvret är sötat med steviolglykosider. Tillverkaren anger ingen sockersiffra i näringsdeklarationen."
-      ],
-      [
-        "Är kollagenet marint?",
-        "Nej, det kommer från nötkreatur och innehåller typ I och III."
-      ]
-    ]
-  },
-  {
     "slug": "elexir-pharma-kollagen-peptan",
     "name": "Elexir Pharma Kollagen Peptan",
     "short": "Elexir Kollagen Peptan",
     "brand": "Elexir Pharma",
-    "role": "Bästa budgetval",
+    "role": "Bästa pulver",
     "tagline": "Rent Peptan-kollagen utan tillsatser, 5 000 till 10 000 mg per dag, flest milligram per krona i testet.",
     "image": "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/Kollagen-100peptan-500g-pulver-elexir-pharma-1.jpg?v=1778669918",
     "image_caption": "Produktfoto från tillverkaren. 500 g, 50 till 100 portioner.",
@@ -270,7 +203,7 @@
     "name": "Great Earth Kollagen",
     "short": "Great Earth Kollagen",
     "brand": "Great Earth",
-    "role": "Högst dos i pulver",
+    "role": "Bästa budgetval",
     "tagline": "10 000 mg bovint kollagen per dag, helt utan tillsatser, från apotekshyllan.",
     "image": "https://greatearth.centracdn.net/client/dynamic/images/222_6cec1d6c9a-7901-1-full.jpg",
     "image_caption": "Produktfoto från tillverkaren. 400 g, 40 portioner.",
@@ -526,6 +459,72 @@
       [
         "Är 2 500 mg tillräckligt?",
         "Det är den dos Verisols egna studier använt, och det är den lägsta nivån där effekt visats. De flesta andra studier ligger på 5 000 till 10 000 mg."
+      ]
+    ]
+  },
+  {
+    "slug": "better-you-premium-kollagen",
+    "name": "Better You Premium Kollagen",
+    "short": "Better You Premium Kollagen",
+    "brand": "Better You",
+    "role": "Lägst dagspris i kapsel",
+    "tagline": "Marint kollagen i kapslar med MSM, kondroitin och nypon. Billig per dag, men bara 1 100 mg kollagen.",
+    "image": "https://www.betteryou.se/pub_images/original/Kollagen_kartong_burk_SE-NO-FI_v25.150.jpg",
+    "image_caption": "Produktfoto från tillverkaren. 120 kapslar, 60 dagsdoser.",
+    "form": "Kapslar",
+    "collagen_mg": 1100,
+    "collagen_type": "Typ I",
+    "source": "Marint (fisk)",
+    "made_in": "Sverige (importerade råvaror)",
+    "vitamin_c": true,
+    "hyaluronic": true,
+    "biotin_zinc": false,
+    "sugar_free": true,
+    "price": 349,
+    "days": 60,
+    "price_per_day": 5.82,
+    "mg_per_kr": 189,
+    "dose_desc": "2 kapslar per dag (4 de första två veckorna)",
+    "actives": "Vitamin C 20 mg, hyaluronsyra 50 mg, MSM 120 mg, kondroitin 120 mg, nyponextrakt",
+    "sweetening": "Ingen (kapslar)",
+    "store": "betteryou.se",
+    "store_note": "Butikerna säljer ännu den äldre formuleringen utan hyaluronsyra, från 321 kr",
+    "buy_url": "https://www.betteryou.se/produkter/skonhet/har-hud-naglar/premium-kollagen-120-kapslar",
+    "scores": {
+      "dose": 2,
+      "uptake": 6,
+      "formula": 5,
+      "routine": 7,
+      "purity": 6,
+      "price": 9
+    },
+    "summary": "Två kapslar om dagen ger 1 100 mg marint kollagen, den lägsta dosen i testet, tillsammans med MSM, kondroitin och nypon som riktar sig mot leder snarare än hud. Billig per dag, men det beror på att dosen är liten.",
+    "pros": [
+      "Under 6 kr per dag, lägst i testet bland kapslar",
+      "Marint kollagen typ I med angiven molekylvikt",
+      "Tillverkad i Sverige, inga sötningsmedel",
+      "Ny formulering med 50 mg hyaluronsyra"
+    ],
+    "cons": [
+      "1 100 mg kollagen per dag, långt under de doser studierna använt",
+      "Bara 20 mg vitamin C och inget biotin eller zink",
+      "Två formuleringar säljs samtidigt: butikerna har den äldre utan hyaluronsyra",
+      "MSM och kondroitin är ledingredienser, inte hudingredienser"
+    ],
+    "review_html": "<h4>Dosen och formulan</h4><p>Better You anger 2 kapslar om dagen efter en startperiod på 4. Två kapslar ger 1 100 mg hydrolyserat marint kollagen typ I med molekylvikt 1 000 till 2 000 dalton, 20 mg vitamin C, 120 mg MSM, 120 mg kondroitin och nyponextrakt. Tillverkarens nya version har dessutom 50 mg hyaluronsyra, men den version som fortfarande säljs hos Apohem och Apotea saknar den. Ingrediensvalet lutar mot leder; för hud är dosen för låg för att motsvara studierna.</p><h4>Så är den att ta</h4><p>Två vegetabiliska kapslar med maten, morgon och kväll. Ingen smak, inget att blanda. Enkelt, men var beredd på fyra kapslar om dagen de två första veckorna.</p><h4>Priset</h4><p>349 kr hos tillverkaren för 60 dagar är 5,82 kr per dag, lägst bland kapslarna. Räknat per milligram kollagen är den däremot en av de dyraste i testet, 189 mg per krona.</p>",
+    "fit": "Passar dig som vill ha en billig kapsel för leder och hud i ett, och accepterar en låg kollagendos.",
+    "faq": [
+      [
+        "Vilken version får jag?",
+        "Tillverkarens sida säljer den nya med hyaluronsyra. Apohem, Apotea och Lyko sålde den äldre utan hyaluronsyra när vi kontrollerade."
+      ],
+      [
+        "Innehåller den fisk?",
+        "Ja, kollagenet är marint och produkten är märkt 'innehåller fisk'."
+      ],
+      [
+        "Räcker 1 100 mg?",
+        "Nej, för hud börjar studierna vid 2 500 mg. Fyra kapslar ger 2 200 mg men halverar antalet dagar per burk."
       ]
     ]
   }
