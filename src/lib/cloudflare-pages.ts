@@ -31,6 +31,18 @@ export function md5hex(data: Buffer | string): string {
     .digest("hex");
 }
 
+/** MIME type for a deployed asset path (2026-09-08: portraits were served as octet-stream). */
+export function contentTypeForPath(path: string): string {
+  const ext = path.toLowerCase().split(".").pop() ?? "";
+  const map: Record<string, string> = {
+    webp: "image/webp", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
+    svg: "image/svg+xml", avif: "image/avif", ico: "image/x-icon",
+    css: "text/css", js: "text/javascript", json: "application/json", xml: "application/xml",
+    txt: "text/plain", html: "text/html", woff: "font/woff", woff2: "font/woff2", pdf: "application/pdf",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
+
 export function getConfig() {
   const accountId = process.env.CF_PAGES_ACCOUNT_ID?.trim();
   const apiToken = process.env.CF_PAGES_API_TOKEN?.trim();
@@ -547,9 +559,7 @@ export async function publishPage(
         path: f.path,
         hash: md5hex(buf),
         content: buf,
-        contentType: f.path.endsWith(".webp")
-          ? "image/webp"
-          : "application/octet-stream",
+        contentType: contentTypeForPath(f.path),
       });
     }
   }
@@ -1130,11 +1140,13 @@ export async function deploySitemapAndRobots(
   }
 
   // Add EEAT static pages (about + author) to sitemap so Google can discover
-  // the publisher and author entities the article schema references.
-  urls.push(
+  // the publisher and author entities the article schema references. Only
+  // for projects that actually run the blog shell (a workspace with just
+  // landing pages, like expertpanelen, has no /om-oss/ or author page).
+  if (hasBlogPages) urls.push(
     `  <url>\n    <loc>${escapeXml(baseUrl)}/${escapeXml(getAboutPath(language))}/</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.5</priority>\n  </url>`
   );
-  urls.push(
+  if (hasBlogPages) urls.push(
     `  <url>\n    <loc>${escapeXml(baseUrl)}/${escapeXml(getAuthorPath(language))}/</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.5</priority>\n  </url>`
   );
 

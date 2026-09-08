@@ -1,0 +1,160 @@
+{
+  "base_url": "https://expertpanelen.se",
+  "path": "/kollagen-bast-i-test/",
+  "title": "Kollagen bäst i test 2026: 8 svenska kollagentillskott jämförda | Expertpanelen",
+  "meta_description": "Bäst i test 2026 blev Envana Collagen Formula, flytande marint kollagen med 12 500 mg per dagsdos. Vi jämförde 8 kollagentillskott på dos, upptag, formula, renhet, smak och pris per dag. Se hela topplistan och betygen.",
+  "h1": "Kollagen bäst i test 2026: vi jämförde 8 svenska kollagentillskott",
+  "lead_html": "<strong>Bäst i test 2026 blev Envana Collagen Formula</strong>, ett flytande marint kollagen med 12 500 mg per dagsdos, vitamin C, biotin, zink och hyaluronsyra i samma flaska. Det är också det dyraste per dag i testet, så vi visar vad du får för pengarna. Tvåa blev Källa Collagen+, och den som vill ha mest kollagen per krona hittar sitt val längre ner i listan.",
+  "answer_html": "<strong>Envana Collagen Formula fick högst totalbetyg, 8,2 av 10.</strong> Den vann på tre av sex kriterier: högst kollagenmängd per dagsdos (12 500 mg), mest komplett formula för hud, hår och naglar (vitamin C, biotin, zink, hyaluronsyra) och enklast daglig rutin (en färdig shot, ingen blandning). Den förlorade på pris: 32,45 kr per dag vid engångsköp, 22,45 kr med prenumeration, mot 6,50 kr för billigaste pulvret. Vill du ha lägsta pris per gram kollagen är Elexir Pharma Kollagen Peptan eller Great Earth rätt val. Vill du ha en formula byggd för huden och slippa mäta och blanda är Envana det.",
+  "author": {
+    "name": "Karin Lindqvist",
+    "slug": "karin-lindqvist",
+    "title": "redaktör",
+    "image": "/redaktion/karin-lindqvist.jpg"
+  },
+  "reviewer": {
+    "name": "Anders Berglund",
+    "slug": "anders-berglund",
+    "title": "faktagranskare",
+    "image": "/redaktion/anders-berglund.jpg"
+  },
+  "published": "2026-09-09",
+  "updated": "2026-09-09",
+  "published_h": "9 september 2026",
+  "updated_h": "9 september 2026",
+  "criteria": [
+    {
+      "key": "dose",
+      "label": "Kollagenmängd per dagsdos",
+      "weight": 25,
+      "what": "Milligram hydrolyserat kollagen per rekommenderad dagsdos enligt etiketten. Studier på hud använder oftast 2,5 till 10 g per dag; mer än så ger inte bevisat mer, men under 2,5 g är underdoserat.",
+      "source": "Etikett och näringsdeklaration på butikssidan"
+    },
+    {
+      "key": "uptake",
+      "label": "Peptidkvalitet och upptag",
+      "weight": 20,
+      "what": "Hydrolyserat kollagen, angiven molekylvikt, kollagentyp I och III för hud, och om vitamin C ingår (kroppen behöver C för att bygga eget kollagen).",
+      "source": "Ingredienslista, tillverkarens produktblad"
+    },
+    {
+      "key": "formula",
+      "label": "Formula för hud, hår och naglar",
+      "weight": 15,
+      "what": "Om produkten innehåller ämnen med godkända hälsopåståenden för hud, hår och naglar (vitamin C, biotin, zink, selen, vitamin A) och stödämnen som hyaluronsyra.",
+      "source": "Ingredienslista, EU:s register över hälsopåståenden"
+    },
+    {
+      "key": "purity",
+      "label": "Renhet, tillsatser och dokumentation",
+      "weight": 15,
+      "what": "Socker, sötningsmedel, konserveringsmedel, fyllmedel, samt om tillverkningsland och analysdokumentation redovisas öppet.",
+      "source": "Ingredienslista, tillverkarens sida"
+    },
+    {
+      "key": "routine",
+      "label": "Smak och daglig följsamhet",
+      "weight": 10,
+      "what": "Hur lätt produkten är att ta varje dag: färdig dos eller mätning, blandning, antal kapslar, smak enligt tillverkare och kundomdömen.",
+      "source": "Produktbeskrivning, verifierade kundomdömen"
+    },
+    {
+      "key": "price",
+      "label": "Pris per dag",
+      "weight": 15,
+      "what": "Ordinarie pris delat med antal dagsdoser i förpackningen, plus milligram kollagen per krona. Lägst pris får högst poäng.",
+      "source": "Butikens pris 2026-09-08"
+    }
+  ],
+  "method": {
+    "screened": 27,
+    "intro_html": "<p>Vi började med att kartlägga de kollagentillskott som säljs i svenska butiker och apotek: 27 produkter i pulver, kapslar, dospåsar och flytande form. Åtta valdes ut för att täcka de vanligaste valen i varje form och prisklass, från apotekshyllan till renodlade varumärken. Alla uppgifter i tabellen och korten är hämtade från produkternas egna etiketter och butikssidor den 8 september 2026, inte från andra testsajter.</p>",
+    "scoring_html": "Varje produkt får en poäng 1 till 10 per kriterium. Poängen multipliceras med kriteriets vikt och summeras till ett totalbetyg med en decimal. Delbetygen visas som staplar i varje produktkort, så du kan se exakt var en produkt vann och förlorade, och räkna om totalen själv om du viktar annorlunda.",
+    "selection_html": "<ul><li>Säljs i Sverige med svensk butikssida och svensk kundtjänst.</li><li>Deklarerad mängd kollagen per dagsdos på etiketten. Produkter som bara anger \"kollagen\" utan mängd har uteslutits.</li><li>Riktade till hud, hår och naglar. Rena ledprodukter (kollagen typ II) ingår inte.</li><li>Minst en form av varje slag: pulver, kapslar, dospåsar och flytande.</li></ul>",
+    "limits_html": "<ul><li>Vi gör inga egna laboratorieanalyser. Kollagenhalt, molekylvikt och renhet bygger på tillverkarens deklaration.</li><li>Vi mäter inte effekt på hud. Det kräver kontrollerade studier över 8 till 12 veckor, och de som finns gäller ingredienser, inte enskilda produkter. Se avsnittet om evidens.</li><li>Betyget för smak bygger på tillverkarens beskrivning och kundomdömen, inte på en blindpanel.</li><li>Priser ändras. Vi anger datum för varje pris och uppdaterar minst två gånger per år.</li></ul>",
+    "update_html": "<p>Testet uppdateras när en produkt byter recept, pris eller förpackning, och minst två gånger per år. Datum för senaste uppdatering står under rubriken. Hittar du ett fel, mejla <a href=\"mailto:redaktion@expertpanelen.se\">redaktion@expertpanelen.se</a> så rättar vi och noterar ändringen.</p>"
+  },
+  "guide_html": "<h3>Marint eller bovint kollagen?</h3><p>Marint kollagen (från fisk) är nästan uteslutande typ I, hudens huvudkollagen. Bovint (från nöt) innehåller typ I och III. Båda fungerar för hud; bearbetningen (hydrolysering till små peptider) spelar större roll än djurslaget. Marint är vanligare i skönhetsprodukter, bovint i tränings- och ledprodukter.</p><h3>Pulver, kapslar, dospåsar eller flytande?</h3><div class=\"box\"><table><thead><tr><th>Form</th><th>Typisk dos per dag</th><th>Fördel</th><th>Nackdel</th></tr></thead><tbody><tr><td>Pulver</td><td>5 000 till 10 000 mg</td><td>Billigast per gram, valfri dryck</td><td>Måste mätas och blandas, kan klumpa</td></tr><tr><td>Kapslar</td><td>290 till 2 000 mg</td><td>Ingen smak, lätt att ta med</td><td>Låg dos per kapsel, ofta 5 till 10 kapslar för att nå studiedos</td></tr><tr><td>Dospåsar</td><td>2 500 mg</td><td>Färdig dos, smaklös</td><td>Dyrare per gram, ska ändå blandas</td></tr><tr><td>Flytande</td><td>10 000 till 12 500 mg</td><td>Färdig dos, plats för hög dos och tillsatta vitaminer</td><td>Dyrast per dag, innehåller sötningsmedel och konserveringsmedel</td></tr></tbody></table></div><p>Upptaget styrs av hydrolyseringen, inte av formen. Ett pulver löst i vatten tas upp lika bra som en färdig shot. Formen avgör i stället om du faktiskt tar dosen varje dag, och det är konsekvensen över veckor som ger resultat.</p><h3>Räkna på pris per dag, inte pris per burk</h3><p>En förpackning för 260 kr som räcker 40 dagar kostar 6,50 kr per dag. En flaska för 649 kr som räcker 20 dagar kostar 32,45 kr per dag. Jämför alltid dagsdosen i milligram och priset per dag, båda står i tabellen ovan.</p><h3>Evidens och förväntningar</h3><p>Det finns flera meta-analyser av randomiserade studier på hydrolyserat kollagen. De visar måttliga men konsekventa förbättringar av hudens fukt och elasticitet efter 8 till 12 veckor, och i vissa studier minskat rynkdjup (<a href=\"#kalla-1\">1</a>, <a href=\"#kalla-2\">2</a>, <a href=\"#kalla-3\">3</a>). Effekterna är verkliga men små, många studier är finansierade av tillverkare, och de gäller ingredienser i studiedos, inte färdiga produkter. För naglar finns en mindre studie som visade snabbare nageltillväxt efter 24 veckor (<a href=\"#kalla-4\">4</a>). För hår är stödet svagast. Räkna med att utvärdera efter 60 dagar, helst 90. Ingen produkt i testet ger synliga resultat på en vecka, oavsett vad reklamen säger.</p><h3>Vad du får påstå, och inte</h3><p>Inom EU får bara vissa vitaminer och mineraler kopplas till hud, hår och naglar i marknadsföring: vitamin C bidrar till normal kollagenbildning för hudens funktion, biotin och zink bidrar till att bibehålla normal hud och normalt hår. Kollagen i sig, hyaluronsyra, elastin och MSM saknar godkända hälsopåståenden (<a href=\"#kalla-5\">5</a>). Det är därför vi väger in vitaminerna i kriteriet \"formula\": det är de som får bära löftet.</p>",
+  "faq": [
+    [
+      "Vilket kollagen är bäst i test 2026?",
+      "<p>Envana Collagen Formula fick högst totalbetyg i vårt test, 8,2 av 10, tack vare högst dos per dag (12 500 mg), en formula med vitamin C, biotin, zink och hyaluronsyra, och en färdig daglig shot. Tvåa blev Källa Collagen+. Billigast per gram kollagen är Elexir Pharma Kollagen Peptan.</p>"
+    ],
+    [
+      "Hur mycket kollagen ska man ta per dag?",
+      "<p>Studier på hud har visat effekt vid 2,5 till 10 gram hydrolyserat kollagen per dag. Under 2,5 gram är underdoserat, och över 10 gram finns inget tydligt stöd för att effekten fortsätter öka. Kontrollera dagsdosen i milligram på etiketten, inte bara förpackningens vikt.</p>"
+    ],
+    [
+      "Är flytande kollagen bättre än pulver?",
+      "<p>Nej, upptaget styrs av att kollagenet är hydrolyserat till små peptider, inte av formen. Flytande kollagen har två andra fördelar: dosen är färdig, och flaskan rymmer en hög dos plus vitaminer utan kapslar. Nackdelen är priset per dag och att flytande produkter behöver sötningsmedel och konserveringsmedel.</p>"
+    ],
+    [
+      "Vad är skillnaden mellan marint och bovint kollagen?",
+      "<p>Marint kollagen kommer från fisk och är nästan bara typ I, hudens huvudkollagen. Bovint kommer från nöt och innehåller typ I och III. Båda fungerar för hud. Marint används oftare i skönhetsprodukter, bovint i tränings- och ledprodukter. Innehåller du fiskallergi ska du välja bovint.</p>"
+    ],
+    [
+      "Hur lång tid tar det innan kollagen ger resultat?",
+      "<p>Många märker först att huden känns mer återfuktad efter några veckor. Studierna mäter elasticitet och rynkor efter 8 till 12 veckor. Utvärdera efter 60 dagar, helst 90. Naglar tar längre tid, hår längst.</p>"
+    ],
+    [
+      "Fungerar kollagen i klimakteriet?",
+      "<p>Östrogen driver kroppens kollagenproduktion, och huden kan tappa uppåt 30% av sitt kollagen under de första fem åren efter menopaus. Det är därför många kvinnor 45 till 65 börjar med tillskott. Studierna på hydrolyserat kollagen omfattar kvinnor i den åldern och visar förbättrad fukt och elasticitet efter 8 till 12 veckor. Kollagen är inget hormon och ersätter inte hormonbehandling.</p>"
+    ],
+    [
+      "Behöver man ta kollagen tillsammans med vitamin C?",
+      "<p>Vitamin C behövs för att kroppen ska kunna bygga eget kollagen, inte för att ta upp peptiderna. Får du i dig tillräckligt via kosten spelar det ingen roll om tillskottet innehåller C. Produkter med vitamin C i formulan får dock göra ett godkänt hälsopåstående om hudens normala funktion, vilket rent kollagen inte får.</p>"
+    ],
+    [
+      "Spelar det roll när på dagen man tar kollagen?",
+      "<p>Nej. Tom mage, morgon eller kväll, i kaffe eller vatten: studier visar samma upptag. Det som spelar roll är att du tar dosen varje dag i minst två månader.</p>"
+    ],
+    [
+      "Har kollagen biverkningar?",
+      "<p>De flesta får inga. Vissa upplever gasighet eller lätt magbesvär de första dagarna, särskilt vid höga doser. Marint kollagen innehåller fisk och passar inte vid fiskallergi. Gravida och ammande bör rådfråga vården, särskilt för produkter med vitamin A.</p>"
+    ],
+    [
+      "Hjälper kollagen mot rynkor?",
+      "<p>I meta-analyser av placebokontrollerade studier minskade rynkdjup något efter 8 till 12 veckor, och hudens fukt och elasticitet förbättrades mer tydligt. Effekten är måttlig: fastare och mer återfuktad hud, inte utslätade rynkor. Räkna med en långsammare försämring snarare än en förändring.</p>"
+    ],
+    [
+      "Är dyrt kollagen bättre än billigt?",
+      "<p>Inte automatiskt. Ett rent pulver för 6,50 kr per dag ger mer kollagen per krona än något annat i testet. Det du betalar för i dyrare produkter är färdig dos, tillsatta vitaminer och hyaluronsyra, smak och bekvämlighet. Bestäm först om du vill mäta och blanda själv; svaret avgör vilken prisklass som är rätt för dig.</p>"
+    ],
+    [
+      "Kan man ta kollagen tillsammans med andra kosttillskott?",
+      "<p>Ja. Kollagen kan kombineras med vitamin C, D, magnesium och omega-3 utan kända interaktioner. Tar du redan ett multivitamin, kontrollera att du inte dubblerar vitamin A och zink över den rekommenderade dagsdosen.</p>"
+    ]
+  ],
+  "sources": [
+    [
+      "de Miranda RB m.fl. Effects of hydrolyzed collagen supplementation on skin aging: a systematic review and meta-analysis. Int J Dermatol 2021.",
+      "https://pubmed.ncbi.nlm.nih.gov/33742704/"
+    ],
+    [
+      "Pu SY m.fl. Effects of Oral Collagen for Skin Anti-Aging: A Systematic Review and Meta-Analysis. Nutrients 2023.",
+      "https://pubmed.ncbi.nlm.nih.gov/37432180/"
+    ],
+    [
+      "Proksch E m.fl. Oral supplementation of specific collagen peptides has beneficial effects on human skin physiology. Skin Pharmacol Physiol 2014.",
+      "https://pubmed.ncbi.nlm.nih.gov/24401291/"
+    ],
+    [
+      "Hexsel D m.fl. Oral supplementation with specific bioactive collagen peptides improves nail growth and reduces symptoms of brittle nails. J Cosmet Dermatol 2017.",
+      "https://pubmed.ncbi.nlm.nih.gov/28786550/"
+    ],
+    [
+      "EU-kommissionen: Register över godkända hälsopåståenden (förordning 1924/2006).",
+      "https://ec.europa.eu/food/food-feed-portal/screen/health-claims/eu-register"
+    ],
+    [
+      "Livsmedelsverket: Kosttillskott.",
+      "https://www.livsmedelsverket.se/livsmedel-och-innehall/kosttillskott"
+    ],
+    [
+      "Produktsidor och etiketter för samtliga åtta produkter, hämtade 2026-09-08. Länkar finns i varje produktkort.",
+      "#produkter"
+    ]
+  ],
+  "footer_disclaimer_html": "Expertpanelen innehåller marknadsföring. Sidan drivs av Incensor AB, som också säljer testvinnaren Envana Collagen Formula. Övriga produkter länkas via reklamlänkar där vi kan få provision vid köp. Rangordning och betyg bygger på den metod som beskrivs under <a href=\"#metod\">Så testade vi</a>; jämförelsen är inte en oberoende eller ackrediterad laboratorietestning. Uppgifter om innehåll och pris kommer från tillverkarnas egna sidor och kan ändras. Underlag lämnas på begäran.",
+  "company_line": "Incensor AB, org.nr 556999-9682, Onsjö 415 A, 305 91 Halmstad"
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Core Collagen Pro",
+  "brand": "Svenskt Kosttillskott",
+  "url": "https://www.svensktkosttillskott.se/core-collagen-pro",
+  "price_sek": 339,
+  "sale_price_sek": null,
+  "package": "340 g (30 portioner); finns även 680 g (629 kr) och 1700 g (1 439 kr)",
+  "form": "pulver",
+  "collagen_mg_per_daily_dose": 7500,
+  "collagen_type": "okänt - sidan anger bara 'hydrolyserat bovint kollagen', ingen typ (letade i produktbeskrivning + näringsinnehåll-fliken)",
+  "source": "bovint (nöt); kondroitinsulfatet kommer från kyckling",
+  "daily_dose_description": "1 skopa (ca 11,3 g) dagligen i ett glas vatten; kan ökas till 2 skopor",
+  "servings_per_package": 30,
+  "price_per_day_sek": 11.3,
+  "mg_per_sek": 663.7,
+  "vitamin_c": "ja, 250 mg (313% DRI)",
+  "hyaluronic_acid": "nej",
+  "biotin": "nej",
+  "zinc": "nej",
+  "other_actives": "MSM 2 500 mg; kondroitinsulfat 250 mg",
+  "sugar_free": "ja (sockerarter 0 g per portion enligt näringsdeklarationen)",
+  "sweeteners": [
+    "sukralos"
+  ],
+  "flavour": "Citron (standard); även Ice Tea Peach och Tropical",
+  "made_in": "okänt - ingen produktspecifik uppgift; varumärkestexten säger bara att 'merparten av vår produktion sker i svenska fabriker'",
+  "certifications": "okänt - inga angivna på produktsidan",
+  "allergens": "Kan innehålla spår av ägg, havre, mjölk och soja",
+  "image_url": "https://cdn.svensktkosttillskott.se/bilder/core_collagen_pro_70045_x8.jpg",
+  "extra_image_urls": [
+    "https://www.svensktkosttillskott.se/images/core_collagen_pro_69931_lrg.jpg",
+    "https://www.svensktkosttillskott.se/bilder/core_collagen_pro_69932_x4.jpg",
+    "https://www.svensktkosttillskott.se/bilder/core_collagen_pro_70046_x4.jpg"
+  ],
+  "claimed_benefits": [
+    "Kollagen för brosk och benstomme.",
+    "7,5 gram hydrolyserat kollagen per dagsdos",
+    "vitamin C som också bidrar till broskets och benstommens normala funktion",
+    "Med marknadsledande kollagen",
+    "Uppfriskande smak av citron eller tropiska frukter"
+  ],
+  "notes": "Hämtat 2026-09-08. Pris 339 kr ('Vårt pris', även JSON-LD price=339, _main_regular_price=339, ingen rea). Näringsinnehåll-fliken laddas via AJAX (POST /ajax/getDetailedProductInformation, pid=17784, psid=70198) och gällde 'Core Collagen Pro, Citron, 340 g': portion 11,3 g, 30 portioner; per portion: kollagenhydrolysat 7 500 mg, MSM 2 500 mg, kondroitinsulfat 250 mg, vitamin C 250 mg (313%), protein 6,8 g, sockerarter 0 g, energi 27,2 kcal. Molekylvikt 2000 dalton. Ingredienser: hydrolyserat bovint kollagen, MSM, citronsyra, kondroitinsulfat, askorbinsyra, kiseldioxid, sötningsmedel (sukralos), arom. Uträkning: 7 500 mg/dag direkt från etiketten (1 skopa). Pris/dag = 339 / 30 = 11,30 kr (butikens jmfpris säger 11,27 kr/portion). mg/kr = 7 500 / 11,30 = 663,7. Vid dubbel dos (2 skopor) blir det 15 000 mg/dag, 15 portioner, 22,60 kr/dag. Bild: x8-varianten är 1400 px, Citron-påsen på vit bakgrund, verifierad HTTP 200 image/jpeg; 69931_lrg är Tropical-påsen."
+}

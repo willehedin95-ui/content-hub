@@ -1,0 +1,41 @@
+{
+  "name": "Healthwell Collagen Skin & Nails",
+  "brand": "Healthwell",
+  "url": "https://www.svenskhalsokost.se/healthwell-collagen-skin-och-nails",
+  "price_sek": 299,
+  "sale_price_sek": null,
+  "package": "90 kapslar (30 portioner); finns även 180 kaps (569 kr) och 270 kaps (799 kr)",
+  "form": "kapslar (vegetabiliska, HPMC)",
+  "collagen_mg_per_daily_dose": 1700,
+  "collagen_type": "typ I ('Hydrolyserat kollagen (typ 1)')",
+  "source": "marint (fisk)",
+  "daily_dose_description": "3 kapslar dagligen tillsammans med mat",
+  "servings_per_package": 30,
+  "price_per_day_sek": 9.97,
+  "mg_per_sek": 170.5,
+  "vitamin_c": "ja, 60 mg (75% DRI)",
+  "hyaluronic_acid": "ja, 100 mg",
+  "biotin": "nej",
+  "zinc": "ja, 1,5 mg (15% DRI)",
+  "other_actives": "kisel 200 mg (från bambuextrakt); pantotensyra (B5) 6 mg (100% DRI)",
+  "sugar_free": "okänt - ingen sockeruppgift eller 'sockerfri'-märkning; inga sockerarter eller sötningsmedel i ingredienslistan (kapslar)",
+  "sweeteners": [],
+  "flavour": "ingen (kapslar)",
+  "made_in": "okänt - ingen produktspecifik uppgift; varumärkestexten säger bara 'svenskt varumärke' och 'fabrikstillverkas med HACCP-standard'",
+  "certifications": "okänt - inga angivna på produktsidan",
+  "allergens": "Innehåller fisk",
+  "image_url": "https://www.svenskhalsokost.se/images/healthwell_collagen_skin___nails_63106_lrg.jpg",
+  "extra_image_urls": [
+    "https://cdn.svenskhalsokost.se/bilder/healthwell_collagen_skin___nails_65237_x8.jpg",
+    "https://www.svenskhalsokost.se/bilder/healthwell_collagen_skin___nails_65238_x4.jpg",
+    "https://www.svenskhalsokost.se/bilder/healthwell_collagen_skin___nails_65239_x4.jpg"
+  ],
+  "claimed_benefits": [
+    "Marint kollagen med stöttande ämnen för hud och naglar.",
+    "Kollagen bidrar till att behålla elasticitet i huden",
+    "Med vätskebindande hyaluronsyra",
+    "Lättupptagliga kollagenpeptider",
+    "Med ett dagligt tillskott av kollagen stärker du upp hud, hår och naglar."
+  ],
+  "notes": "Hämtat 2026-09-08. Verifierat att det är Skin & Nails-varianten: URL healthwell-collagen-skin-och-nails, JSON-LD name 'Healthwell Collagen Skin & Nails', GTIN 7350047538183, sku 69309, etiketten på bilden säger 'COLLAGEN SKIN & NAILS, 90 veg. kaps, 30 port.'. Pris 299 kr ('Vårt pris', JSON-LD _main_regular_price=299, ingen rea; butikens jmfpris 3,32 kr/kaps / 9,97 kr/portion). Näringsinnehåll-fliken via AJAX (POST /ajax/getDetailedProductInformation, pid=17488, psid=68991), 'Healthwell Collagen Skin & Nails, 90 kaps', portion 3 kaps (30 portioner): hydrolyserat kollagen (typ 1) 1 700 mg, kisel 200 mg, hyaluronsyra 100 mg, vitamin C 60 mg (75%), B5 6 mg (100%), zink 1,5 mg (15%). Molekylvikt 2000 dalton. Ingredienser: hydrolyserade kollagenpeptider typ 1 (från fisk), vegetabilisk kapsel (HPMC), bambuextrakt, hyaluronsyra, risstärkelse, askorbinsyra, zinkglukonat, kalcium-d-pantotenat. Uträkning: 1 700 mg per 3 kapslar = dagsdos. Portioner = 90 / 3 = 30. Pris/dag = 299 / 30 = 9,97 kr. mg/kr = 1 700 / 9,97 = 170,5. Bild: burk på vit bakgrund, 700x800 (lrg), verifierad HTTP 200 image/jpeg; x8-varianten är samma motiv i högre upplösning."
+}

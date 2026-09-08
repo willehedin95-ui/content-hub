@@ -1,0 +1,40 @@
+{
+  "name": "Pureness Kollagen Beauty 120 kapslar",
+  "brand": "Pureness",
+  "url": "https://www.apotekhjartat.se/varumarken/pureness/pureness-kollagen-beauty-120-kapslar",
+  "price_sek": 212.0,
+  "sale_price_sek": null,
+  "subscription_price_sek": null,
+  "package": "120 kapslar",
+  "form": "kapslar",
+  "collagen_mg_per_daily_dose": "290 mg per kapsel; 290-2900 mg per dag beroende på dos (1-10 kapslar)",
+  "collagen_type": "okänt typ-nummer - Verisol kollagenpeptider (hydrolyserat)",
+  "source": "bovint (från nötkreatur)",
+  "daily_dose_description": "1-10 kapslar per dag ('1-5 kapslar, 1-2 gånger om dagen')",
+  "servings_per_package": "12 dagar vid 10 kapslar/dag, 120 dagar vid 1 kapsel/dag",
+  "price_per_day_sek": "17,67 kr vid 10 kapslar/dag; 1,77 kr vid 1 kapsel/dag",
+  "mg_per_sek": 164.2,
+  "vitamin_c": "ja - 12 mg per kapsel (120 mg vid 10 kapslar)",
+  "hyaluronic_acid": "nej",
+  "biotin": "ja - 15 µg per kapsel (150 µg vid 10 kapslar)",
+  "zinc": "ja - 0,4 mg per kapsel (4 mg vid 10 kapslar; zinkpikolinat, zinkbisglycinat, zinkmonometionin)",
+  "other_actives": "inga utöver ovan",
+  "sugar_free": "okänt - socker nämns inte; tillverkaren skriver 'Utan tillsatsämnen, fyllnads- och sötningsmedel'",
+  "sweeteners": "inga",
+  "flavour": "ingen (kapsel)",
+  "made_in": "okänt - anges inte; varumärkesägare Pureness AB, Stockholm (Hjärtat märker 'Nordisk')",
+  "certifications": "okänt - inga certifieringar visas",
+  "allergens": "okänt - ingen allergenmärkning på sidan",
+  "image_url": "https://cdn.shopify.com/s/files/1/0570/6262/1384/files/PUR-beauty-120.png?v=1774443449",
+  "extra_image_urls": [
+    "https://assets.icanet.se/image/upload/w_1200,h_1200,c_pad/v1715193312/1040892_2_ofjg5x.webp",
+    "https://cdn.shopify.com/s/files/1/0570/6262/1384/files/PUR-kollagen-beauty-120kaps-studio.jpg?v=1774443449"
+  ],
+  "claimed_benefits": [
+    "Kollagen i kapselformat som stärker hud, naglar och hår",
+    "C-vitamin bidrar till normal kollagenbildning som har betydelse för hudens normala funktion",
+    "Biotin bidrar till att bibehålla normal hud och normalt hår",
+    "Zink bidrar till att bibehålla normala naglar och normal hud"
+  ],
+  "notes": "Hämtat 2026-09-08 via curl. Pris 212 kr från apotekhjartat.se (JSON-LD + sidtext, 'Jämförpris: 1,77 kr/st', ingen rea markerad). Tillverkarens egen butik pureness.se (Shopify, /products/kollagen-beauty-120-kapslar.json): 217 kr, compare_at_price tomt; 60 kapslar 132 kr. Apotea: 206 kr (ej efterfrågat, bara referens). Innehåll per kapsel (Hjärtat + pureness.se, identiskt): kollagen 290 mg, C-vitamin 12 mg, zink 0,4 mg, biotin 15 µg. Uträkning: 290 mg x 120 kapslar = 34 800 mg per burk; 34 800/212 = 164 mg/kr (oberoende av dos). kr/dag: vid 10 kapslar 212/12 = 17,67 kr (2900 mg); vid 1 kapsel 212/120 = 1,77 kr (290 mg). Ingen enskild rekommenderad dos finns - sidan anger spannet 1-10 kapslar, så jämförelsesidan måste välja antagande. Ingrediensordalydelser skiljer sig något mellan Hjärtat ('Kapsel: Cellulosa, vatten') och pureness.se ('Kapsel: Hydroxipropylmetylcellulosa'). Huvudbild = tillverkarens packshot på vit bakgrund (PNG 2100x2800), verifierad 200 image/png; Hjärtats bild verifierad 200 image/webp. EAN 7350116310030."
+}

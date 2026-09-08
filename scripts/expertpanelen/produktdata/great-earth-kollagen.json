@@ -1,0 +1,41 @@
+{
+  "name": "Great Earth Kollagen (Kollagenpulver) 400 g",
+  "brand": "Great Earth",
+  "url": "https://www.greatearth.se/p/kollagen/",
+  "price_sek": 260.0,
+  "sale_price_sek": null,
+  "subscription_price_sek": null,
+  "package": "400 g pulver i påse (40 x 10 g)",
+  "form": "pulver",
+  "collagen_mg_per_daily_dose": 10000,
+  "collagen_type": "typ 1 och 3 (hydrolyserade kollagenpeptider)",
+  "source": "bovint (nötkreatur)",
+  "daily_dose_description": "10 g (1,5 matsked) per dag i valfri dryck",
+  "servings_per_package": 40,
+  "price_per_day_sek": 6.5,
+  "mg_per_sek": 1538.5,
+  "vitamin_c": "nej",
+  "hyaluronic_acid": "nej",
+  "biotin": "nej",
+  "zinc": "nej",
+  "other_actives": "inga - enda ingrediens är bovint kollagen",
+  "sugar_free": "ja (sockerarter 0 g per portion enligt näringsdeklaration på Hjärtat/Apotea; 'helt fritt från tillsatser')",
+  "sweeteners": "inga",
+  "flavour": "naturell (unflavoured)",
+  "made_in": "okänt - anges inte på greatearth.se, Hjärtat eller Apotea (Hjärtat märker 'Nordisk, Miljöförpackad')",
+  "certifications": "okänt - inga certifieringar visas; greatearth.se anger att alla Great Earths produkter är glutenfria",
+  "allergens": "okänt - ingen allergenmärkning; ej veganskt (bovint)",
+  "image_url": "https://greatearth.centracdn.net/client/dynamic/images/222_6cec1d6c9a-7901-1-full.jpg",
+  "extra_image_urls": [
+    "https://greatearth.centracdn.net/client/dynamic/images/222_7ee3d457c8-7901-2-full.jpg",
+    "https://assets.icanet.se/image/upload/w_1200,h_1200,c_pad/v1745839640/1083652.webp"
+  ],
+  "claimed_benefits": [
+    "Kosttillskott för hud/hår/naglar och leder",
+    "Bidrar till hudens lyster och elasticitet",
+    "Rikt på kollagen typ 1 & 3",
+    "Naturligt och rent: 100% hydrolyserat bovint kollagen utan tillsatser",
+    "Lättupptagligt: Består av kollagenpeptider som snabbt tas upp av kroppen"
+  ],
+  "notes": "Hämtat 2026-09-08 via curl. Pris 260 SEK på greatearth.se (JSON-LD + sidtext); sidan visar 'Lägsta pris senaste 30 dagarna 208 SEK' (prishistorik, ingen aktiv rea). Apotek Hjärtat (/varumarken/great-earth/great-earth-kollagen-400-g): 236 kr. Apotea (/great-earth-kollagen-400-g): 173 kr under kampanj '25% på Great Earth' t.o.m. 2026-09-21, ordinarie Apotea-pris ej synligt i HTML. Dos: greatearth.se 'Innehåll per portion (10 g): Kollagen 10 000 mg', 'Påsen innehåller: 400 g pulver, räcker ca. 40 dagar'. Uträkning: 400 g/10 g = 40 portioner; 260/40 = 6,50 kr/dag; 10 000 mg/6,50 = 1538 mg/kr. Näringsdeklaration (Hjärtat/Apotea): per 10 g 37 kcal, protein 9,1 g, sockerarter 0 g, salt 0,01 g. Hjärtat: 'Rekommenderas inte till gravida'. Bild 1 = påse på vit bakgrund (servern skickar content-type image/png trots .jpg-ändelse, 200 OK); bild 2 verifierad 200 image/jpeg; Hjärtats bild 200 image/webp. EAN 7350031365870."
+}

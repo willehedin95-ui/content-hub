@@ -1,0 +1,43 @@
+{
+  "name": "Collagen+ | Kollagenpulver",
+  "brand": "KÄLLA (Swedish Probiotics AB)",
+  "url": "https://kalla.com/products/collagen",
+  "price_sek": 349,
+  "sale_price_sek": null,
+  "package": "288 g (9 g per portion)",
+  "form": "pulver",
+  "collagen_mg_per_daily_dose": 7500,
+  "collagen_type": "I och III (enligt FAQ: 'kollagen från nötkreaturshud, vilket består av typ I och typ III kollagen')",
+  "source": "bovint (nötkreatur)",
+  "daily_dose_description": "2 skopor (10 ml per skopa / 20 ml totalt) om dagen i ett glas vatten = 9 g",
+  "servings_per_package": 32,
+  "price_per_day_sek": 10.91,
+  "mg_per_sek": 687.6,
+  "vitamin_c": "ja, 200 mg (250% RI)",
+  "hyaluronic_acid": "ja, 100 mg (natriumhyaluronat)",
+  "biotin": "ja, 7,5 µg (15% RI)",
+  "zinc": "ja, 1,5 mg (15% RI)",
+  "other_actives": "selen 8,2 µg; niacin 2,4 mg NE; vitamin A 120 µg RE; koppar 0,2 mg; riboflavin (B2) 0,21 mg; protein 7,1 g per dos",
+  "sugar_free": "okänt - ingen sockeruppgift i näringsdeklarationen och ingen 'sockerfri'-märkning; inga sockerarter i ingredienslistan, sötad med steviolglykosider",
+  "sweeteners": [
+    "steviolglykosider (stevia)"
+  ],
+  "flavour": "Pink Grapefruit (standardvariant) eller Summer Berries (Sommarbär)",
+  "made_in": "Sverige ('Alla våra produkter tillverkas i Sverige' på produktsidan, samt 'Tillverkad i Sverige' i produktbilderna)",
+  "certifications": "okänt - inga angivna på produktsidan (bara egen badge 'Utsedd till bäst i test', Testprofis)",
+  "allergens": "okänt - ingen allergenupplysning på produktsidan",
+  "image_url": "https://cdn.shopify.com/s/files/1/0869/2085/5888/files/Why_you_ll_love_it_if_a_good_product_image_exists.jpg?v=1777538695",
+  "extra_image_urls": [
+    "https://cdn.shopify.com/s/files/1/0869/2085/5888/files/collagen_squeezebackdrop_72d324f2-1129-4736-9e01-8e01bb20350b.jpg?v=1777537312",
+    "https://cdn.shopify.com/s/files/1/0869/2085/5888/files/collagen_badge.png?v=1770044769",
+    "https://cdn.shopify.com/s/files/1/0869/2085/5888/files/collagen_ingredients.png?v=1774623142"
+  ],
+  "claimed_benefits": [
+    "Främjar hudens elasticitet, återfuktning och lyster inifrån",
+    "Utvalda näringsämnen för hår, naglar och antioxidantskydd",
+    "Med C-vitamin som bidrar till normal kollagenbildning",
+    "kollagentillskott med hög biotillgänglighet",
+    "Utsedd till bäst i test"
+  ],
+  "notes": "Hämtat 2026-09-08. Data från https://kalla.com/products/collagen.json (variantpris 349.00, ingen compare_at_price) + HTML. OBS pris: sidan visar 'Normalpris 349 kr / Reapris 299 kr' men 299 kr är PRENUMERATIONSPRISET (JSON-LD offer name 'Subscription', prenumeration är förvald i Recharge-widgeten, 'Engångsköp' = 349 kr). Ordinarie engångspris = 349 kr, ingen egentlig rea. Näringsdeklaration 'PER DOS (20ml)': protein 7,1 g, kollagen 7 500 mg, vitamin C 200 mg, hyaluronsyra 100 mg, zink 1,5 mg, selen 8,2 µg, niacin 2,4 mg NE, biotin 7,5 µg, vitamin A 120 µg RE, koppar 0,2 mg, riboflavin 0,21 mg. Dosen anges i volym (2 skopor à 10 ml) och sidan säger '288 g / 9 g per portion', så 20 ml = 9 g. Uträkning: 7 500 mg/dag direkt från deklarationen. Portioner = 288 / 9 = 32. Pris/dag = 349 / 32 = 10,91 kr (med prenumeration 299 / 32 = 9,34 kr). mg/kr = 7 500 / 10,91 = 687,6. Ingredienser (Pink Grapefruit): hydrolyserade kollagenpeptider (från nöt), äppelsyra, arom, vitamin C, natriumhyaluronat, kiseldioxid, zinkcitrat, nikotinamid, steviolglykosider, retinylpalmitat, biotin, kopparglukonat, riboflavin, natriumselenit, färgämne (rödbetsröd, antocyaniner). Sommarbär-varianten har samma aktiva ämnen. Bild: ingen ren vit-bakgrundsbild finns i butikens bildset (alla är lifestyle/infografik). Vald bild = Pink Grapefruit-påsen på enkel beige bakgrund med grapefrukt bredvid, 1200x1200, verifierad HTTP 200 image/jpeg. Alternativ: squeezebackdrop (påse på beige, med hand) och collagen_badge (Summer Berries-påsen med bäst-i-test-badge)."
+}

@@ -1,0 +1,41 @@
+{
+  "name": "Kollagen Peptan (Elexir Pharma Kollagenpulver, Peptan Bovint kollagen, Naturell)",
+  "brand": "Elexir Pharma",
+  "url": "https://elexirpharma.se/products/kollagen-peptan",
+  "price_sek": 279,
+  "sale_price_sek": null,
+  "package": "500 g",
+  "form": "pulver",
+  "collagen_mg_per_daily_dose": "5000-10000 (5 000 mg vid 5 g, 10 000 mg vid 10 g)",
+  "collagen_type": "I ('Peptan hydrolyserat bovint kollagen typ I')",
+  "source": "bovint (nöt), råvaran från Frankrike",
+  "daily_dose_description": "2-4 teskedar (ca 5-10 g) dagligen, gärna på tom mage, utblandat i vätska",
+  "servings_per_package": "50-100 (100 vid 5 g, 50 vid 10 g)",
+  "price_per_day_sek": "2,79 (5 g) - 5,58 (10 g)",
+  "mg_per_sek": 1792.1,
+  "vitamin_c": "nej",
+  "hyaluronic_acid": "nej",
+  "biotin": "nej",
+  "zinc": "nej",
+  "other_actives": "inga - 100% kollagen (fullständig aminosyraprofil per 5 g/10 g anges, t.ex. glycin 1 105/2 210 mg, prolin 665/1 330 mg, hydroxyprolin 550/1 100 mg)",
+  "sugar_free": "ja - enda ingrediensen är Peptan hydrolyserat bovint kollagen, 'utan några tillsatser' (ingen näringsdeklaration med sockerrad visas)",
+  "sweeteners": [],
+  "flavour": "Naturell (neutral smak)",
+  "made_in": "okänt - sidan säger 'Utvecklad i Sverige' och råvaran 'Peptan ... från Frankrike'; ingen uppgift om tillverkningsland. Bakre etiketten visar Elexir Pharma AB med EU-ovalen SE 6081",
+  "certifications": "nej ('CERTIFIERINGAR: NEJ' i produktfaktarutan); ej ekologisk; ej vegansk; 'OK FÖR GRAVIDA & AMMANDE: JA'",
+  "allergens": "gluten nej, laktos nej, mjölkprotein nej (produktfaktarutan); ingen övrig allergenupplysning",
+  "image_url": "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/Kollagen-100peptan-500g-pulver-elexir-pharma-1.jpg?v=1778669918",
+  "extra_image_urls": [
+    "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/KollagenPeptan_500_gram_elexir_pharma_3.jpg?v=1778669966",
+    "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/KollagenPeptan_500_gram_elexir_pharma_9.jpg?v=1778669967",
+    "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/Product_Split_Banner_KollagenPeptan_Matbord.jpg?v=1778670151"
+  ],
+  "claimed_benefits": [
+    "100 % rent kollagen från Peptan®",
+    "Molekylstorlek: 2000 dalton",
+    "Löser sig snabbt och lätt i all form av dryck",
+    "ger dig hela 5 000 - 10 000 mg kollagen per dagsdos",
+    "Hydrolyserat för optimalt upptag"
+  ],
+  "notes": "Hämtat 2026-09-08. Produktsida hittad via https://elexirpharma.se/products.json (handle kollagen-peptan; produkten heter 'Kollagen Peptan®' i butiken, tidigare/alternativt 'Elexir 100% Peptan Kollagen'). Pris 279 kr på elexirpharma.se (variant 500 g, price 279.00, compare_at_price 279.00 = ingen rea). Apotea: 269 kr (https://www.apotea.se/elexir-pharma-kollagen-peptan-500-g, JSON-LD price 269, jmfpris 538 kr/kg, GTIN 7350023031271). Innehåll per dagsdos enligt sidan/etiketten: 5 g -> hydrolyserat kollagen (bovint) 5 000 mg; 10 g -> 10 000 mg. 'Antal doser per förpackning: 50-100 st'. Uträkning: 500 g / 5 g = 100 portioner -> 279 / 100 = 2,79 kr/dag; 500 g / 10 g = 50 portioner -> 279 / 50 = 5,58 kr/dag. mg/kr = 5 000 / 2,79 = 1 792 (samma vid 10 g: 10 000 / 5,58 = 1 792). Med Apotea-priset 269 kr: 2,69-5,38 kr/dag, 1 859 mg/kr. Bild: påsens framsida på enfärgad ljusgul/cream bakgrund (ej rent vit), 1600x2000, verifierad HTTP 200 image/jpeg; extra bild _3 är baksidan med hela innehållstabellen."
+}

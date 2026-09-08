@@ -1,0 +1,41 @@
+{
+  "name": "The Solution Beauty Collagen",
+  "brand": "Oslo Skin Lab",
+  "url": "https://www.osloskinlab.se/produkter/the-solution-kollagenpulver/",
+  "price_sek": 666.0,
+  "sale_price_sek": null,
+  "subscription_price_sek": 466.2,
+  "package": "28 x 2,5 g dospåsar (stick packs), 70 g",
+  "form": "pulver i dospåse",
+  "collagen_mg_per_daily_dose": 2500,
+  "collagen_type": "typ 1 (Verisol, hydrolyserade kollagenpeptider)",
+  "source": "bovint (nötkreatur)",
+  "daily_dose_description": "1 dospåse (2,5 g) per dag, blandas i valfri dryck eller mat",
+  "servings_per_package": 28,
+  "price_per_day_sek": 23.79,
+  "mg_per_sek": 105.1,
+  "vitamin_c": "nej",
+  "hyaluronic_acid": "nej",
+  "biotin": "nej",
+  "zinc": "nej",
+  "other_actives": "inga - 100% Verisol-kollagenpeptider",
+  "sugar_free": "ja ('Utan socker. Utan tillsatser.')",
+  "sweeteners": "inga",
+  "flavour": "neutral (smaklös)",
+  "made_in": "okänt - anges inte på produktsidan",
+  "certifications": "okänt - inga certifieringar visas på produktsidan; sidan anger 'fritt från tillsatser, gluten och GMO'",
+  "allergens": "okänt - ingen allergenmärkning på produktsidan (anges glutenfri)",
+  "image_url": "https://write.osloskinlab.se/49c147/siteassets/media/square/produktbilder/the-solution/oslo-skin-lab-forpackning-kollagenpulver-bubbla/",
+  "extra_image_urls": [
+    "https://write.osloskinlab.se/4afd1c/siteassets/media/square/produktbilder/the-solution/product_image_usp1.jpg",
+    "https://write.osloskinlab.se/4a4dcc/siteassets/media/square/produktbilder/the-solution/oslo-skin-lab-the-solution-kate-winslet/"
+  ],
+  "claimed_benefits": [
+    "Upp till 20% minskat rynkdjup efter 8 veckor",
+    "Ökad elasticitet, med en fastare och mer spänstig hudkänsla över tid",
+    "Mindre torr hud, uppmätt efter 8 veckor",
+    "Minskad synlighet av celluliter och en jämnare hudyta på rumpa och lår efter 6 månader",
+    "Kliniskt dokumenterat att bidra till att minska fina linjer och celluliter samt öka hudens fuktnivå"
+  ],
+  "notes": "Hämtat 2026-09-08 via curl från osloskinlab.se (JSON-LD + sidtext). Pris: variant SE3051-1-OTP 'Engångsköp' = 666,00 kr (+49 kr frakt, fri frakt för medlemmar). Variant SE3051-1-MEM 'Prenumeration' = 466,20 kr (visas som 'Medlemspris', 666,00 överstruket; 30% rabatt + fri frakt, 28 dagsdoser var 4:e vecka, ingen bindningstid). Ingen rea på engångsköp. Dos: sidan säger 28 dagsdoser à 2,5 g = 2500 mg kollagenpeptider (pulvret är '100% hydrolyserade kollagenpeptider (Verisol)', så hela dosen räknas som kollagen). kr/dag engångsköp = 666/28 = 23,79 kr; prenumeration = 466,20/28 = 16,65 kr. mg/kr = 2500/23,79 = 105 (engång); 2500/16,65 = 150 (prenumeration). Ingen näringsdeklaration/ingredienslista publicerad på sidan, bara beskrivande text. Tillverkningsland saknas. Huvudbilden är förpackning + dospåsar på ljusblå bakgrund med två badges ('Backed by science', 'Över 130 000 prenumeranter'); ingen ren vit packshot finns på sidan. Alla tre bild-URL:er verifierade 200 image/jpeg med curl -I. GTIN 7090010045996."
+}
