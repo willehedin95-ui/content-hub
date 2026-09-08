@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { publishPage, deploySitemapAndRobots, getProjectCustomDomain, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
+import { publishPage, deploySitemapAndRobots, getProjectCustomDomain, getProjectName, runWithCfProjectOverride, cfOverrideFromWorkspaceSettings, PageAnalyticsConfig } from "@/lib/cloudflare-pages";
 import { optimizeImages, enhanceImageTags } from "@/lib/image-optimizer";
 import { replaceImageUrls } from "@/lib/html-image-replacer";
 import { Language } from "@/types";
@@ -78,6 +78,11 @@ export async function POST(req: NextRequest) {
   const isBlogPage = publishPages?.content_type === "seo_blog";
   const useShopify = isBlogPage && publishTarget === "shopify";
 
+  // Workspaces with their own domain (expertpanelen.se) override the
+  // per-language env project. Everything CF-related below runs inside this
+  // scope so getProjectName/getProjectCustomDomain resolve consistently.
+  const cfOverride = cfOverrideFromWorkspaceSettings(wsSettings);
+
   if (!useShopify) {
     if (publishTarget === "shopify") {
       // Non-blog page in a Shopify-target workspace: landing pages still go
@@ -95,9 +100,17 @@ export async function POST(req: NextRequest) {
     }
 
     const projectKey = `CF_PAGES_PROJECT_${translation.language.toUpperCase()}`;
-    if (!process.env[projectKey]) {
+    const hasProject = await runWithCfProjectOverride(cfOverride, async () => {
+      try {
+        getProjectName(translation.language as Language);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!hasProject) {
       return NextResponse.json(
-        { error: `Cloudflare Pages project not configured for language: ${translation.language}. Set ${projectKey}.` },
+        { error: `Cloudflare Pages project not configured for language: ${translation.language}. Set ${projectKey} or workspaces.settings.cf_pages_project_by_language.` },
         { status: 500 }
       );
     }
@@ -106,7 +119,9 @@ export async function POST(req: NextRequest) {
     // another PUBLISHED translation already owns on the same (language,
     // CF project) - the last deploy used to silently overwrite the other
     // page and leave its published_url lying.
-    const conflict = await findPublishedSlugConflict(db, translation, publishPages);
+    const conflict = await runWithCfProjectOverride(cfOverride, () =>
+      findPublishedSlugConflict(db, translation, publishPages)
+    );
     if (conflict) {
       return NextResponse.json({ error: conflict }, { status: 409 });
     }
@@ -128,7 +143,9 @@ export async function POST(req: NextRequest) {
       if (useShopify) {
         await doShopifyPublish(translation_id, translation, db, publishPages?.workspace_id || workspaceId);
       } else {
-        await doPublish(translation_id, translation, db);
+        await runWithCfProjectOverride(cfOverride, () =>
+          doPublish(translation_id, translation, db)
+        );
       }
     } catch (err) {
       console.error("[publish] Background publish failed:", err);

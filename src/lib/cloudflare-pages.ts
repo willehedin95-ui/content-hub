@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Language } from "@/types";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { fetchWithRetry, withRetry } from "./retry";
@@ -39,7 +40,65 @@ export function getConfig() {
   return { accountId, apiToken };
 }
 
+// ---------------------------------------------------------------------------
+// Per-workspace CF project override (2026-09-08, expertpanelen.se)
+//
+// The CF Pages project and custom domain are resolved per LANGUAGE from env
+// (CF_PAGES_PROJECT_SV = halsobladet-blog). A workspace that owns its own
+// domain (expertpanelen.se) sets `settings.cf_pages_project_by_language`
+// and `settings.cf_pages_domain_by_language`; the publish entry point wraps
+// its work in runWithCfProjectOverride() so that every getProjectName /
+// getProjectCustomDomain call below - including sitemap deploy - resolves
+// to that workspace's project instead of the env default. Request-scoped
+// (AsyncLocalStorage), same pattern as runWithMetaConfig in meta.ts.
+// ---------------------------------------------------------------------------
+
+export interface CfProjectOverride {
+  projects?: Partial<Record<Language, string>>;
+  domains?: Partial<Record<Language, string>>;
+}
+
+const cfOverrideALS = new AsyncLocalStorage<CfProjectOverride | null>();
+
+/** Run fn with a request-scoped CF project/domain override. */
+export function runWithCfProjectOverride<T>(
+  override: CfProjectOverride | null,
+  fn: () => Promise<T>
+): Promise<T> {
+  return cfOverrideALS.run(override, fn);
+}
+
+/**
+ * Build the override from a workspace's settings JSONB. Returns null when the
+ * workspace has no per-language project mapping (= use env defaults).
+ */
+export function cfOverrideFromWorkspaceSettings(
+  settings: Record<string, unknown> | null | undefined
+): CfProjectOverride | null {
+  if (!settings) return null;
+  const projects = settings.cf_pages_project_by_language as
+    | Partial<Record<Language, string>>
+    | undefined;
+  const domains = settings.cf_pages_domain_by_language as
+    | Partial<Record<Language, string>>
+    | undefined;
+  const hasProjects = projects && Object.values(projects).some((v) => typeof v === "string" && v.trim());
+  const hasDomains = domains && Object.values(domains).some((v) => typeof v === "string" && v.trim());
+  if (!hasProjects && !hasDomains) return null;
+  return {
+    projects: hasProjects ? projects : undefined,
+    domains: hasDomains ? domains : undefined,
+  };
+}
+
+/** The active override for this async context, if any. */
+export function getCfProjectOverride(): CfProjectOverride | null {
+  return cfOverrideALS.getStore() ?? null;
+}
+
 export function getProjectName(language: Language): string {
+  const scoped = cfOverrideALS.getStore()?.projects?.[language]?.trim();
+  if (scoped) return scoped;
   const key = `CF_PAGES_PROJECT_${language.toUpperCase()}`;
   const name = process.env[key]?.trim();
   if (!name) throw new Error(`${key} not configured for language: ${language}`);
@@ -210,6 +269,8 @@ export async function createDeployment(
 }
 
 export function getProjectCustomDomain(language: Language): string | undefined {
+  const scoped = cfOverrideALS.getStore()?.domains?.[language]?.trim();
+  if (scoped) return scoped;
   const key = `CF_PAGES_DOMAIN_${language.toUpperCase()}`;
   return process.env[key]?.trim() || undefined;
 }
