@@ -6,7 +6,7 @@
  * page is editable and re-publishable from the hub afterwards.
  *
  * Run: npx tsx scripts/expertpanelen-publish.ts <html-file> <slug> [extraDir]
- *   extraDir: directory whose files are deployed under /redaktion/ (portraits)
+ *   extraDir: public/ directory deployed as-is (portraits under redaktion/, logo.png)
  */
 process.loadEnvFile?.(".env.local");
 export {};
@@ -66,11 +66,16 @@ async function main() {
   const additionalFiles = imageResult.images.map((img) => ({ path: img.deployPath, sha1: img.sha1, body: img.buffer }));
 
   if (extraDir) {
-    for (const f of readdirSync(extraDir)) {
-      const p = join(extraDir, f); if (!statSync(p).isFile()) continue;
-      const body = readFileSync(p);
-      additionalFiles.push({ path: `/redaktion/${f}`, sha1: createHash("sha1").update(body).digest("hex"), body });
-    }
+    // Deploy every file under extraDir at the same relative path (public/ root).
+    const walk = (dir: string, rel: string) => {
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f); const r = `${rel}/${f}`;
+        if (statSync(p).isDirectory()) { walk(p, r); continue; }
+        const body = readFileSync(p);
+        additionalFiles.push({ path: r, sha1: createHash("sha1").update(body).digest("hex"), body });
+      }
+    };
+    walk(extraDir, "");
   }
 
   await runWithCfProjectOverride(override, async () => {

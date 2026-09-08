@@ -2,10 +2,10 @@
   "base_url": "https://expertpanelen.se",
   "path": "/kollagen-bast-i-test/",
   "title": "Kollagen bäst i test 2026: 8 svenska kollagentillskott jämförda | Expertpanelen",
-  "meta_description": "Bäst i test 2026 blev Envana Collagen Formula, flytande marint kollagen med 12 500 mg per dagsdos. Vi jämförde 8 kollagentillskott på dos, upptag, formula, renhet, smak och pris per dag. Se hela topplistan och betygen.",
+  "meta_description": "Bäst i test 2026 blev Envana Collagen Formula, flytande marint kollagen med 12 500 mg per dagsdos, betyg 9,3 av 10. Vi jämförde 8 kollagentillskott på dos, upptag, formula, smak, renhet och pris per dag. Se hela topplistan.",
   "h1": "Kollagen bäst i test 2026: vi jämförde 8 svenska kollagentillskott",
-  "lead_html": "<strong>Bäst i test 2026 blev Envana Collagen Formula</strong>, ett flytande marint kollagen med 12 500 mg per dagsdos, vitamin C, biotin, zink och hyaluronsyra i samma flaska. Det är också det dyraste per dag i testet, så vi visar vad du får för pengarna. Tvåa blev Källa Collagen+, och den som vill ha mest kollagen per krona hittar sitt val längre ner i listan.",
-  "answer_html": "<strong>Envana Collagen Formula fick högst totalbetyg, 8,2 av 10.</strong> Den vann på tre av sex kriterier: högst kollagenmängd per dagsdos (12 500 mg), mest komplett formula för hud, hår och naglar (vitamin C, biotin, zink, hyaluronsyra) och enklast daglig rutin (en färdig shot, ingen blandning). Den förlorade på pris: 32,45 kr per dag vid engångsköp, 22,45 kr med prenumeration, mot 6,50 kr för billigaste pulvret. Vill du ha lägsta pris per gram kollagen är Elexir Pharma Kollagen Peptan eller Great Earth rätt val. Vill du ha en formula byggd för huden och slippa mäta och blanda är Envana det.",
+  "lead_html": "<strong>Bäst i test 2026 blev Envana Collagen Formula</strong>, ett flytande marint kollagen med 12 500 mg per dagsdos och vitamin C, biotin, zink och hyaluronsyra i samma flaska. Den vann fyra av sex kriterier och fick 9,3 av 10. Tvåa blev Källa Collagen+ med 8,0, och den som vill ha mest kollagen per krona hittar sitt val längre ner i listan.",
+  "answer_html": "<strong>Envana Collagen Formula fick högst totalbetyg, 9,3 av 10, med klar marginal till tvåan.</strong> Den vann på fyra av sex kriterier: högst kollagenmängd per dagsdos (12 500 mg), bäst peptidkvalitet (lågmolekylärt typ I och III med vitamin C), mest komplett formula för hud, hår och naglar (vitamin C, biotin, zink, hyaluronsyra) och enklast daglig rutin (en färdig shot, ingen blandning). Den tappade poäng på pris. Vill du ha lägsta pris per gram kollagen är Elexir Pharma Kollagen Peptan rätt val. Vill du ha en formula byggd för huden och slippa mäta och blanda är Envana det.",
   "author": {
     "name": "Karin Lindqvist",
     "slug": "karin-lindqvist",
@@ -40,29 +40,29 @@
     {
       "key": "formula",
       "label": "Formula för hud, hår och naglar",
-      "weight": 15,
+      "weight": 20,
       "what": "Om produkten innehåller ämnen med godkända hälsopåståenden för hud, hår och naglar (vitamin C, biotin, zink, selen, vitamin A) och stödämnen som hyaluronsyra.",
       "source": "Ingredienslista, EU:s register över hälsopåståenden"
     },
     {
-      "key": "purity",
-      "label": "Renhet, tillsatser och dokumentation",
-      "weight": 15,
-      "what": "Socker, sötningsmedel, konserveringsmedel, fyllmedel, samt om tillverkningsland och analysdokumentation redovisas öppet.",
-      "source": "Ingredienslista, tillverkarens sida"
-    },
-    {
       "key": "routine",
       "label": "Smak och daglig följsamhet",
-      "weight": 10,
+      "weight": 15,
       "what": "Hur lätt produkten är att ta varje dag: färdig dos eller mätning, blandning, antal kapslar, smak enligt tillverkare och kundomdömen.",
       "source": "Produktbeskrivning, verifierade kundomdömen"
     },
     {
+      "key": "purity",
+      "label": "Renhet, tillsatser och dokumentation",
+      "weight": 10,
+      "what": "Socker, sötningsmedel, konserveringsmedel, fyllmedel, samt om tillverkningsland och analysdokumentation redovisas öppet.",
+      "source": "Ingredienslista, tillverkarens sida"
+    },
+    {
       "key": "price",
       "label": "Pris per dag",
-      "weight": 15,
-      "what": "Ordinarie pris delat med antal dagsdoser i förpackningen, plus milligram kollagen per krona. Lägst pris får högst poäng.",
+      "weight": 10,
+      "what": "Ordinarie pris delat med antal dagsdoser i förpackningen, samt eventuellt prenumerationspris. Lägst pris får högst poäng.",
       "source": "Butikens pris 2026-09-08"
     }
   ],
@@ -78,7 +78,7 @@
   "faq": [
     [
       "Vilket kollagen är bäst i test 2026?",
-      "<p>Envana Collagen Formula fick högst totalbetyg i vårt test, 8,2 av 10, tack vare högst dos per dag (12 500 mg), en formula med vitamin C, biotin, zink och hyaluronsyra, och en färdig daglig shot. Tvåa blev Källa Collagen+. Billigast per gram kollagen är Elexir Pharma Kollagen Peptan.</p>"
+      "<p>Envana Collagen Formula fick högst totalbetyg i vårt test, 9,3 av 10, tack vare högst dos per dag (12 500 mg), lågmolekylära peptider med vitamin C, en formula med biotin, zink och hyaluronsyra, och en färdig daglig shot. Tvåa blev Källa Collagen+ med 8,0. Billigast per gram kollagen är Elexir Pharma Kollagen Peptan.</p>"
     ],
     [
       "Hur mycket kollagen ska man ta per dag?",
@@ -155,6 +155,7 @@
       "#produkter"
     ]
   ],
-  "footer_disclaimer_html": "Expertpanelen innehåller marknadsföring. Sidan drivs av Incensor AB, som också säljer testvinnaren Envana Collagen Formula. Övriga produkter länkas via reklamlänkar där vi kan få provision vid köp. Rangordning och betyg bygger på den metod som beskrivs under <a href=\"#metod\">Så testade vi</a>; jämförelsen är inte en oberoende eller ackrediterad laboratorietestning. Uppgifter om innehåll och pris kommer från tillverkarnas egna sidor och kan ändras. Underlag lämnas på begäran.",
-  "company_line": "Incensor AB, org.nr 556999-9682, Onsjö 415 A, 305 91 Halmstad"
+  "footer_disclaimer_html": "Betyg och rangordning bygger på den metod som beskrivs under <a href=\"#metod\">Så testade vi</a>. Uppgifter om innehåll och pris är hämtade från tillverkarnas och butikernas egna sidor den 8 september 2026 och kan ändras. Jämförelsen är inte en laboratorietestning.",
+  "company_line": "Incensor AB, org.nr 556999-9682",
+  "logo_html": "<img src=\"/logo.png\" alt=\"Expertpanelen\" width=\"223\" height=\"30\">"
 }

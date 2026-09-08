@@ -5,7 +5,7 @@
 `kollagen-bast-i-test.html`. Byggskriptet vägrar om ordningen i products.json
 inte matchar de uträknade totalbetygen.
 
-Publicera: `npx tsx scripts/expertpanelen-publish.ts scripts/expertpanelen/kollagen-bast-i-test.html kollagen-bast-i-test scripts/expertpanelen/redaktion`
+Publicera: `npx tsx scripts/expertpanelen-publish.ts scripts/expertpanelen/kollagen-bast-i-test.html kollagen-bast-i-test scripts/expertpanelen/public`
 (kör från content-hub-roten). Skriptet upsertar pages/translations i
 arbetsytan `expertpanelen` och deployar via `runWithCfProjectOverride`.
 

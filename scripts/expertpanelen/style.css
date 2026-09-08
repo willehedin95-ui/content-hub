@@ -30,6 +30,13 @@ small{font-weight:400}
 .site-nav{display:flex;gap:22px}
 .site-nav a{color:var(--ink);text-decoration:none;font-weight:500;font-size:.95rem}
 .site-nav a:hover{color:var(--accent)}
+.nav-toggle{display:none;width:44px;height:44px;border:0;background:none;padding:10px;cursor:pointer;flex-direction:column;justify-content:center;gap:5px}
+.nav-toggle span{display:block;height:2px;background:var(--primary);border-radius:2px;transition:transform .2s,opacity .2s}
+.nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
+.nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.logo img{height:30px;width:auto;display:block}
+.logo-foot img{height:28px}
 
 /* hero */
 .hero{background:linear-gradient(180deg,#fff 0%,var(--bg) 100%);padding:28px 0 40px;border-bottom:1px solid var(--line)}
@@ -208,15 +215,19 @@ body{padding-bottom:80px}
   .hero-grid{grid-template-columns:1fr;grid-template-rows:none;gap:22px}
   .hero-top,.hero-rest,.winner-card{grid-column:1;grid-row:auto}
   .winner-card{max-width:420px;margin:6px auto 0}
-  .card-body{grid-template-columns:1fr}
-  .card-figure{max-width:260px}
+  .card-body{grid-template-columns:1fr;gap:16px}
+  .card-figure{max-width:none}
+  .card-figure img{max-height:300px}
   .bars li{grid-template-columns:150px 1fr 36px}
   .specs{grid-template-columns:repeat(2,1fr)}
   .foot-grid{grid-template-columns:1fr}
 }
 @media (max-width:640px){
   body{font-size:16px}
-  .site-nav{display:none}
+  .nav-toggle{display:flex}
+  .site-nav{display:none;position:absolute;left:0;right:0;top:64px;background:#fff;border-bottom:1px solid var(--line);flex-direction:column;gap:0;padding:6px 0 10px;box-shadow:0 10px 24px rgba(20,40,38,.1)}
+  .site-nav.is-open{display:flex}
+  .site-nav a{padding:12px 20px;font-size:1.05rem;border-top:1px solid var(--line)}
   .hero{padding-top:18px}
   .top-row{grid-template-columns:30px 56px 1fr;grid-template-areas:"rank thumb main" "rank thumb score" "rank thumb btn";row-gap:6px}
   .top-rank{grid-area:rank;width:30px;height:30px;font-size:.9rem}
@@ -225,7 +236,7 @@ body{padding-bottom:80px}
   .top-score{grid-area:score;justify-self:start;font-size:1.05rem;padding:4px 10px}
   .top-price{grid-area:score;justify-self:end;text-align:right;align-self:center}
   .top-row .btn{grid-area:btn;justify-self:start;padding:9px 14px}
-  .card{padding:18px}
+  .card{padding:16px}
   .card-head{grid-template-columns:36px 1fr;gap:10px}
   .card-rank{width:36px;height:36px;font-size:1rem}
   .card-scorebox{grid-column:2;justify-self:start;display:flex;align-items:baseline;gap:6px}

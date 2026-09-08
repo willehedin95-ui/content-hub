@@ -52,7 +52,7 @@ def topplista_rows(products):
         </div>
         <span class="top-score {score_class(p['total'])}">{fmt_dec(p['total'])}<small>/10</small></span>
         <span class="top-price">{fmt_kr(p['price'])}</span>
-        <a class="btn btn-primary" href="{esc(p['buy_url'])}" target="_blank" rel="{'noopener' if p.get('own') else 'sponsored nofollow noopener'}">Till butik</a>
+        <a class="btn btn-primary" href="{esc(p['buy_url'])}" target="_blank" rel="{'noopener' if p.get('own') else 'nofollow noopener'}">Till butik</a>
       </li>''')
     return "\n".join(out)
 
@@ -101,7 +101,7 @@ def product_card(p, i):
         ("Pris", f'{fmt_kr(p["price"])} ({kr_per_day(p)} per dag)'),
     ]
     spec_html = "".join(f"<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>" for k, v in specs)
-    rel = 'noopener' if p.get('own') else 'sponsored nofollow noopener'
+    rel = 'noopener' if p.get('own') else 'nofollow noopener'
     return f'''
     <article class="card{' card-winner' if i==1 else ''}" id="{anchor(p)}">
       <header class="card-head">
@@ -122,7 +122,6 @@ def product_card(p, i):
             <div class="card-buy-text"><strong>{fmt_kr(p['price'])}</strong> <span>hos {esc(p['store'])}</span><small>{kr_per_day(p)} per dag · {esc(p['store_note'])}</small></div>
             <a class="btn btn-primary" href="{esc(p['buy_url'])}" target="_blank" rel="{rel}">Till butik</a>
           </div>
-          <p class="aff-note">{'Länken går till Envanas egen butik. Expertpanelen drivs av samma bolag, se sidfoten.' if p.get('own') else 'Reklamlänk: vi kan få provision om du köper via länken. Det påverkar inte betyget.'}</p>
         </div>
       </div>
       <div class="proscons">
@@ -185,6 +184,7 @@ def json_ld(products):
 # ---------- page ----------
 def build():
     products = P
+    LOGO = S.get("logo_html") or "Expert<span>panelen</span>"
     win = products[0]
     css = open(os.path.join(HERE, "style.css")).read()
     toc = [("topplista", "Topplistan"), ("jamforelse", "Jämförelsetabell"), ("produkter", "Alla produkter i testet"), ("metod", "Så testade vi"), ("guide", "Så väljer du kollagen"), ("faq", "Vanliga frågor"), ("kallor", "Källor")]
@@ -213,8 +213,9 @@ def build():
 <body>
 <header class="site-head">
   <div class="wrap site-head-inner">
-    <a class="logo" href="/" aria-label="Expertpanelen">Expert<span>panelen</span></a>
-    <nav class="site-nav" aria-label="Huvudmeny">
+    <a class="logo" href="/" aria-label="Expertpanelen">{LOGO}</a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sitenav" aria-label="Meny"><span></span><span></span><span></span></button>
+    <nav class="site-nav" id="sitenav" aria-label="Huvudmeny">
       <a href="/bast-i-test/">Bäst i test</a>
       <a href="/sa-testar-vi/">Så testar vi</a>
       <a href="/redaktion/">Redaktionen</a>
@@ -249,7 +250,6 @@ def build():
           <span>Publicerad {esc(S["published_h"])} · Uppdaterad {esc(S["updated_h"])}</span>
         </div>
       </div>
-      <p class="ad-note">Sidan innehåller reklamlänkar och marknadsföring. Betygen bygger på metoden under <a href="#metod">Så testade vi</a>. Vem som står bakom sidan hittar du i <a href="#sidfot">sidfoten</a>.</p>
     </div>
   </div>
 </section>
@@ -323,8 +323,8 @@ def build():
 <footer class="site-foot" id="sidfot">
   <div class="wrap foot-grid">
     <div>
-      <a class="logo" href="/">Expert<span>panelen</span></a>
-      <p>Oberoende form, öppen metod. Vi jämför produkter som säljs i Sverige och skriver ut både plus och minus.</p>
+      <a class="logo logo-foot" href="/">Expert<span>panelen</span></a>
+      <p>Öppen metod, samma mall för alla produkter. Vi jämför produkter som säljs i Sverige och skriver ut både plus och minus.</p>
     </div>
     <div>
       <h4>Om sidan</h4>
@@ -344,6 +344,8 @@ def build():
   if(!bar||!hero)return;
   function tick(){{var r=hero.getBoundingClientRect();var show=r.bottom<0;bar.classList.toggle('is-visible',show);bar.setAttribute('aria-hidden',show?'false':'true');}}
   window.addEventListener('scroll',tick,{{passive:true}});tick();
+  var t=document.querySelector('.nav-toggle'),n=document.getElementById('sitenav');
+  if(t&&n){{t.addEventListener('click',function(){{var o=n.classList.toggle('is-open');t.setAttribute('aria-expanded',o?'true':'false');document.body.classList.toggle('nav-open',o);}});}}
   document.querySelectorAll('.table-wrap').forEach(function(w){{function u(){{w.classList.toggle('can-scroll',w.scrollWidth>w.clientWidth+4);}}u();window.addEventListener('resize',u);}});
 }})();
 </script>
