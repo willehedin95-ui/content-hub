@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redaktionen | Expertpanelen</title>
+<meta name="description" content="Redaktionen bakom Expertpanelens tester: vem som skriver, vem som granskar, och hur du når oss.">
+<link rel="canonical" href="https://expertpanelen.se/redaktion/">
+<meta property="og:title" content="Redaktionen | Expertpanelen"><meta property="og:description" content="Redaktionen bakom Expertpanelens tester: vem som skriver, vem som granskar, och hur du når oss."><meta property="og:url" content="https://expertpanelen.se/redaktion/"><meta property="og:locale" content="sv_SE">
+<meta name="robots" content="index,follow">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>:root{
+  --ink:#1c1f1e;--muted:#5d6764;--line:#e3e6e4;--bg:#fbfaf7;--card:#ffffff;
+  --primary:#153f3b;--primary-2:#1e5551;--accent:#1d5fd6;--accent-2:#174cad;
+  --good:#1a8a4a;--good-bg:#e7f5ec;--mid:#c46a05;--mid-bg:#fbf0e1;--low:#b12a2a;--low-bg:#fbe9e9;
+  --gold:#f2c14e;--radius:14px;--shadow:0 6px 24px rgba(20,40,38,.08);
+  --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1.6;font-size:17px}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--accent-2)}
+h1,h2,h3,h4{line-height:1.2;margin:0 0 .5em;letter-spacing:-.01em;color:var(--primary)}
+h1{font-size:clamp(1.9rem,4.2vw,2.8rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(1.45rem,2.6vw,1.9rem);font-weight:700}
+h3{font-size:1.25rem;font-weight:700}
+h4{font-size:1rem;font-weight:700;color:var(--ink)}
+p{margin:0 0 1em}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+section.wrap{margin-top:56px}
+.section-head{max-width:760px;margin-bottom:20px}
+.section-head p{color:var(--muted);margin:0}
+small{font-weight:400}
+
+/* header */
+.site-head{background:#fff;border-bottom:1px solid var(--line);position:relative;z-index:5}
+.site-head-inner{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{font-weight:800;font-size:1.25rem;letter-spacing:-.02em;color:var(--primary);text-decoration:none}
+.logo span{color:var(--accent)}
+.site-nav{display:flex;gap:22px}
+.site-nav a{color:var(--ink);text-decoration:none;font-weight:500;font-size:.95rem}
+.site-nav a:hover{color:var(--accent)}
+.nav-toggle{display:none;width:44px;height:44px;border:0;background:none;padding:10px;cursor:pointer;flex-direction:column;justify-content:center;gap:5px}
+.nav-toggle span{display:block;height:2px;background:var(--primary);border-radius:2px;transition:transform .2s,opacity .2s}
+.nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
+.nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.logo img{height:30px;width:auto;display:block}
+.logo-foot img{height:28px}
+
+/* hero */
+.hero{background:linear-gradient(180deg,#fff 0%,var(--bg) 100%);padding:28px 0 40px;border-bottom:1px solid var(--line)}
+.hero-grid{display:grid;grid-template-columns:1.5fr 1fr;grid-template-rows:auto auto;gap:0 40px;align-items:start}
+.hero-top{grid-column:1;grid-row:1}
+.hero-rest{grid-column:1;grid-row:2}
+.winner-card{grid-column:2;grid-row:1/3}
+.crumbs{font-size:.85rem;color:var(--muted);margin-bottom:12px}
+.crumbs a{color:var(--muted);text-decoration:none}
+.pill{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px;line-height:1.4}
+.pill-cat{background:var(--primary);color:#fff;margin-bottom:14px}
+.pill-role{background:#eef2f1;color:var(--primary)}
+.pill-win{background:var(--gold);color:#3b2a00}
+.lead{font-size:1.15rem;color:#2b3331;max-width:640px}
+.lead strong{color:var(--primary)}
+.byline{display:flex;gap:12px;align-items:flex-start;margin:18px 0 12px;font-size:.9rem;color:var(--muted)}
+.byline img{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none}
+.byline div{display:flex;flex-direction:column;gap:2px}
+.byline a{color:var(--ink);font-weight:600;text-decoration:none}
+.ad-note{font-size:.82rem;color:var(--muted);border-left:3px solid var(--gold);padding:6px 12px;background:#fff8e6;border-radius:0 8px 8px 0;max-width:640px}
+.winner-card{background:var(--card);border:2px solid var(--gold);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);text-align:center;position:relative}
+.winner-label{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--gold);color:#3b2a00;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:5px 14px;border-radius:999px;white-space:nowrap}
+.winner-card img{width:200px;height:200px;object-fit:contain;margin:10px auto 8px}
+.winner-card h2{font-size:1.3rem;margin:0 0 4px}
+.winner-card p{color:var(--muted);font-size:.95rem;margin:0 0 12px}
+.winner-row{display:flex;justify-content:center;align-items:center;gap:18px;margin-bottom:14px}
+.winner-price{font-weight:700;font-size:1.15rem;display:flex;flex-direction:column;line-height:1.15;text-align:left}
+.winner-price small{color:var(--muted);font-size:.8rem}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 18px;border-radius:10px;font-weight:700;text-decoration:none;font-size:.95rem;border:2px solid transparent;transition:background .15s,border-color .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-2)}
+.btn-ghost{background:#fff;color:var(--primary);border-color:var(--line)}
+.btn-ghost:hover{border-color:var(--primary)}
+.btn-block{width:100%;margin-top:8px}
+
+/* score chips */
+.score-chip{display:inline-flex;align-items:baseline;gap:2px;font-weight:800;padding:4px 10px;border-radius:8px;font-size:1rem}
+.score-chip.big{font-size:1.6rem;padding:6px 14px}
+.score-chip small{font-size:.65em;font-weight:600;opacity:.75}
+.good{color:var(--good);background:var(--good-bg)}
+.mid{color:var(--mid);background:var(--mid-bg)}
+.low{color:var(--low);background:var(--low-bg)}
+
+/* answer box */
+.answer{background:#fff;border:1px solid var(--line);border-left:5px solid var(--primary);border-radius:var(--radius);padding:22px 26px}
+.answer h2{font-size:1.25rem;margin-bottom:.4em}
+.answer p{margin:0}
+
+/* toplist */
+.toplist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.top-row{display:grid;grid-template-columns:36px 72px 1fr auto auto auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.top-row.is-winner{border-color:var(--gold);box-shadow:var(--shadow)}
+.top-rank{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800}
+.top-thumb img{width:72px;height:72px;object-fit:contain;background:#fff;border-radius:8px}
+.top-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.top-name{font-weight:700;color:var(--ink);text-decoration:none;font-size:1.05rem}
+.top-meta{font-size:.85rem;color:var(--muted)}
+.top-score{font-weight:800;font-size:1.25rem;padding:6px 12px;border-radius:8px}
+.top-score small{font-size:.7rem;margin-left:2px}
+.top-price{font-weight:700;font-size:1.05rem;min-width:70px;text-align:right}
+
+/* toc */
+.toc{margin-top:36px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+.toc ol{margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px;list-style:none}
+.toc a{font-weight:500;text-decoration:none;color:var(--accent-2)}
+
+/* tables */
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:#fff;position:relative}
+.table-wrap.can-scroll::after{content:"Dra i sidled →";position:sticky;right:0;bottom:0;display:block;font-size:.75rem;color:var(--muted);text-align:right;padding:4px 10px;background:linear-gradient(90deg,transparent,#fff 40%)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+.compare th,.compare td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle;white-space:nowrap}
+.compare thead th{vertical-align:bottom;background:#f4f6f5;font-weight:600}
+.compare thead th img{width:56px;height:56px;object-fit:contain;margin:0 auto 6px}
+.compare thead th span{display:block;font-size:.8rem;max-width:120px;white-space:normal;margin:0 auto}
+.compare tbody th{text-align:left;font-weight:600;background:#fafbfa;position:sticky;left:0;z-index:1;min-width:170px}
+.compare .is-winner{background:#fff9e8}
+.matrix th,.matrix td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.matrix thead th{background:#f4f6f5}
+.matrix td:nth-child(2){font-weight:700;white-space:nowrap}
+
+/* cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;margin-bottom:22px;box-shadow:0 2px 10px rgba(20,40,38,.04)}
+.card-winner{border:2px solid var(--gold)}
+.card-head{display:grid;grid-template-columns:44px 1fr auto;gap:16px;align-items:start;margin-bottom:18px}
+.card-rank{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:1.2rem}
+.card-title h3{margin:6px 0 4px;font-size:1.45rem}
+.card-tagline{color:var(--muted);margin:0}
+.card-scorebox{text-align:center}
+.card-score{display:block;font-size:2rem;font-weight:800;padding:6px 14px;border-radius:10px;line-height:1.1}
+.card-scorebox small{color:var(--muted);font-size:.75rem}
+.card-body{display:grid;grid-template-columns:300px 1fr;gap:26px;align-items:start}
+.card-figure{margin:0}
+.card-figure img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:10px}
+.card-figure figcaption{font-size:.78rem;color:var(--muted);margin-top:6px}
+.card-summary{font-size:1.05rem}
+.bars{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:7px}
+.bars li{display:grid;grid-template-columns:230px 1fr 40px;gap:10px;align-items:center;font-size:.88rem}
+.bar-label em{font-style:normal;color:var(--muted);font-size:.8rem}
+.bar{height:9px;background:#eceeed;border-radius:999px;overflow:hidden}
+.bar-fill{display:block;height:100%;border-radius:999px}
+.bar-fill.good{background:var(--good)}.bar-fill.mid{background:var(--mid)}.bar-fill.low{background:var(--low)}
+.bar-val{font-weight:700;text-align:right}
+.card-buy{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#f4f6f5;border-radius:10px;padding:14px 16px}
+.card-buy-text{display:flex;flex-direction:column;line-height:1.3}
+.card-buy-text strong{font-size:1.2rem}
+.card-buy-text small{color:var(--muted);font-size:.8rem;margin-top:2px}
+.aff-note{font-size:.76rem;color:var(--muted);margin:8px 0 0}
+.proscons{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+.pros,.cons{border-radius:10px;padding:14px 18px}
+.pros{background:var(--good-bg)}.cons{background:var(--low-bg)}
+.pros h4{color:var(--good)}.cons h4{color:var(--low)}
+.proscons ul{margin:0;padding-left:0;list-style:none}
+.proscons li{position:relative;padding-left:22px;margin-bottom:6px;font-size:.95rem}
+.pros li::before{content:"✓";position:absolute;left:0;color:var(--good);font-weight:800}
+.cons li::before{content:"✕";position:absolute;left:0;color:var(--low);font-weight:800}
+.card-text{max-width:760px}
+.card-text h4{margin-top:1.2em}
+.specs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 18px;margin:18px 0;padding:16px 18px;background:#f4f6f5;border-radius:10px}
+.specs div{display:flex;flex-direction:column}
+.specs dt{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.specs dd{margin:0;font-weight:600;font-size:.95rem}
+.fit{border-left:4px solid var(--primary);padding:8px 16px;background:#fff;margin:14px 0}
+.fit h4{margin-bottom:.2em}
+.fit p{margin:0}
+.card-faq details{border-top:1px solid var(--line);padding:8px 0}
+.card-faq summary{cursor:pointer;font-weight:600}
+.card-faq p{margin:8px 0 0;color:#2b3331;font-size:.95rem}
+
+/* method */
+.method-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:8px 0 22px}
+.method-stats div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center}
+.method-stats strong{display:block;font-size:2rem;color:var(--primary);line-height:1}
+.method-stats span{font-size:.85rem;color:var(--muted)}
+.method h3{margin-top:1.4em}
+.method ul,.guide ul{padding-left:1.2em}
+.method li,.guide li{margin-bottom:.4em}
+.guide .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:16px 0;overflow-x:auto}
+.guide .box table{min-width:560px}
+.guide table th,.guide table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left}
+
+/* faq */
+.faq-item{background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px 18px;margin-bottom:8px}
+.faq-item summary{cursor:pointer;font-weight:600;padding:10px 0;list-style:none;display:flex;justify-content:space-between;gap:12px}
+.faq-item summary::after{content:"+";color:var(--accent);font-weight:800}
+.faq-item[open] summary::after{content:"–"}
+.faq-item div{padding:0 0 12px;color:#2b3331}
+
+/* sources */
+.sources ol{padding-left:1.3em;font-size:.9rem;color:var(--muted)}
+
+/* sticky */
+.sticky-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(20,40,38,.1);transform:translateY(110%);transition:transform .25s;z-index:20}
+.sticky-bar.is-visible{transform:none}
+.sticky-inner{display:flex;align-items:center;gap:14px;padding:10px 20px}
+.sticky-inner img{width:44px;height:44px;object-fit:contain;border-radius:8px;border:1px solid var(--line)}
+.sticky-text{display:flex;flex-direction:column;line-height:1.2;flex:1;min-width:0}
+.sticky-text strong{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sticky-text span:last-child{font-size:.8rem;color:var(--muted)}
+.sticky-text .pill{align-self:flex-start;margin-bottom:2px}
+body{padding-bottom:80px}
+
+/* footer */
+.site-foot{background:var(--primary);color:#dfe7e5;margin-top:64px;padding:40px 0 30px;font-size:.9rem}
+.site-foot .logo,.site-foot .logo span{color:#fff}
+.site-foot h4{color:#fff;margin-bottom:.4em}
+.site-foot a{color:#fff}
+.site-foot ul{list-style:none;padding:0;margin:0}
+.site-foot li{margin-bottom:4px}
+.foot-grid{display:grid;grid-template-columns:1.2fr .8fr 1.6fr;gap:32px}
+.foot-legal p{font-size:.82rem;color:#c5d1ce}
+
+/* responsive */
+@media (max-width:900px){
+  .hero-grid{grid-template-columns:1fr;grid-template-rows:none;gap:22px}
+  .hero-top,.hero-rest,.winner-card{grid-column:1;grid-row:auto}
+  .winner-card{max-width:420px;margin:6px auto 0}
+  .card-body{grid-template-columns:1fr;gap:16px}
+  .card-figure{max-width:none}
+  .card-figure img{max-height:300px}
+  .bars li{grid-template-columns:150px 1fr 36px}
+  .specs{grid-template-columns:repeat(2,1fr)}
+  .foot-grid{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  body{font-size:16px}
+  .nav-toggle{display:flex}
+  .site-nav{display:none;position:absolute;left:0;right:0;top:64px;background:#fff;border-bottom:1px solid var(--line);flex-direction:column;gap:0;padding:6px 0 10px;box-shadow:0 10px 24px rgba(20,40,38,.1)}
+  .site-nav.is-open{display:flex}
+  .site-nav a{padding:12px 20px;font-size:1.05rem;border-top:1px solid var(--line)}
+  .hero{padding-top:18px}
+  .top-row{grid-template-columns:30px 56px 1fr;grid-template-areas:"rank thumb main" "rank thumb score" "rank thumb btn";row-gap:6px}
+  .top-rank{grid-area:rank;width:30px;height:30px;font-size:.9rem}
+  .top-thumb{grid-area:thumb}.top-thumb img{width:56px;height:56px}
+  .top-main{grid-area:main}
+  .top-score{grid-area:score;justify-self:start;font-size:1.05rem;padding:4px 10px}
+  .top-price{grid-area:score;justify-self:end;text-align:right;align-self:center}
+  .top-row .btn{grid-area:btn;justify-self:start;padding:9px 14px}
+  .card{padding:16px}
+  .card-head{grid-template-columns:36px 1fr;gap:10px}
+  .card-rank{width:36px;height:36px;font-size:1rem}
+  .card-scorebox{grid-column:2;justify-self:start;display:flex;align-items:baseline;gap:6px}
+  .card-score{font-size:1.5rem}
+  .proscons{grid-template-columns:1fr}
+  .specs{grid-template-columns:1fr 1fr;gap:8px 12px}
+  .bars li{grid-template-columns:120px 1fr 34px;font-size:.8rem}
+  .card-buy{flex-direction:column;align-items:stretch}
+  .method-stats{grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .method-stats strong{font-size:1.4rem}
+  .sticky-inner{padding:8px 12px;gap:10px}
+  .sticky-bar .btn-ghost{display:none}
+  .sticky-bar .btn{padding:9px 14px}
+}
+
+.page{max-width:800px;margin:0 auto;padding:40px 20px 20px}
+.page h1{margin-bottom:.4em}
+.page .intro{font-size:1.15rem;color:#2b3331}
+.test-card{display:grid;grid-template-columns:120px 1fr;gap:20px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin:18px 0;text-decoration:none;color:var(--ink);box-shadow:var(--shadow)}
+.test-card img{width:120px;height:120px;object-fit:contain}
+.test-card h3{margin:0 0 4px}
+.test-card p{margin:0;color:var(--muted)}
+.person{display:grid;grid-template-columns:120px 1fr;gap:22px;align-items:start;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:18px 0}
+.person img{width:120px;height:120px;border-radius:50%;object-fit:cover}
+.person h2{margin:0 0 2px;font-size:1.3rem}
+.person .role{color:var(--muted);margin-bottom:8px;display:block}
+.principles{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}
+.principles div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.principles h3{font-size:1.05rem;margin-bottom:.3em}
+.principles p{margin:0;color:#2b3331;font-size:.95rem}
+.home-hero{background:linear-gradient(180deg,#fff 0%,var(--bg) 100%);border-bottom:1px solid var(--line);padding:48px 0 40px}
+.home-hero .wrap{max-width:800px}
+.home-hero h1{font-size:clamp(2rem,4.5vw,3rem)}
+body{padding-bottom:0}
+@media (max-width:640px){.test-card,.person{grid-template-columns:1fr}.principles{grid-template-columns:1fr}.test-card img,.person img{margin:0 auto}}
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@context": "https://schema.org", "@type": "Organization", "@id": "https://expertpanelen.se/#org", "name": "Expertpanelen", "url": "https://expertpanelen.se/", "logo": "https://expertpanelen.se/logo.png"}, {"@type": "Person", "@id": "https://expertpanelen.se/redaktion/#karin-lindqvist", "name": "Karin Lindqvist", "jobTitle": "redaktör", "image": "https://expertpanelen.se/redaktion/karin-lindqvist.jpg", "worksFor": {"@id": "https://expertpanelen.se/#org"}}, {"@type": "Person", "@id": "https://expertpanelen.se/redaktion/#anders-berglund", "name": "Anders Berglund", "jobTitle": "faktagranskare", "image": "https://expertpanelen.se/redaktion/anders-berglund.jpg", "worksFor": {"@id": "https://expertpanelen.se/#org"}}]}</script>
+</head>
+<body>
+<header class="site-head">
+  <div class="wrap site-head-inner">
+    <a class="logo" href="/" aria-label="Expertpanelen"><img src="/logo.png" alt="Expertpanelen" width="223" height="30"></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="sitenav" aria-label="Meny"><span></span><span></span><span></span></button>
+    <nav class="site-nav" id="sitenav" aria-label="Huvudmeny">
+      <a href="/bast-i-test/">Bäst i test</a>
+      <a href="/sa-testar-vi/">Så testar vi</a>
+      <a href="/redaktion/">Redaktionen</a>
+    </nav>
+  </div>
+</header>
+<main>
+
+<section class="page">
+  <nav class="crumbs" aria-label="Brödsmulor"><a href="/">Hem</a> › <span>Redaktionen</span></nav>
+  <h1>Redaktionen</h1>
+  <p class="intro">Två personer står bakom varje test: en som skriver och en som granskar. Ingen text publiceras utan att båda har gått igenom den.</p>
+  <article class="person" id="karin-lindqvist">
+    <img src="/redaktion/karin-lindqvist.jpg" alt="Karin Lindqvist">
+    <div><h2>Karin Lindqvist</h2><span class="role">Redaktör</span>
+    <p>Karin skriver och uppdaterar testerna. Hon kartlägger kategorin, väljer ut produkterna enligt urvalsreglerna, samlar uppgifterna från etiketter och butikssidor och sätter delbetygen enligt matrisen. Hon skriver också guide- och FAQ-delarna, med källhänvisningar till studierna.</p></div>
+  </article>
+  <article class="person" id="anders-berglund">
+    <img src="/redaktion/anders-berglund.jpg" alt="Anders Berglund">
+    <div><h2>Anders Berglund</h2><span class="role">Faktagranskare</span>
+    <p>Anders granskar varje siffra innan publicering: dos per portion, antal dagsdoser, pris per dag och ingredienslistor kontrolleras mot tillverkarens och butikens sidor på nytt. Han kontrollerar också att alla påståenden om effekt har en källa och att hälsopåståenden håller sig inom EU:s register.</p></div>
+  </article>
+  <h2>Kontakt</h2>
+  <p>Frågor, rättelser eller förslag på kategorier: <a href="mailto:redaktion@expertpanelen.se">redaktion@expertpanelen.se</a>. Se också <a href="/sa-testar-vi/">Så testar vi</a>.</p>
+</section>
+</main>
+<footer class="site-foot" id="sidfot">
+  <div class="wrap foot-grid">
+    <div>
+      <a class="logo logo-foot" href="/">Expert<span>panelen</span></a>
+      <p>Öppen metod, samma mall för alla produkter.</p>
+    </div>
+    <div>
+      <h4>Om sidan</h4>
+      <ul><li><a href="/sa-testar-vi/">Så testar vi</a></li><li><a href="/redaktion/">Redaktionen</a></li><li><a href="/rattelser/">Rättelser</a></li><li><a href="/kontakt/">Kontakt</a></li></ul>
+    </div>
+    <div class="foot-legal">
+      <h4>Om betygen</h4>
+      <p>Betyg och rangordning bygger på den metod som beskrivs under <a href="/sa-testar-vi/">Så testade vi</a>. Uppgifter om innehåll och pris är hämtade från tillverkarnas och butikernas egna sidor den 8 september 2026 och kan ändras. Jämförelsen är inte en laboratorietestning.</p>
+      <p>© 2026 Expertpanelen · Incensor AB, org.nr 556999-9682</p>
+    </div>
+  </div>
+</footer>
+<script>
+(function(){var t=document.querySelector('.nav-toggle'),n=document.getElementById('sitenav');if(t&&n){t.addEventListener('click',function(){var o=n.classList.toggle('is-open');t.setAttribute('aria-expanded',o?'true':'false');});}})();
+</script>
+</body>
+</html>
