@@ -67,72 +67,6 @@
     ]
   },
   {
-    "slug": "elexir-pharma-kollagen-peptan",
-    "name": "Elexir Pharma Kollagen Peptan",
-    "short": "Elexir Kollagen Peptan",
-    "brand": "Elexir Pharma",
-    "role": "Bästa pulver",
-    "tagline": "Rent Peptan-kollagen utan tillsatser, 5 000 till 10 000 mg per dag, flest milligram per krona i testet.",
-    "image": "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/Kollagen-100peptan-500g-pulver-elexir-pharma-1.jpg?v=1778669918",
-    "image_caption": "Produktfoto från tillverkaren. 500 g, 50 till 100 portioner.",
-    "form": "Pulver",
-    "collagen_mg": 10000,
-    "collagen_type": "Typ I",
-    "source": "Bovint (nöt), råvara från Frankrike",
-    "made_in": "Okänt (utvecklad i Sverige)",
-    "vitamin_c": false,
-    "hyaluronic": false,
-    "biotin_zinc": false,
-    "sugar_free": true,
-    "price": 279,
-    "days": 50,
-    "price_per_day": 5.58,
-    "mg_per_kr": 1792,
-    "dose_desc": "2 till 4 teskedar (5 till 10 g) i valfri dryck",
-    "actives": "Inga, 100% kollagenpeptider",
-    "sweetening": "Ingen (naturell)",
-    "store": "elexirpharma.se",
-    "store_note": "269 kr på Apotea vid testtillfället",
-    "buy_url": "https://elexirpharma.se/products/kollagen-peptan",
-    "scores": {
-      "dose": 9,
-      "uptake": 7,
-      "formula": 2,
-      "routine": 6,
-      "purity": 9,
-      "price": 10
-    },
-    "summary": "Ett rent kollagenpulver med väldokumenterad råvara (Peptan, 2 000 dalton) och ingenting annat. Billigast per gram i testet. Du får själv stå för vitamin C, mätning och blandning.",
-    "pros": [
-      "Upp till 10 000 mg kollagen per dag för 5,58 kr, flest milligram per krona i testet",
-      "Peptan-kollagen med angiven molekylvikt 2 000 dalton och full aminosyraprofil på etiketten",
-      "Inga tillsatser, inga sötningsmedel, ingen smak: går i kaffe, gröt och smoothie",
-      "Tillverkaren anger uttryckligen att den passar gravida och ammande"
-    ],
-    "cons": [
-      "Inget vitamin C, inga vitaminer eller hyaluronsyra: bara råvaran",
-      "Dosen mäts i teskedar, vilket ger stor variation mellan dagar",
-      "Tillverkningsland anges inte, bara att råvaran kommer från Frankrike",
-      "Inga certifieringar enligt tillverkarens egen faktaruta"
-    ],
-    "review_html": "<h4>Dosen och formulan</h4><p>Elexir säljer råvaran och inget annat: Peptan hydrolyserat bovint kollagen typ I, en av de mest studerade kollagenpeptiderna. Rekommenderad dos är 5 till 10 g, och etiketten redovisar aminosyraprofilen för båda nivåerna, vilket ingen annan i testet gör. Här finns inget vitamin C, så den som vill ha C-vitaminets bidrag till kollagenbildningen får ta det separat.</p><h4>Så är den att ta</h4><p>Pulvret är smaklöst och löser sig i kall och varm dryck. Dosen mäts i teskedar, så räkna med att den varierar en del från dag till dag. Påsen på 500 g räcker 50 dagar vid 10 g.</p><h4>Priset</h4><p>279 kr hos tillverkaren, 269 kr på Apotea när vi kontrollerade. Vid 10 g per dag är det 5,58 kr per dag och nästan 1 800 mg kollagen per krona. Ingen annan produkt i testet kommer i närheten.</p>",
-    "fit": "Passar dig som vet vad du vill ha, redan tar vitamin C eller äter frukt och grönt, och vill betala så lite som möjligt per gram kollagen.",
-    "faq": [
-      [
-        "Vilken dos ska jag räkna med?",
-        "Tillverkaren anger 5 till 10 g per dag. Vi har räknat på 10 g för att matcha de andra produkternas dosnivå; då räcker påsen 50 dagar."
-      ],
-      [
-        "Är den marin?",
-        "Nej, Peptan är bovint kollagen typ I."
-      ],
-      [
-        "Innehåller den något sötningsmedel?",
-        "Nej, produkten är naturell och innehåller bara kollagenpeptider."
-      ]
-    ]
-  },
-  {
     "slug": "core-collagen-pro",
     "name": "Core Collagen Pro",
     "short": "Core Collagen Pro",
@@ -162,9 +96,9 @@
     "buy_url": "https://www.svensktkosttillskott.se/core-collagen-pro",
     "scores": {
       "dose": 8,
-      "uptake": 7,
-      "formula": 5,
-      "routine": 7,
+      "uptake": 8,
+      "formula": 7,
+      "routine": 8,
       "purity": 6,
       "price": 7
     },
@@ -195,6 +129,72 @@
       [
         "Passar den för hud?",
         "Kollagenet och vitamin C gör det, men formulan i övrigt (MSM, kondroitin) är byggd för leder."
+      ]
+    ]
+  },
+  {
+    "slug": "elexir-pharma-kollagen-peptan",
+    "name": "Elexir Pharma Kollagen Peptan",
+    "short": "Elexir Kollagen Peptan",
+    "brand": "Elexir Pharma",
+    "role": "Bästa pulver",
+    "tagline": "Rent Peptan-kollagen utan tillsatser, 5 000 till 10 000 mg per dag, flest milligram per krona i testet.",
+    "image": "https://cdn.shopify.com/s/files/1/0831/6354/5880/files/Kollagen-100peptan-500g-pulver-elexir-pharma-1.jpg?v=1778669918",
+    "image_caption": "Produktfoto från tillverkaren. 500 g, 50 till 100 portioner.",
+    "form": "Pulver",
+    "collagen_mg": 10000,
+    "collagen_type": "Typ I",
+    "source": "Bovint (nöt), råvara från Frankrike",
+    "made_in": "Okänt (utvecklad i Sverige)",
+    "vitamin_c": false,
+    "hyaluronic": false,
+    "biotin_zinc": false,
+    "sugar_free": true,
+    "price": 279,
+    "days": 50,
+    "price_per_day": 5.58,
+    "mg_per_kr": 1792,
+    "dose_desc": "2 till 4 teskedar (5 till 10 g) i valfri dryck",
+    "actives": "Inga, 100% kollagenpeptider",
+    "sweetening": "Ingen (naturell)",
+    "store": "elexirpharma.se",
+    "store_note": "269 kr på Apotea vid testtillfället",
+    "buy_url": "https://elexirpharma.se/products/kollagen-peptan",
+    "scores": {
+      "dose": 9,
+      "uptake": 8,
+      "formula": 2,
+      "routine": 7,
+      "purity": 10,
+      "price": 10
+    },
+    "summary": "Ett rent kollagenpulver med väldokumenterad råvara (Peptan, 2 000 dalton) och ingenting annat. Billigast per gram i testet. Du får själv stå för vitamin C, mätning och blandning.",
+    "pros": [
+      "Upp till 10 000 mg kollagen per dag för 5,58 kr, flest milligram per krona i testet",
+      "Peptan-kollagen med angiven molekylvikt 2 000 dalton och full aminosyraprofil på etiketten",
+      "Inga tillsatser, inga sötningsmedel, ingen smak: går i kaffe, gröt och smoothie",
+      "Tillverkaren anger uttryckligen att den passar gravida och ammande"
+    ],
+    "cons": [
+      "Inget vitamin C, inga vitaminer eller hyaluronsyra: bara råvaran",
+      "Dosen mäts i teskedar, vilket ger stor variation mellan dagar",
+      "Tillverkningsland anges inte, bara att råvaran kommer från Frankrike",
+      "Inga certifieringar enligt tillverkarens egen faktaruta"
+    ],
+    "review_html": "<h4>Dosen och formulan</h4><p>Elexir säljer råvaran och inget annat: Peptan hydrolyserat bovint kollagen typ I, en av de mest studerade kollagenpeptiderna. Rekommenderad dos är 5 till 10 g, och etiketten redovisar aminosyraprofilen för båda nivåerna, vilket ingen annan i testet gör. Här finns inget vitamin C, så den som vill ha C-vitaminets bidrag till kollagenbildningen får ta det separat.</p><h4>Så är den att ta</h4><p>Pulvret är smaklöst och löser sig i kall och varm dryck. Dosen mäts i teskedar, så räkna med att den varierar en del från dag till dag. Påsen på 500 g räcker 50 dagar vid 10 g.</p><h4>Priset</h4><p>279 kr hos tillverkaren, 269 kr på Apotea när vi kontrollerade. Vid 10 g per dag är det 5,58 kr per dag och nästan 1 800 mg kollagen per krona. Ingen annan produkt i testet kommer i närheten.</p>",
+    "fit": "Passar dig som vet vad du vill ha, redan tar vitamin C eller äter frukt och grönt, och vill betala så lite som möjligt per gram kollagen.",
+    "faq": [
+      [
+        "Vilken dos ska jag räkna med?",
+        "Tillverkaren anger 5 till 10 g per dag. Vi har räknat på 10 g för att matcha de andra produkternas dosnivå; då räcker påsen 50 dagar."
+      ],
+      [
+        "Är den marin?",
+        "Nej, Peptan är bovint kollagen typ I."
+      ],
+      [
+        "Innehåller den något sötningsmedel?",
+        "Nej, produkten är naturell och innehåller bara kollagenpeptider."
       ]
     ]
   },
@@ -230,7 +230,7 @@
       "dose": 9,
       "uptake": 7,
       "formula": 2,
-      "routine": 6,
+      "routine": 7,
       "purity": 8,
       "price": 9
     },
