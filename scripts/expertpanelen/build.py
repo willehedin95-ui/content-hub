@@ -5,6 +5,7 @@ import json, html, os, re
 from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+GCLID = open(os.path.join(HERE, "gclid-tags.html")).read()  # Echelon/Viktor cross-domain GCLID scripts, verbatim
 P = json.load(open(os.path.join(HERE, "products.json")))
 S = json.load(open(os.path.join(HERE, "site.json")))
 
@@ -363,6 +364,7 @@ def build():
   document.querySelectorAll('.table-wrap').forEach(function(w){{function u(){{w.classList.toggle('can-scroll',w.scrollWidth>w.clientWidth+4);}}u();window.addEventListener('resize',u);}});
 }})();
 </script>
+{GCLID}
 </body>
 </html>'''
     out = os.path.join(HERE, "kollagen-bast-i-test.html")

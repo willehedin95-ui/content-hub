@@ -3,6 +3,7 @@
 import json, html, os
 from datetime import date
 HERE = os.path.dirname(os.path.abspath(__file__))
+GCLID = open(os.path.join(HERE, "gclid-tags.html")).read()  # Echelon/Viktor cross-domain GCLID scripts, verbatim
 S = json.load(open(os.path.join(HERE, "site.json")))
 P = json.load(open(os.path.join(HERE, "products.json")))
 CSS = open(os.path.join(HERE, "style.css")).read()
@@ -99,6 +100,7 @@ body{{padding-bottom:0}}
 <script>
 (function(){{var t=document.querySelector('.nav-toggle'),n=document.getElementById('sitenav');if(t&&n){{t.addEventListener('click',function(){{var o=n.classList.toggle('is-open');t.setAttribute('aria-expanded',o?'true':'false');}});}}}})();
 </script>
+{GCLID}
 </body>
 </html>'''
 

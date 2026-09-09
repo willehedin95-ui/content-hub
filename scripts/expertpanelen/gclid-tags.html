@@ -1,0 +1,114 @@
+<!-- GCLID Listener and Cookie creation tag -->
+<script>
+  (function() {
+    // Function to get URL parameter
+    function getUrlParameter(name) {
+      try {
+        name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+        var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+        var results = regex.exec(location.search);
+        return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+      } catch (error) {
+        console.error('Error in getUrlParameter:', error);
+        return '';
+      }
+    }
+    // Function to set a <session cookie available across all subdomains
+    function setSessionCookie(name, value) {
+      try {
+        var domain = window.location.hostname.split('.').slice(-2).join('.');
+        document.cookie = name + "=" + value + ";path=/;domain=." + domain + ";SameSite=Strict";
+      } catch (error) {
+        console.error('Error in setSessionCookie:', error);
+      }
+    }
+    try {
+      // Get the 'gclid' parameter from the URL
+      var gclid = getUrlParameter('gclid');
+
+      // If 'gclid' exists, store it in a session cookie
+      if (gclid) {
+        setSessionCookie('gclid', gclid);
+      }
+    } catch (error) {
+      console.error('Error in main function:', error);
+    }
+  })();
+</script>
+<!-- GCLID URL decoration tag -->
+<script>
+try {
+    (function() {
+        var gclidCookieName = 'gclid';
+
+        function getCookie(name) {
+            var value = "; " + document.cookie;
+            var parts = value.split("; " + name + "=");
+            if (parts.length == 2) return parts.pop().split(";").shift();
+            return null;
+        }
+
+        var gclidValue = getCookie(gclidCookieName);
+
+        if (!gclidValue) {
+            return;
+        }
+
+        function addGclidToUrl(url) {
+            try {
+                var urlObj = new URL(url);
+                if (isTargetUrl(urlObj.hostname)) {
+                    if (!urlObj.searchParams.has('gclid')) {
+                        urlObj.searchParams.set('gclid', gclidValue);
+                    }
+                }
+                return urlObj.toString();
+            } catch (e) {
+                return url;
+            }
+        }
+
+        function isTargetUrl(hostname) {
+            var targetDomains = [
+                "shopenvana.com", "www.shopenvana.com"
+
+            ];            return targetDomains.includes(hostname);
+        }
+
+        function modifyLinks() {
+            var links = document.getElementsByTagName('a');
+
+            for (var i = 0; i < links.length; i++) {
+                var urlObj = new URL(links[i].href, window.location.href);
+                if (isTargetUrl(urlObj.hostname)) {
+                    links[i].href = addGclidToUrl(links[i].href);
+                }
+            }
+        }
+
+        modifyLinks();
+
+        document.body.addEventListener('click', function(event) {
+            var target = event.target.closest('a');
+            if (target) {
+                var urlObj = new URL(target.href, window.location.href);
+                if (isTargetUrl(urlObj.hostname)) {
+                    target.href = addGclidToUrl(target.href);
+                }
+            }
+        }, false);
+
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'childList') {
+                    modifyLinks();
+                }
+            });
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+    })();
+} catch (e) {
+    // Silently catch any errors
+}
+</script>

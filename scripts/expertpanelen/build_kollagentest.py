@@ -6,6 +6,7 @@
 import re, json, os
 from bs4 import BeautifulSoup
 HERE = os.path.dirname(os.path.abspath(__file__))
+GCLID = open(os.path.join(HERE, "gclid-tags.html")).read()  # Echelon/Viktor cross-domain GCLID scripts, verbatim
 S = json.load(open(os.path.join(HERE, "site.json")))
 src = open(os.path.join(HERE, "kollagentest-source.html")).read()
 clone_css = open(os.path.join(HERE, "kollagentest-source.css")).read()
@@ -141,6 +142,7 @@ page = f'''<!DOCTYPE html>
 <script>
 (function(){{var t=document.querySelector('.nav-toggle'),n=document.getElementById('epnav');if(t&&n){{t.addEventListener('click',function(){{var o=n.classList.toggle('is-open');t.setAttribute('aria-expanded',o?'true':'false');}});}}}})();
 </script>
+{GCLID}
 </body>
 </html>'''
 open(os.path.join(HERE, "kollagentest.html"), "w").write(page)
