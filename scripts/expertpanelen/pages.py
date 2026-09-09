@@ -17,6 +17,15 @@ def layout(path, title, desc, body, ld=None, robots="index,follow"):
     return f'''<!DOCTYPE html>
 <html lang="sv">
 <head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18353256051"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+
+  gtag('config', 'AW-18353256051');
+</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{esc(title)}</title>
@@ -197,8 +206,17 @@ pages["/rattelser/"] = layout("/rattelser/", "Rättelser | Expertpanelen", "Logg
   <p>Hittar du ett fel? <a href="/kontakt/">Kontakta redaktionen</a>.</p>
 </section>''')
 
+pages["/404.html"] = layout("/404.html", "Sidan finns inte | Expertpanelen", "Sidan du sökte finns inte.", '''
+<section class="page">
+  <h1>Sidan finns inte</h1>
+  <p class="intro">Adressen är felstavad eller sidan har flyttats. Gå till <a href="/">startsidan</a> eller <a href="/bast-i-test/">alla tester</a>.</p>
+</section>''', robots="noindex")
+
 out = os.path.join(HERE, "public")
 for path, htmltext in pages.items():
+    if path.endswith(".html"):
+        open(os.path.join(out, path.strip("/")), "w").write(htmltext)
+        print("wrote", path); continue
     d = os.path.join(out, path.strip("/")) if path != "/" else out
     os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "index.html"), "w").write(htmltext)
