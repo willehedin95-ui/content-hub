@@ -25,6 +25,11 @@ for a in main.find_all("a", href=True):
 for tag in main.find_all(["img", "source"]):
     for attr in ("src", "srcset", "srcSet"):
         if tag.has_attr(attr) and tag[attr].startswith("//"): tag[attr] = "https:" + tag[attr]
+# Dynamic "Uppdaterad" date: always yesterday, set client-side in Swedish.
+date_box = root.find(attrs={"data-rid": "9b021bca-6b9d-444d-93a9-86dc52274aeb"})
+date_div = date_box.find("div")
+date_div["id"] = "ep-updated"
+date_div.string = ""
 content = str(main)
 sticky = f'''<div id="esticky" class="esticky dold" aria-hidden="true">
   <a href="{BUY}" class="esticky__btn">Gå till testvinnaren</a>
@@ -116,6 +121,9 @@ page = f'''<!DOCTYPE html>
 </footer>
 {scripts[0]}
 {scripts[1]}
+<script>
+(function(){{var e=document.getElementById('ep-updated');if(!e)return;var d=new Date();d.setDate(d.getDate()-1);var m=['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];e.textContent=d.getDate()+' '+m[d.getMonth()]+' '+d.getFullYear();}})();
+</script>
 <script>
 (function(){{var t=document.querySelector('.nav-toggle'),n=document.getElementById('epnav');if(t&&n){{t.addEventListener('click',function(){{var o=n.classList.toggle('is-open');t.setAttribute('aria-expanded',o?'true':'false');}});}}}})();
 </script>
