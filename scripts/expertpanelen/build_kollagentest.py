@@ -82,6 +82,11 @@ page = f'''<!DOCTYPE html>
 <meta name="description" content="{desc}">
 <link rel="canonical" href="{S["base_url"]}/kollagentest/">
 <meta name="robots" content="noindex,follow">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#153f3b">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
 <style id="snippet-styles" type="text/css">{snippet_css}</style>
