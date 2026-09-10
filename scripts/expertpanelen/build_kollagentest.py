@@ -31,6 +31,9 @@ date_box = root.find(attrs={"data-rid": "9b021bca-6b9d-444d-93a9-86dc52274aeb"})
 date_div = date_box.find("div")
 date_div["id"] = "ep-updated"
 date_div.string = ""
+# Discount claim: the store gives 31/35/36% with subscription (649 -> 449/424/416), never 55%.
+for el in root.find_all(string=lambda t: t and "55% rabatt" in t):
+    el.replace_with(el.replace("Just nu 55% rabatt hos Envana", "Just nu upp till 36% rabatt hos Envana"))
 content = str(main)
 sticky = f'''<div id="esticky" class="esticky dold" aria-hidden="true">
   <a href="{BUY}" class="esticky__btn">Gå till testvinnaren</a>
