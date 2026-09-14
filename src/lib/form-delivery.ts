@@ -25,6 +25,10 @@ import type {
 } from "@/types/forms";
 
 const MAX_ATTEMPTS = 8;
+/** How long one delivery attempt may hold a row before the sweep may retry it.
+ *  Comfortably longer than a helpdesk API call, short enough that a crashed
+ *  attempt self-heals within one cron pass. */
+const DELIVERY_LEASE_MINUTES = 5;
 
 /** Exponential backoff: 15m, 30m, 1h, 2h, 4h, 6h (capped). */
 function nextRetryDelayMinutes(attempts: number): number {
@@ -197,6 +201,28 @@ export async function deliverSubmission(submissionId: string): Promise<{ ok: boo
       .from("form_submissions")
       .update({ delivery_status: "skipped", last_error: null })
       .eq("id", submissionId);
+    return { ok: true };
+  }
+
+  // Atomic claim. The status check above is a read, so two concurrent callers -
+  // this submission's own after() and ANOTHER request's sweepPendingDeliveries()
+  // - could both pass it and both create a ticket. That is not theoretical: the
+  // SB seed's E2E run on 2026-09-14 produced 5 tickets for 3 submissions.
+  // A conditional UPDATE is applied atomically per row by Postgres, so exactly
+  // one caller wins. The lease rides on next_retry_at, which the sweep already
+  // honours, so no schema change is needed. A crash mid-delivery just lets the
+  // lease lapse and the next sweep retries.
+  const now = new Date();
+  const leaseUntil = new Date(now.getTime() + DELIVERY_LEASE_MINUTES * 60 * 1000).toISOString();
+  const { data: claimed } = await supabase
+    .from("form_submissions")
+    .update({ next_retry_at: leaseUntil })
+    .eq("id", submissionId)
+    .eq("delivery_status", "pending")
+    .or(`next_retry_at.is.null,next_retry_at.lte.${now.toISOString()}`)
+    .select("id");
+  if (!claimed || claimed.length === 0) {
+    // Another caller holds this row (or it just finished). Not an error.
     return { ok: true };
   }
 
