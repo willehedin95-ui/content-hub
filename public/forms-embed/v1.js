@@ -83,7 +83,20 @@
     ".chf-ending{text-align:left;padding:8px 0}" +
     ".chf-ending h2{font-size:1.75em;font-weight:700;margin:0 0 14px}" +
     ".chf-hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden}" +
-    ".chf-loading{color:#777;padding:14px 0}";
+    ".chf-loading{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}" +
+    // Skeleton: mirrors the real field rhythm (label + control, 18px apart) so
+    // the form does not jump when it swaps in.
+    ".chf-sk{background:#ececec;position:relative;overflow:hidden}" +
+    ".chf-sk::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;" +
+      "transform:translateX(-100%);background:linear-gradient(90deg,rgba(255,255,255,0)," +
+      "rgba(255,255,255,.7),rgba(255,255,255,0));animation:chf-shimmer 1.4s ease-in-out infinite}" +
+    "@keyframes chf-shimmer{100%{transform:translateX(100%)}}" +
+    "@media (prefers-reduced-motion:reduce){.chf-sk::after{animation:none}}" +
+    ".chf-sk-field{margin:0 0 18px}" +
+    ".chf-sk-label{height:13px;border-radius:4px;margin-bottom:8px}" +
+    ".chf-sk-input{height:42px;border-radius:8px}" +
+    ".chf-sk-info{height:76px;border-radius:10px;margin:0 0 18px}" +
+    ".chf-sk-btn{height:50px;border-radius:10px;margin-top:26px}";
 
   var styleEl = document.createElement("style");
   styleEl.textContent = CSS;
@@ -455,7 +468,38 @@
   }
 
   // -------------------------------------------------------------------- init
-  container.appendChild(elText("div", "chf-loading", "Laddar formulär..."));
+  /** Placeholder shown while the config request is in flight. Mirrors the real
+   *  layout (label + control pairs, one info block) so the swap is calm rather
+   *  than a jump, and keeps the container from collapsing to zero height. */
+  function renderSkeleton() {
+    var wrap = elText("div", "chf-skeleton");
+    wrap.setAttribute("aria-hidden", "true");
+    function bar(cls, widthPct) {
+      var b = elText("div", "chf-sk " + cls);
+      if (widthPct) b.style.width = widthPct;
+      return b;
+    }
+    function field(labelWidth) {
+      var f = elText("div", "chf-sk-field");
+      f.appendChild(bar("chf-sk-label", labelWidth));
+      f.appendChild(bar("chf-sk-input"));
+      return f;
+    }
+    wrap.appendChild(field("42%"));
+    wrap.appendChild(bar("chf-sk-info"));
+    wrap.appendChild(field("30%"));
+    wrap.appendChild(field("36%"));
+    wrap.appendChild(field("26%"));
+    wrap.appendChild(bar("chf-sk-btn"));
+    container.appendChild(wrap);
+    // Screen readers get the status; the bars themselves are decorative.
+    var status = elText("div", "chf-loading", "Laddar formulär...");
+    status.setAttribute("role", "status");
+    container.appendChild(status);
+    container.setAttribute("aria-busy", "true");
+  }
+
+  renderSkeleton();
   fetch(HUB + "/api/forms/config?workspace=" + encodeURIComponent(WORKSPACE) + "&slug=" + encodeURIComponent(FORM_SLUG) + "&market=" + encodeURIComponent(MARKET))
     .then(function (r) {
       if (!r.ok) throw new Error("config " + r.status);
@@ -463,9 +507,11 @@
     })
     .then(function (data) {
       state.config = data.form.config;
+      container.removeAttribute("aria-busy");
       render();
     })
     .catch(function () {
+      container.removeAttribute("aria-busy");
       container.innerHTML = "";
       var err = elText("div", "chf-toperror", "Formuläret kunde inte laddas just nu. Ladda om sidan eller försök igen om en stund.");
       err.style.display = "block";
