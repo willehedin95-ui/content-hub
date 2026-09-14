@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
-import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceId, getWorkspaceSlug } from "@/lib/workspace";
 
 export async function GET(req: NextRequest) {
   const workspaceId = await getWorkspaceId();
@@ -31,5 +31,12 @@ export async function GET(req: NextRequest) {
     .eq("workspace_id", workspaceId)
     .order("slug");
 
-  return NextResponse.json({ submissions: submissions ?? [], forms: forms ?? [] });
+  // The slug rides along so the UI can build /f/<workspace>/... links and embed
+  // codes for the workspace actually being viewed. It used to be hardcoded in
+  // the client, which broke the moment a second workspace got forms.
+  return NextResponse.json({
+    submissions: submissions ?? [],
+    forms: forms ?? [],
+    workspaceSlug: await getWorkspaceSlug(),
+  });
 }

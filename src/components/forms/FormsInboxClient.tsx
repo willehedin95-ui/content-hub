@@ -98,6 +98,7 @@ function StatusBadge({ s }: { s: SubmissionListItem }) {
 export default function FormsInboxClient() {
   const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
   const [forms, setForms] = useState<FormListItem[]>([]);
+  const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [formFilter, setFormFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -112,9 +113,14 @@ export default function FormsInboxClient() {
       const params = statusFilter ? `?status=${statusFilter}` : "";
       const res = await fetch(`/api/forms/submissions${params}`);
       if (!res.ok) return;
-      const data = (await res.json()) as { submissions: SubmissionListItem[]; forms: FormListItem[] };
+      const data = (await res.json()) as {
+        submissions: SubmissionListItem[];
+        forms: FormListItem[];
+        workspaceSlug?: string;
+      };
       setSubmissions(data.submissions);
       setForms(data.forms);
+      if (data.workspaceSlug) setWorkspaceSlug(data.workspaceSlug);
     } finally {
       setLoading(false);
     }
@@ -180,7 +186,10 @@ export default function FormsInboxClient() {
 
   // Hub-origin för embed-koder/länkar (samma origin som sidan körs på)
   const hubOrigin = typeof window !== "undefined" ? window.location.origin : "";
-  const workspaceSlug = "hydro13"; // TODO: exponera aktiv workspace-slug via API när fler workspaces får formulär
+  // Comes from the API so it follows the workspace being viewed. Hardcoding it
+  // meant every link and embed code said "hydro13" - so SwedishBalance's forms
+  // linked to /f/hydro13/... (404) and the copied embed pointed at the wrong
+  // workspace entirely.
 
   const embedCode = (formSlug: string, market: string) =>
     `<div id="ch-form-${formSlug}"></div>\n<script src="${hubOrigin}/forms-embed/v1.js" data-workspace="${workspaceSlug}" data-form="${formSlug}" data-market="${market}" data-target="#ch-form-${formSlug}" defer></script>`;
