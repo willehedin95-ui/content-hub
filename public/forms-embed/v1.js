@@ -241,6 +241,7 @@
     });
 
     container.appendChild(form);
+    syncSubmitVisibility();
   }
 
   function buildInput(f) {
@@ -328,6 +329,27 @@
       var node = nodes[i];
       var f = findField(node.getAttribute("data-key"));
       if (f && f.showWhen) node.style.display = conditionMet(f.showWhen) ? "" : "none";
+    }
+    syncSubmitVisibility();
+  }
+
+  /** A step whose only visible content is info blocks has nothing to submit.
+   *  Fillout hid the button for exactly those branches - kontaktformulärets
+   *  "retur" och "prenumeration" bara pekar vidare till en annan sida. Without
+   *  this the customer can post a ticket carrying nothing but the topic and no
+   *  e-mail address, which then fails delivery and fires a critical alert. */
+  function syncSubmitVisibility() {
+    var steps = container.querySelectorAll(".chf-step");
+    for (var i = 0; i < steps.length; i++) {
+      var btn = steps[i].querySelector(".chf-submit");
+      if (!btn) continue;
+      var wraps = steps[i].querySelectorAll(".chf-field");
+      var interactive = 0;
+      for (var j = 0; j < wraps.length; j++) {
+        if (wraps[j].style.display === "none") continue;
+        if (wraps[j].querySelector("input,textarea,select")) interactive++;
+      }
+      btn.style.display = interactive > 0 ? "" : "none";
     }
   }
 
