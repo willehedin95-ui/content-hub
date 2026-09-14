@@ -119,6 +119,34 @@
     e.innerHTML = trustedHtml;
     return e;
   }
+  /** `{{key}}` in an info block is replaced by that field's current answer.
+   *  The ångerrätt confirmation step needs it - the customer must see WHICH
+   *  order they are withdrawing from before pressing the statutory confirm
+   *  button. Values come from customer input, so they are escaped before they
+   *  reach innerHTML. An unanswered field renders as an empty string. */
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+  function interpolate(html) {
+    return html.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, function (_m, key) {
+      var v = state.values[key];
+      if (v === undefined || v === null) return "";
+      var f = findField(key);
+      // select/radio: show the option label, not the machine value
+      if (f && f.options) {
+        for (var i = 0; i < f.options.length; i++) {
+          if (f.options[i].value === v) return escapeHtml(f.options[i].label);
+        }
+      }
+      return escapeHtml(v);
+    });
+  }
+
   function isEmail(s) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
   }
@@ -179,7 +207,8 @@
       step.fields.forEach(function (f) {
         var wrap;
         if (f.kind === "info") {
-          wrap = elHtml("div", "chf-info", f.html);
+          wrap = elHtml("div", "chf-info", interpolate(f.html));
+          if (/\{\{/.test(f.html)) wrap.setAttribute("data-tpl", "1");
         } else {
           wrap = elText("div", "chf-field");
           if (f.label && f.kind !== "checkbox") {
@@ -329,6 +358,11 @@
       var node = nodes[i];
       var f = findField(node.getAttribute("data-key"));
       if (f && f.showWhen) node.style.display = conditionMet(f.showWhen) ? "" : "none";
+    }
+    var tpls = container.querySelectorAll('[data-tpl="1"]');
+    for (var t = 0; t < tpls.length; t++) {
+      var tf = findField(tpls[t].getAttribute("data-key"));
+      if (tf && tf.html) tpls[t].innerHTML = interpolate(tf.html);
     }
     syncSubmitVisibility();
   }
