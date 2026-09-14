@@ -91,6 +91,8 @@ export async function GET(req: NextRequest) {
     videoJobsFailed: 0,
     formDeliveriesRetried: 0,
     formSyntheticTest: null as string | null,
+    formChainProblems: 0,
+    formSilenceProblems: 0,
     watchdogAlerts: [] as string[],
     watchdogNeverRun: [] as string[],
   };
@@ -343,6 +345,67 @@ export async function GET(req: NextRequest) {
       }
     } catch (formErr) {
       console.error("[Reconcile] Form delivery sweep failed (non-fatal):", formErr);
+    }
+
+    // --- 9.6 Forms health: is the PUBLIC chain intact, and is anything silent? ---
+    // The sweep above only sees submissions that already reached the DB. If the
+    // embed vanishes from a Shopify page or CORS breaks, nothing arrives and
+    // nothing errors - the first signal would be an unanswered customer. The
+    // chain check catches that within one pass; the silence watch is a slow
+    // backstop for breaks it cannot see (e.g. submit failing in the browser).
+    try {
+      const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+      const { checkFormChain, checkFormSilence } = await import("@/lib/forms-health");
+
+      const chainProblems = await checkFormChain();
+      summary.formChainProblems = chainProblems.length;
+      if (chainProblems.length > 0) {
+        const dedupeCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+        const { data: recent } = await db
+          .from("cron_runs")
+          .select("id")
+          .eq("cron_name", "forms-health:chain")
+          .gte("started_at", dedupeCutoff)
+          .limit(1)
+          .maybeSingle();
+        if (!recent) {
+          await db.from("cron_runs").insert({
+            cron_name: "forms-health:chain",
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            result_summary: chainProblems.map((x) => `${x.label}: ${x.detail}`).join(" | ").slice(0, 500),
+          });
+          if (chatId) {
+            await sendTelegramNotification(
+              chatId,
+              `🚨 <b>Formulär når inte kunderna</b>\n\n` +
+                chainProblems.map((x) => `<b>${escapeHtml(x.label)}</b>: ${escapeHtml(x.detail)}`).join("\n") +
+                `\n\nInga ärenden kan komma in från de sidorna förrän detta är löst.`,
+              { critical: true }
+            );
+          }
+        }
+      }
+
+      // Silence watch once a day, on the same 07:00-07:30 UTC pass as the
+      // synthetic test - the thresholds are in days, so checking more often
+      // would only re-alert on the same quiet period.
+      const nowH = new Date();
+      if (nowH.getUTCHours() === 7 && nowH.getUTCMinutes() < 30) {
+        const silent = await checkFormSilence();
+        summary.formSilenceProblems = silent.length;
+        if (silent.length > 0 && chatId) {
+          await sendTelegramNotification(
+            chatId,
+            `🔇 <b>Formulär misstänkt tyst</b>\n\n` +
+              silent.map((x) => `<b>${escapeHtml(x.label)}</b>: ${escapeHtml(x.detail)}`).join("\n") +
+              `\n\nKedjekontrollen är grön, så sidan och configen funkar - felet sitter i så fall i ifyllandet.`,
+            { critical: true }
+          );
+        }
+      }
+    } catch (healthErr) {
+      console.error("[Reconcile] Forms health check failed (non-fatal):", healthErr);
     }
 
     // --- 10. Dead-man watchdog for scheduled crons ---
