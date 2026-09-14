@@ -333,23 +333,28 @@
     syncSubmitVisibility();
   }
 
-  /** A step whose only visible content is info blocks has nothing to submit.
-   *  Fillout hid the button for exactly those branches - kontaktformulärets
-   *  "retur" och "prenumeration" bara pekar vidare till en annan sida. Without
-   *  this the customer can post a ticket carrying nothing but the topic and no
-   *  e-mail address, which then fails delivery and fires a critical alert. */
+  /** Hide the submit button while the form cannot produce a deliverable ticket.
+   *  The invariant is the e-mail address: delivery marks a submission failed
+   *  (and fires a critical alert) when there is none. Kontaktformulärets ämnen
+   *  "retur" och "prenumeration" hide every contact field and only point
+   *  elsewhere - Fillout hid the button there too, and without this a customer
+   *  can post a ticket carrying nothing but the topic.
+   *
+   *  Counting visible fields does NOT work: the select that drives the
+   *  condition is itself a visible field. Evaluated across the whole form, not
+   *  per step, since a multi-step form keeps e-mail on an earlier step than
+   *  its submit button. */
   function syncSubmitVisibility() {
-    var steps = container.querySelectorAll(".chf-step");
-    for (var i = 0; i < steps.length; i++) {
-      var btn = steps[i].querySelector(".chf-submit");
-      if (!btn) continue;
-      var wraps = steps[i].querySelectorAll(".chf-field");
-      var interactive = 0;
-      for (var j = 0; j < wraps.length; j++) {
-        if (wraps[j].style.display === "none") continue;
-        if (wraps[j].querySelector("input,textarea,select")) interactive++;
-      }
-      btn.style.display = interactive > 0 ? "" : "none";
+    var fields = state.config.fields || [];
+    var emailField = null;
+    for (var i = 0; i < fields.length; i++) {
+      if (fields[i].role === "email") { emailField = fields[i]; break; }
+    }
+    // No e-mail field at all: leave the button alone and let the server judge.
+    var deliverable = !emailField || !emailField.showWhen || conditionMet(emailField.showWhen);
+    var btns = container.querySelectorAll(".chf-submit");
+    for (var j = 0; j < btns.length; j++) {
+      if (btns[j].type === "submit") btns[j].style.display = deliverable ? "" : "none";
     }
   }
 
