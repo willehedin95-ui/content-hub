@@ -73,11 +73,35 @@ export interface FormTicketConfig {
   tags?: string[];
 }
 
+/** Utseendeläge. `"app"` renderar formuläret som en fullskärms onboarding i
+ *  stället för ett webbformulär i en vit ruta: brandfärgad bakgrund kant till
+ *  kant, rund tillbakaknapp uppe till vänster, tunn progressbar under headern
+ *  och en CTA i brandfärgen. Anatomin är mätt ur quiz-runtimen
+ *  (runtime/quiz-runtime/src/renderer.tsx) - samma funnel som doginwork-quizet.
+ *
+ *  Sätts per formulär. Kontakt och ångerrätt ska förbli formulär och lämnas
+ *  utan `theme`; progressbild och samtycke är en resa och kör "app".
+ *  Färgerna är valfria - utan dem används Envanas tokens som default. */
+export interface FormTheme {
+  mode?: "app";
+  /** Primärfärg: CTA, progressbar, aktiva ramar. Envana brand/500. */
+  brand?: string;
+  /** Sidbakgrund kant till kant. Envana bg/base. */
+  bg?: string;
+  /** Kort och fält som ligger PÅ bakgrunden. */
+  surface?: string;
+  /** Rubriker. Envana text/heading. */
+  text?: string;
+  /** Brödtext och hjälptext. Envana text/muted. */
+  muted?: string;
+}
+
 export interface FormConfig {
   title?: string;
   /** HTML intro shown above the fields */
   intro?: string;
   submitLabel?: string;
+  theme?: FormTheme;
   fields: FormField[];
   endings: {
     success: FormEnding;

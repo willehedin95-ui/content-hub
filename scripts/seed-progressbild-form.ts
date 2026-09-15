@@ -37,6 +37,17 @@ const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 const progressbild: FormConfig = {
   submitLabel: "Ladda upp bilden",
   ticket: { kindLabel: "Progressbild", priority: 1 },
+  // Fullskärms onboarding i stället för formulär i en vit ruta. Färgerna är
+  // Envanas tokens ur designsystemet i Figma (brand/500, bg/base,
+  // text/heading, text/muted), inte valda på känsla.
+  theme: {
+    mode: "app",
+    brand: "#f0573d",
+    bg: "#fefaf8",
+    surface: "#ffffff",
+    text: "#320d01",
+    muted: "#7e6458",
+  },
   fields: [
     // Bars av lanken: ?steg=1|2|3. Utan parameter antas forsta bilden.
     { kind: "hidden", key: "steg", label: "Steg", fromParam: "steg", fallback: "1" },
@@ -50,7 +61,7 @@ const progressbild: FormConfig = {
     {
       kind: "info",
       key: "art_epost",
-      html: `<div class="chf-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5z"/><path d="M3.4 7.2 12 13l8.6-5.8"/></svg></div><h2 class="chf-slide-title">Vi börjar med din e-post</h2>
+      html: `<div class="chf-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5z"/><path d="M3.4 7.2 12 13l8.6-5.8"/></svg></div><h2 class="chf-slide-title">Vi börjar med din e-post</h2>
 <p class="chf-slide-sub">Vi kopplar dina bilder till dig och påminner när det är dags för nästa.</p>`,
     },
     {
@@ -115,7 +126,9 @@ const progressbild: FormConfig = {
     {
       kind: "info",
       key: "integritet",
-      html: `<p style="margin:0;text-align:center;font-size:.88em;color:#666">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
+      // Ingen hardkodad gra: temats muted-variabel, annars driver raden ifran
+      // resten av paletten sa fort ett formular byter farger.
+      html: `<p style="margin:0;text-align:center;font-size:14px;color:var(--chf-muted,#666)">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
     },
   ],
   endings: {

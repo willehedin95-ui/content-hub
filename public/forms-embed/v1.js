@@ -48,6 +48,7 @@
     files: {}, // key -> File[]
     submitting: false,
     currentStep: 0, // pagebreak-delade formulär (t.ex. tvåstegs ångerrätt)
+    app: false, // config.theme.mode === "app": fullskärms onboarding-skal
   };
 
   // ------------------------------------------------------------------ styles
@@ -145,8 +146,178 @@
     ".chf-sk-info{height:76px;border-radius:10px;margin:0 0 18px}" +
     ".chf-sk-btn{height:50px;border-radius:10px;margin-top:26px}";
 
+  // ----------------------------------------------- app-onboarding-laget
+  // Slas pa av config.theme.mode === "app" och galler BARA under .chf-app, sa
+  // kontakt- och angerrattsformularen ar helt oberorda. De ar formular. Det
+  // har ar en resa och ska se ut som en.
+  //
+  // Anatomin ar MATT ur quiz-runtimen (runtime/quiz-runtime/src/renderer.tsx),
+  // samma funnel som doginwork-quizet, inte en egen tolkning av "app-kansla":
+  //   rund tillbakaknapp 36px pa rgba(0,0,0,.04), header-padding 14/20,
+  //   progressbar 4px kant till kant, innehall max 640 med 24/20/64,
+  //   rubrik 22/700 line-height 1.35, brodtext 16/1.6, CTA min-height 56 och
+  //   radius 12 med active:scale(.98), valkort radius 16 med 2px ram,
+  //   steg-in 0.28s opacity (ALDRIG transform - en transform pa steget skapar
+  //   containing block och sanker position:fixed hos barnen, samma fallgrop
+  //   som kommentaren i renderer.tsx varnar for).
+  //
+  // Paletten kommer fran Envanas designsystem i Figma, inte ur luften:
+  // brand/500 #f0573d, bg/base #fefaf8, text/heading #320d01, text/muted
+  // #7e6458. Varden gar att skriva over per formular via config.theme.
+  var APP_CSS =
+    // Full-bleed utan layoutandring: box-shadow + clip-path malar bakgrunden
+    // at bada hallen ut till skarmkanten medan elementet behaller sin bredd.
+    // 100vw + negativ marginal (quiz-runtimens teknik) ger horisontell scroll
+    // sa fort vardsidan har en synlig scrollbar, och embedden ligger i nagon
+    // annans sida dar jag inte rar over overflow.
+    ".chf-app{--chf-brand:#f0573d;--chf-bg:#fefaf8;--chf-surface:#fff;" +
+    "--chf-text:#320d01;--chf-muted:#7e6458;" +
+    "max-width:none;padding:0;background:var(--chf-bg);color:var(--chf-text);" +
+    "box-shadow:0 0 0 100vmax var(--chf-bg);clip-path:inset(0 -100vmax);" +
+    // Fyller skarmen sa vyn tar slut vid skarmkanten, inte mitt pa sidan.
+    // --chf-app-offset later vardsidan kompensera for sin egen header
+    // (Shopify-temat): sattes den till headerns hojd forsvinner scrollen.
+    "min-height:calc(100svh - var(--chf-app-offset,0px));" +
+    "display:flex;flex-direction:column}" +
+    "@supports not (height:100svh){.chf-app{min-height:calc(100vh - var(--chf-app-offset,0px))}}" +
+
+    // Header: rund tillbakaknapp. Ersatter den understrukna "Tillbaka"-lanken
+    // langst ner, som ar webbmonster - i en app sitter backen uppe till
+    // vanster och ar alltid pa samma stalle oavsett hur langt steget ar.
+    ".chf-app .chf-head{display:flex;align-items:center;padding:14px 20px;min-height:64px;" +
+    "width:100%;max-width:680px;margin:0 auto;box-sizing:border-box}" +
+    // Ett enstegsformular har varken tillbakaknapp eller stapel. Da ar headern
+    // 64 px tom yta som trycker ner rubriken utan att bara nagot.
+    ".chf-app.chf-bare .chf-head{min-height:0;padding:12px 20px 0}" +
+    ".chf-app .chf-headback{width:36px;height:36px;padding:0;border:0;border-radius:50%;" +
+    "background:rgba(0,0,0,.04);color:var(--chf-text);display:flex;align-items:center;" +
+    "justify-content:center;cursor:pointer;transition:background .15s,transform .15s}" +
+    ".chf-app .chf-headback:hover{background:rgba(0,0,0,.08)}" +
+    ".chf-app .chf-headback:active{transform:scale(.94)}" +
+    ".chf-app .chf-headback svg{width:18px;height:18px}" +
+    ".chf-app .chf-headback[hidden]{visibility:hidden}" +
+
+    // Progressbar kant till kant under headern. Den gamla satt inne i
+    // innehallet med texten "Steg 2 av 3" bredvid; en app raknar inte upp
+    // stegen for dig, den visar hur langt strecket har gatt.
+    ".chf-app .chf-track{height:4px;background:rgba(0,0,0,.06);overflow:hidden;flex:none}" +
+    ".chf-app .chf-fill{height:100%;background:var(--chf-brand);width:0;transition:width .3s ease}" +
+    ".chf-app .chf-track[hidden]{display:none}" +
+    ".chf-app .chf-steps{display:none}" +
+    ".chf-app .chf-back{display:none}" +
+
+    ".chf-app .chf-body{width:100%;max-width:640px;margin:0 auto;padding:24px 20px 40px;" +
+    "box-sizing:border-box;flex:1;display:flex;flex-direction:column}" +
+    ".chf-app .chf-form{flex:1;display:flex;flex-direction:column}" +
+
+    // Steget fyller resten av skarmen och CTA:n trycks till botten (margin-top
+    // auto pa knappen). Det ar det som gor att ett kort steg ser fardigt ut i
+    // stallet for att lamna en tom halva under sig.
+    ".chf-app .chf-step{flex:1;display:flex;flex-direction:column}" +
+    ".chf-app .chf-step.chf-in{animation:chf-step-in .28s ease-out both}" +
+    "@keyframes chf-step-in{from{opacity:0}to{opacity:1}}" +
+    "@media (prefers-reduced-motion:reduce){.chf-app .chf-step.chf-in{animation:none}}" +
+    ".chf-app .chf-step>.chf-submit{margin-top:auto}" +
+
+    ".chf-app .chf-slide-title{font-size:22px;font-weight:700;line-height:1.35;" +
+    "color:var(--chf-text);margin:0 0 6px}" +
+    ".chf-app .chf-slide-sub{font-size:16px;line-height:1.6;color:var(--chf-muted);margin:0 0 20px}" +
+    ".chf-app .chf-title{font-size:22px;font-weight:700;line-height:1.35;text-align:center;margin:0 0 6px}" +
+    ".chf-app .chf-info{font-size:16px;line-height:1.6;color:var(--chf-muted)}" +
+    ".chf-app .chf-info h2{color:var(--chf-text)}" +
+    // Bildblocket ar 40% av skarmhojden med golv 210 och tak 330 - talen ar
+    // SlideMetrics.artHeight ur Ember, matta dar och inte gissade har. Ett
+    // fast tal kan inte vara ratt pa bade en SE och en 17 Pro. Ikonen ar 52%
+    // av blocket: Ember kor 64%, men det galler en maskot med fylld kropp -
+    // en tunn linjeikon i den storleken laser som en uppforstorad ikon, inte
+    // som en illustration.
+    ".chf-app .chf-art{height:clamp(190px,34vh,300px);margin:0 0 4px}" +
+    // height:100%, inte en andel. Ikonerna ar 24x24-viewBoxar dar motivet
+    // sallan fyller mer an halva hojden (kuvertet gar fran y=6 till y=18), sa
+    // en svg satt till 52% ritade ett 85 px stort kuvert i ett 325 px block -
+    // blocket sag trasigt tomt ut och luften lastes som ett laddningsfel.
+    // Motivet far styra sin egen storlek, blocket satter taket.
+    ".chf-app .chf-art svg{color:var(--chf-brand);opacity:1;height:100%;max-height:none}" +
+    // Halv hojd for skarmar dar bilden INTE ar hjalten. En skarm med fyra
+    // valkort har redan sitt innehall; full bildhojd dar trycker ner valen
+    // under vecket och gor bilden till konkurrent i stallet for inramning.
+    // Quizets egna valskarmar har ingen bild alls - det har ar mellanlaget.
+    ".chf-app .chf-art.chf-art-sm{height:clamp(110px,18vh,160px)}" +
+
+    // 16px ar inte estetik: under 16px zoomar iOS Safari in hela sidan nar
+    // faltet far fokus, och da hoppar onboardingen ur sin layout.
+    ".chf-app .chf-input,.chf-app .chf-textarea,.chf-app .chf-select{" +
+    "background:var(--chf-surface);border:2px solid rgba(50,13,1,.12);border-radius:12px;" +
+    "padding:15px 16px;font-size:16px;color:var(--chf-text);transition:border-color .15s}" +
+    ".chf-app .chf-input::placeholder,.chf-app .chf-textarea::placeholder{color:rgba(126,100,88,.6)}" +
+    ".chf-app .chf-input:focus,.chf-app .chf-textarea:focus,.chf-app .chf-select:focus{" +
+    "outline:none;border-color:var(--chf-brand)}" +
+    ".chf-app .chf-label{font-size:15px;font-weight:600;color:var(--chf-text)}" +
+    ".chf-app .chf-help{color:var(--chf-muted);font-size:14px}" +
+
+    ".chf-app .chf-submit{background:var(--chf-brand);color:#fff;border-radius:12px;" +
+    "min-height:56px;padding:16px 24px;font-size:18px;font-weight:700;letter-spacing:.2px;" +
+    "box-shadow:0 8px 24px rgba(240,87,61,.22);transition:opacity .2s,transform .2s}" +
+    ".chf-app .chf-submit:hover{opacity:.92}" +
+    ".chf-app .chf-submit:active{transform:scale(.98)}" +
+    ".chf-app .chf-submit:disabled{opacity:1;box-shadow:none;" +
+    "background:color-mix(in srgb,var(--chf-brand) 45%,#fff)}" +
+
+    // Valkort: samma anatomi som quizets alternativ - 2px ram, radius 16,
+    // hela kortet ar tryckyta och det valda fylls i brandfargen. Samtyckets
+    // trappa (nej/anonymt/fornamn/fornamn+alder) ar fyra sadana kort.
+    ".chf-app .chf-radio-group{gap:10px}" +
+    ".chf-app .chf-radio,.chf-app .chf-check{background:var(--chf-surface);" +
+    "border:2px solid rgba(50,13,1,.10);border-radius:16px;padding:16px;font-size:16px;" +
+    "align-items:center;transition:border-color .2s,background .2s,transform .15s}" +
+    ".chf-app .chf-radio:hover{border-color:color-mix(in srgb,var(--chf-brand) 45%,#fff)}" +
+    ".chf-app .chf-radio:active{transform:scale(.99)}" +
+    ".chf-app .chf-radio:has(input:checked){border-color:var(--chf-brand);" +
+    "background:color-mix(in srgb,var(--chf-brand) 7%,#fff)}" +
+    ".chf-app .chf-radio input,.chf-app .chf-check input{width:20px;height:20px;margin:0;" +
+    "accent-color:var(--chf-brand);flex:none}" +
+    ".chf-app .chf-check{align-items:flex-start}" +
+    ".chf-app .chf-check input{margin-top:2px}" +
+
+    ".chf-app .chf-tips{gap:12px}" +
+    ".chf-app .chf-tip{background:var(--chf-surface);border:1px solid rgba(50,13,1,.08);" +
+    "border-radius:16px;padding:14px}" +
+    ".chf-app .chf-tip svg{color:var(--chf-brand);width:24px;height:24px}" +
+    ".chf-app .chf-tip b{color:var(--chf-text)}" +
+    ".chf-app .chf-tip span{color:var(--chf-muted)}" +
+    ".chf-app .chf-avoid{background:color-mix(in srgb,var(--chf-brand) 7%,#fff);" +
+    "border-radius:12px;color:var(--chf-muted);font-size:14px;padding:12px 14px}" +
+    ".chf-app .chf-avoid svg{color:var(--chf-brand)}" +
+
+    // Uppladdningszonen ar stegets bildblock och ska darfor vara stor och
+    // inbjudande, inte en tunn gra streckad ruta.
+    ".chf-app .chf-file{background:var(--chf-surface);border:2px dashed " +
+    "color-mix(in srgb,var(--chf-brand) 55%,#fff);border-radius:20px;min-height:230px;" +
+    "transition:border-color .2s,background .2s}" +
+    ".chf-app .chf-file:hover,.chf-app .chf-file.chf-file-over{border-color:var(--chf-brand);" +
+    "background:color-mix(in srgb,var(--chf-brand) 6%,#fff)}" +
+    ".chf-app .chf-file-icon{width:48px;height:48px;color:var(--chf-brand);opacity:1}" +
+    ".chf-app .chf-file-main{font-size:17px;color:var(--chf-text)}" +
+    ".chf-app .chf-file-sub{color:var(--chf-muted)}" +
+    ".chf-app .chf-file-preview img{width:76px;height:76px;border-radius:12px}" +
+    ".chf-app .chf-file-change{color:var(--chf-brand)}" +
+
+    // Avslutningen ar en egen skarm i en app, centrerad och lugn - inte ett
+    // vansterstallt kvitto dar formularet stod.
+    ".chf-app .chf-ending{text-align:center;display:flex;flex-direction:column;" +
+    "justify-content:center;flex:1;padding:24px 0 48px}" +
+    ".chf-app .chf-ending h2{font-size:26px;color:var(--chf-text);margin:0 0 12px}" +
+    ".chf-app .chf-ending p{color:var(--chf-muted);font-size:16px;line-height:1.6}" +
+    ".chf-app .chf-endmark{width:72px;height:72px;border-radius:50%;margin:0 auto 20px;" +
+    "background:color-mix(in srgb,var(--chf-brand) 12%,#fff);display:flex;align-items:center;" +
+    "justify-content:center;animation:chf-pop .32s cubic-bezier(.34,1.56,.64,1) both}" +
+    ".chf-app .chf-endmark svg{width:34px;height:34px;color:var(--chf-brand)}" +
+    "@keyframes chf-pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}" +
+    "@media (prefers-reduced-motion:reduce){.chf-app .chf-endmark{animation:none}}" +
+    ".chf-app .chf-toperror{border-radius:12px}";
+
   var styleEl = document.createElement("style");
-  styleEl.textContent = CSS;
+  styleEl.textContent = CSS + APP_CSS;
   document.head.appendChild(styleEl);
 
   // ------------------------------------------------------------------ utils
@@ -226,6 +397,9 @@
    *  ett tidigare steg en atervandsgrand: enda utvagen ar att ladda om och
    *  borja fran borjan. */
   function addBackButton(stepEl, stepIdx) {
+    // App-laget har backen som rund knapp i headern i stallet, alltid pa samma
+    // plats oavsett hur langt steget ar.
+    if (state.app) return;
     if (stepIdx === 0) return;
     var back = elText("button", "chf-back", "Tillbaka");
     back.type = "button";
@@ -236,6 +410,20 @@
   /** "Steg 2 av 3" - ett flerstegsformular ska visa var man ar och hur mycket
    *  som aterstar. Utan den vet hon inte om det ar ett steg kvar eller fem. */
   function updateStepIndicator(idx, total) {
+    if (state.app) {
+      var track = container.querySelector(".chf-track");
+      var fill = container.querySelector(".chf-fill");
+      var hback = container.querySelector(".chf-headback");
+      // Ett enstegsformular har ingen resa att visa - da ar en full stapel
+      // bara dekoration.
+      if (track) track.hidden = total < 2;
+      container.classList.toggle("chf-bare", total < 2);
+      if (fill) fill.style.width = Math.round(((idx + 1) / total) * 100) + "%";
+      // visibility, inte display: knappen ska behalla sin plats sa rubriken
+      // under inte hoppar upp 64px mellan steg ett och tva.
+      if (hback) hback.hidden = idx === 0;
+      return;
+    }
     var wrap = container.querySelector(".chf-steps");
     if (!wrap) return;
     if (total < 2) { wrap.style.display = "none"; return; }
@@ -253,22 +441,79 @@
       stepEls[i].style.display = String(idx) === stepEls[i].getAttribute("data-step") ? "" : "none";
     }
     updateStepIndicator(idx, stepEls.length);
+    if (state.app) {
+      // Skarmbyte, inte en rullning inom en sida: hoppa direkt till toppen och
+      // spela om inanimationen. Klassen maste tas bort och sattas igen med en
+      // reflow emellan, annars kor animationen bara vid forsta renderingen.
+      var cur = container.querySelector('[data-step="' + idx + '"]');
+      if (cur) {
+        cur.classList.remove("chf-in");
+        void cur.offsetWidth;
+        cur.classList.add("chf-in");
+      }
+      window.scrollTo(0, 0);
+      return;
+    }
     container.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /** App-lagets skal: header med rund tillbakaknapp, progressbar kant till
+   *  kant och en innehallskolumn. Returnerar elementet som formularet ska
+   *  monteras i. Byggs bara nar config.theme.mode === "app". */
+  function buildAppShell(theme) {
+    container.classList.add("chf-app");
+    // Temats farger skrivs som variabler pa roten, sa ett formular kan byta
+    // palett utan att nagon CSS-regel behover roras.
+    var vars = { brand: "--chf-brand", bg: "--chf-bg", surface: "--chf-surface",
+                 text: "--chf-text", muted: "--chf-muted" };
+    for (var k in vars) {
+      if (theme[k]) container.style.setProperty(vars[k], String(theme[k]));
+    }
+
+    var head = elText("div", "chf-head");
+    var back = elText("button", "chf-headback");
+    back.type = "button";
+    back.setAttribute("aria-label", "Tillbaka");
+    back.hidden = true;
+    back.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"' +
+      ' stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>';
+    back.addEventListener("click", function () {
+      if (state.currentStep > 0) showStep(state.currentStep - 1);
+    });
+    head.appendChild(back);
+    container.appendChild(head);
+
+    var track = elText("div", "chf-track");
+    track.appendChild(elText("div", "chf-fill"));
+    container.appendChild(track);
+
+    var body = elText("div", "chf-body");
+    container.appendChild(body);
+    return body;
   }
 
   function render() {
     container.innerHTML = "";
+    container.classList.remove("chf-app");
     var cfg = state.config;
+    var theme = cfg.theme || {};
+    state.app = theme.mode === "app";
 
-    if (cfg.title) container.appendChild(elText("h2", "chf-title", cfg.title));
-    if (cfg.intro) container.appendChild(elHtml("div", "chf-intro", cfg.intro));
+    var mount = state.app ? buildAppShell(theme) : container;
 
-    var stepsBar = elText("div", "chf-steps");
-    stepsBar.appendChild(elText("span", "chf-steps-label", ""));
-    var track = elText("div", "chf-steps-track");
-    track.appendChild(elText("div", "chf-steps-fill"));
-    stepsBar.appendChild(track);
-    container.appendChild(stepsBar);
+    if (cfg.title) mount.appendChild(elText("h2", "chf-title", cfg.title));
+    if (cfg.intro) mount.appendChild(elHtml("div", "chf-intro", cfg.intro));
+
+    if (!state.app) {
+      var stepsBar = elText("div", "chf-steps");
+      stepsBar.appendChild(elText("span", "chf-steps-label", ""));
+      var track0 = elText("div", "chf-steps-track");
+      track0.appendChild(elText("div", "chf-steps-fill"));
+      stepsBar.appendChild(track0);
+      mount.appendChild(stepsBar);
+    }
 
     var form = elText("form", "chf-form");
     form.setAttribute("novalidate", "novalidate");
@@ -281,6 +526,7 @@
     steps.forEach(function (step, stepIdx) {
       var stepEl = elText("div", "chf-step");
       stepEl.setAttribute("data-step", String(stepIdx));
+      if (stepIdx === 0) stepEl.classList.add("chf-in");
       if (stepIdx !== 0) stepEl.style.display = "none";
 
       step.fields.forEach(function (f) {
@@ -353,7 +599,7 @@
       form.appendChild(stepEl);
     });
 
-    container.appendChild(form);
+    mount.appendChild(form);
     // Indikatorn maste sattas aven for forsta steget - showStep() kors bara
     // nar man byter steg, sa utan detta var den tom tills forsta klicket.
     updateStepIndicator(0, steps.length);
@@ -709,8 +955,40 @@
   function showEnding(gate) {
     var endings = state.config.endings || {};
     var ending = (gate && endings[gate]) || endings.success || { title: "Tack!" };
-    container.innerHTML = "";
     var box = elText("div", "chf-ending");
+
+    if (state.app) {
+      // Behall skalet och byt bara innehallet - att riva container skulle ta
+      // med sig header och progressbar, och kvittensskarmen skulle landa som
+      // en naken textrad pa sidans egen bakgrund.
+      var body = container.querySelector(".chf-body");
+      var track = container.querySelector(".chf-track");
+      var hback = container.querySelector(".chf-headback");
+      // Resan ar slut: stapeln full, ingen vag tillbaka in i ett inskickat
+      // formular. Men bara om det FANNS en stapel - ett enstegsformular som
+      // plotsligt far en full stapel pa kvittensskarmen antyder en resa som
+      // aldrig fanns.
+      if (track && !track.hidden) {
+        var fill = track.querySelector(".chf-fill");
+        if (fill) fill.style.width = "100%";
+      }
+      if (hback) hback.hidden = true;
+      var mark = elText("div", "chf-endmark");
+      mark.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"' +
+        ' stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5.2L20 7"/></svg>';
+      box.appendChild(mark);
+      box.appendChild(elText("h2", null, ending.title));
+      if (ending.html) box.appendChild(elHtml("div", null, ending.html));
+      if (body) {
+        body.innerHTML = "";
+        body.appendChild(box);
+      }
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    container.innerHTML = "";
     box.appendChild(elText("h2", null, ending.title));
     if (ending.html) box.appendChild(elHtml("div", null, ending.html));
     container.appendChild(box);

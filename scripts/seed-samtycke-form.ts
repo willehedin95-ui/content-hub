@@ -34,15 +34,26 @@ const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 const samtycke: FormConfig = {
   submitLabel: "Skicka in mitt svar",
   ticket: { kindLabel: "Samtycke bilder", priority: 1 },
+  // Samma app-läge som progressbildsformuläret. Sidorna ligger i samma resa
+  // och nås av samma kund - ett byte till vitt webbformulär i sista steget
+  // hade läst som en annan avsändare precis när vi ber om rättigheterna.
+  theme: {
+    mode: "app",
+    brand: "#f0573d",
+    bg: "#fefaf8",
+    surface: "#ffffff",
+    text: "#320d01",
+    muted: "#7e6458",
+  },
   fields: [
     // Fragan ar rubriken. Tidigare lag den som faltlabel halvvags ner, under
     // fem stycken text, och skarmen last som en vagg i stallet for ett val.
     {
       kind: "info",
       key: "intro",
-      html: `<p style="margin:0 0 6px;font-size:.9em;color:#555">Tre bilder, 60 dagar. Du är klar.</p>
-<h2>Får vi visa dina bilder?</h2>
-<p style="margin:0">Ditt presentkort på 200 kr kommer oavsett vad du svarar.</p>`,
+      html: `<div class="chf-art chf-art-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.8"/><path d="M3.5 17.5 9 12.4l3.2 3 3-2.5 5.2 4.6"/></svg></div>
+<h2 class="chf-slide-title">Får vi visa dina bilder?</h2>
+<p class="chf-slide-sub">Tre bilder, 60 dagar. Du är klar. Ditt presentkort på 200 kr kommer oavsett vad du svarar.</p>`,
     },
     {
       kind: "radio",
@@ -75,7 +86,7 @@ const samtycke: FormConfig = {
     {
       kind: "info",
       key: "angra",
-      html: `<p style="margin:0;font-size:.9em;color:#555">Du kan ändra dig när som helst. Mejla <a href="mailto:support@shopenvana.com">support@shopenvana.com</a> så tar vi bort dem.</p>`,
+      html: `<p style="margin:0;font-size:14px;color:var(--chf-muted,#555)">Du kan ändra dig när som helst. Mejla <a href="mailto:support@shopenvana.com">support@shopenvana.com</a> så tar vi bort dem.</p>`,
     },
   ],
   endings: {
