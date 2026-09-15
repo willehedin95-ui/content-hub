@@ -186,7 +186,13 @@
     // Header: rund tillbakaknapp. Ersatter den understrukna "Tillbaka"-lanken
     // langst ner, som ar webbmonster - i en app sitter backen uppe till
     // vanster och ar alltid pa samma stalle oavsett hur langt steget ar.
-    ".chf-app .chf-head{display:flex;align-items:center;padding:14px 20px;min-height:64px;" +
+    ".chf-app .chf-head{position:relative;display:flex;align-items:center;padding:14px 20px;min-height:64px;" +
+    // Loggan absolut centrerad: headern bar en tillbakaknapp till vanster som
+    // finns pa vissa steg och inte pa andra, och en logga som flyttar sig med
+    // knappen laser som att skarmen hoppar mellan stegen.
+    ".chf-app .chf-logo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);" +
+    "height:18px;color:var(--chf-text);opacity:.92;pointer-events:none}" +
+    ".chf-app .chf-logo img{display:block;height:100%;width:auto}" +
     "width:100%;max-width:680px;margin:0 auto;box-sizing:border-box}" +
     // Ett enstegsformular har varken tillbakaknapp eller stapel. Da ar headern
     // 64 px tom yta som trycker ner rubriken utan att bara nagot.
@@ -497,6 +503,17 @@
     "background:color-mix(in srgb,var(--chf-brand) 12%,#fff);display:flex;align-items:center;" +
     "justify-content:center;animation:chf-pop .32s cubic-bezier(.34,1.56,.64,1) both}" +
     ".chf-app .chf-endmark svg{width:34px;height:34px;color:var(--chf-brand)}" +
+    ".chf-app .chf-slots{display:flex;gap:10px;margin:4px 0 22px}" +
+    ".chf-app .chf-slot-cell{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px}" +
+    ".chf-app .chf-slot-box{width:100%;aspect-ratio:4/5;border-radius:14px;display:flex;" +
+    "align-items:center;justify-content:center;overflow:hidden;box-sizing:border-box;" +
+    "border:2px dashed rgba(50,13,1,.16);background:color-mix(in srgb,var(--chf-brand) 6%,#fff)}" +
+    ".chf-app .chf-slot-box img{width:100%;height:100%;object-fit:cover;display:block}" +
+    ".chf-app .chf-slot-box.chf-slot-fylld{border:2px solid var(--chf-brand)}" +
+    ".chf-app .chf-slot-box svg{width:24px;height:24px;color:rgba(50,13,1,.22)}" +
+    ".chf-app .chf-slot-cap{font-size:12px;font-weight:700;letter-spacing:.6px;" +
+    "color:rgba(50,13,1,.38)}" +
+    ".chf-app .chf-slot-cap-fylld{color:var(--chf-text)}" +
     "@keyframes chf-pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}" +
     "@media (prefers-reduced-motion:reduce){.chf-app .chf-endmark{animation:none}}" +
     ".chf-app .chf-toperror{border-radius:12px}";
@@ -543,8 +560,8 @@
       if (key === "hub") return HUB;
       // Bild-URL:er kommer fran vart eget serieuppslag, inte fran kunden, och
       // ska in i ett src-attribut - escapeHtml hade gjort &amp; av en query.
-      if (key === "forra_bild_url") {
-        var u = state.values.forra_bild_url;
+      if (key === "forra_bild_url" || key === "uppladdad_url") {
+        var u = state.values[key];
         return u ? String(u).replace(/"/g, "%22") : "";
       }
       var v = state.values[key];
@@ -732,6 +749,17 @@
       if (state.currentStep > 0) showStep(state.currentStep - 1);
     });
     head.appendChild(back);
+    // Varumarket ska synas pa varje skarm, inte bara i mailen. Kunden kommer hit
+    // fran en QR-kod pa ett kort och behover se VEM som fragar efter hennes
+    // ansiktsbilder.
+    if (theme.logo) {
+      var logga = elText("div", "chf-logo");
+      var limg = document.createElement("img");
+      limg.src = String(theme.logo).replace("{{hub}}", HUB);
+      limg.alt = "";
+      logga.appendChild(limg);
+      head.appendChild(logga);
+    }
     container.appendChild(head);
 
     var track = elText("div", "chf-track");
@@ -1458,6 +1486,9 @@
 
     uploadFiles()
       .then(function (files) {
+        // Spara bildens URL sa kvittensskarmen kan visa hennes EGEN bild i
+        // stallet for en generisk bock. Den ar redan uppladdad har.
+        if (files && files[0] && files[0].url) state.values.uppladdad_url = files[0].url;
         return fetch(HUB + "/api/forms/submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1521,7 +1552,7 @@
         ' stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.2 5.2L20 7"/></svg>';
       box.appendChild(mark);
       box.appendChild(elText("h2", null, ending.title));
-      if (ending.html) box.appendChild(elHtml("div", null, ending.html));
+      if (ending.html) box.appendChild(elHtml("div", null, interpolate(ending.html)));
       if (body) {
         body.innerHTML = "";
         body.appendChild(box);
@@ -1532,7 +1563,7 @@
 
     container.innerHTML = "";
     box.appendChild(elText("h2", null, ending.title));
-    if (ending.html) box.appendChild(elHtml("div", null, ending.html));
+    if (ending.html) box.appendChild(elHtml("div", null, interpolate(ending.html)));
     container.appendChild(box);
     container.scrollIntoView({ behavior: "smooth", block: "start" });
   }

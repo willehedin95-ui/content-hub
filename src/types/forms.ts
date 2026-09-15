@@ -118,6 +118,10 @@ export interface FormTheme {
   text?: string;
   /** Brödtext och hjälptext. Envana text/muted. */
   muted?: string;
+  /** Logotyp centrerad i headern, som URL. `{{hub}}` ersätts med hubbens
+   *  origin. Kunden kommer via en QR-kod på ett tryckt kort och ska se vem
+   *  som frågar efter hennes ansiktsbilder. */
+  logo?: string;
 }
 
 /** Vart en inskickning tar vägen.

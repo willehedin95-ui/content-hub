@@ -49,6 +49,7 @@ const samtycke: FormConfig = {
     surface: "#ffffff",
     text: "#320d01",
     muted: "#7e6458",
+    logo: "{{hub}}/images/envana/logo.svg",
   },
   fields: [
     // --- Steg 1: hon har redan forttjanat sina 200 kr ---

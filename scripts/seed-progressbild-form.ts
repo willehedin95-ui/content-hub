@@ -38,7 +38,7 @@ const progressbild: FormConfig = {
   // Rakningen i knappen, inte bara pa skarmen. Uppmatt monster: Thea kor
   // "Take front photo (1/4)" och "(2/4)" - hon ser var i serien hon ar i
   // samma ogonblick som hon trycker.
-  submitLabel: "Ladda upp bild {{steg}} av 3",
+  submitLabel: "Fortsätt",
   ticket: { kindLabel: "Progressbild", priority: 1 },
   // Klaviyo äger mailen. INGEN helpdesk: en progressbild är inte en
   // supportfråga, och med helpdesk fick kunden ett "vi återkommer inom 24
@@ -62,6 +62,7 @@ const progressbild: FormConfig = {
     surface: "#ffffff",
     text: "#320d01",
     muted: "#7e6458",
+    logo: "{{hub}}/images/envana/logo.svg",
   },
   fields: [
     // Bars av lanken: ?steg=1|2|3. Utan parameter antas forsta bilden.
@@ -101,7 +102,7 @@ const progressbild: FormConfig = {
 <p class="chf-slide-sub">Spegeln visar ingenting från en dag till nästa. Två bilder bredvid varandra gör det.</p>
 </div>
 <div class="chf-panel">
-<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/tidslinje.jpg" alt="En bild tagen idag och tva tomma rutor for dag 30 och dag 60" width="936" height="444" loading="eager"></div></figure>
+<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/tidslinje.jpg" alt="En bild tagen idag och tva tomma rutor for dag 30 och dag 60" width="1100" height="503" loading="eager"></div></figure>
 <h2 class="chf-slide-title">Vi påminner dig</h2>
 <p class="chf-slide-sub">Du tar ett foto idag. Vid dag 30 och 60 påminner vi dig igen, och visar din förra bild så du vet hur den togs.</p>
 </div>
@@ -249,16 +250,16 @@ const progressbild: FormConfig = {
         {
           showWhen: { field: "steg", in: ["1"] },
           title: "Första bilden är inne",
-          html: `<p><strong>1 av 3.</strong> Nästa bild tar du om 30 dagar.</p>
-<p style="margin-top:14px">Titta efter naglarna och håret först. De svarar tidigare än huden, ofta redan innan du ser något i ansiktet.</p>
-<p style="margin-top:14px">Vi hör av oss när det är dags. Ta Envana varje dag tills dess, det är det som avgör hur mycket du ser.</p>`,
+          html: `<div class="chf-slots"><div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{uppladdad_url}}" alt="Din bild"></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 1</div></div><div class="chf-slot-cell"><div class="chf-slot-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div><div class="chf-slot-cap">DAG 30</div></div><div class="chf-slot-cell"><div class="chf-slot-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div><div class="chf-slot-cap">DAG 60</div></div></div>
+<p>Vi mejlar dig på <strong>{{email}}</strong> om 30 dagar, när det är dags för nästa bild.</p>
+<p style="margin-top:14px">Titta efter naglarna och håret under tiden. De svarar tidigare än huden, ofta innan du ser något i ansiktet.</p>`,
         },
         {
           showWhen: { field: "steg", in: ["2"] },
           title: "Halvvägs",
-          html: `<p><strong>2 av 3.</strong> En bild kvar.</p>
-<p style="margin-top:14px">Det är nu det börjar hända. Mellan dag 30 och dag 60 är förändringen som störst, och den sista bilden är den som visar den.</p>
-<p style="margin-top:14px">Vi hör av oss om 30 dagar.</p>`,
+          html: `<div class="chf-slots"><div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{forra_bild_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 1</div></div><div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{uppladdad_url}}" alt="Din bild"></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 30</div></div><div class="chf-slot-cell"><div class="chf-slot-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div><div class="chf-slot-cap">DAG 60</div></div></div>
+<p>En bild kvar. Vi mejlar dig på <strong>{{email}}</strong> om 30 dagar.</p>
+<p style="margin-top:14px">Det är nu det börjar hända. Mellan dag 30 och dag 60 är förändringen som störst, och den sista bilden är den som visar den.</p>`,
         },
         {
           showWhen: { field: "steg", in: ["3"] },
