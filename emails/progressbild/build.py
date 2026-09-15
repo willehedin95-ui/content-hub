@@ -127,8 +127,18 @@ if OUT.endswith("kvittens"):
                 "sista, och det är mellan nu och då som förändringen brukar vara som störst."
                 "{% else %}Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter "
                 "naglarna och håret först - de svarar tidigare än huden.{% endif %}")
-        serie = ("{% if event.antal_bilder == 3 %}" + series(3) +
-                 "{% elif event.antal_bilder == 2 %}" + series(2) + "{% else %}" + series(1) + "{% endif %}")
+        # Villkora pa att BILDEN finns, inte pa hur manga rader kunden har.
+        # antal_bilder sa 3 efter tva milstolpar nar en uppladdning gjorts om,
+        # och en serie ritad efter ett ANTAL fyllde ruta 1 med en tom URL nar
+        # kunden hoppat over ett steg - alltsa en trasig bildikon i mailet.
+        serie = ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>'
+                 + "".join(
+                     "{%% if event.bild_%d_url %%}%s{%% else %%}%s{%% endif %%}"
+                     % (n, slot_cell(n, "", True), slot_cell(n, "", False))
+                     for n in (1, 2, 3))
+                 + '</tr><tr>'
+                 + "".join(label_cell(("DAG 1", "DAG 30", "DAG 60")[n - 1], True) for n in (1, 2, 3))
+                 + '</tr></table>')
     else:
         rubrik, text, serie = ("Första bilden är sparad",
             "Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter naglarna och "

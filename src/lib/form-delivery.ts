@@ -211,18 +211,30 @@ async function fetchImageSeries(
     .order("created_at", { ascending: true })
     .limit(20);
 
-  const out: { step: string | null; url: string; at: string }[] = [];
+  // EN bild per milstolpe, senaste vinner, sorterad pa STEG och inte pa tid.
+  //
+  // Bada delarna ar uppmatta felfall, inte teori:
+  //  - Laddar hon om sidan och skickar in igen far samma steg tva rader. Utan
+  //    hopslagning blev antal_bilder 3 efter TVA milstolpar, och mailet sa
+  //    "3 av 3, din resa ar klar" fast bild tre aldrig tagits.
+  //  - Laddar hon upp bild 2 fore bild 1 (t.ex. efter en paminnelse hon
+  //    oppnade i fel ordning) sorterade tidsordningen serien baklanges.
+  const perStep = new Map<string, { step: string | null; url: string; at: string }>();
+  let utanSteg = 0;
   for (const row of (data ?? []) as Pick<FormSubmissionRow, "payload" | "files" | "created_at">[]) {
     const file = (row.files ?? [])[0];
     if (!file?.url) continue;
     const stepAnswer = (row.payload ?? []).find((a) => a.key === seriesField);
-    out.push({
-      step: stepAnswer ? String(stepAnswer.value ?? "") : null,
-      url: file.url,
-      at: row.created_at,
-    });
+    const step = stepAnswer ? String(stepAnswer.value ?? "") : null;
+    // Rader utan steg kan inte slas ihop pa nyckel - de far egna platser.
+    const key = step || `utan-steg-${utanSteg++}`;
+    perStep.set(key, { step, url: file.url, at: row.created_at });
   }
-  return out;
+  return [...perStep.values()].sort((a, b) => {
+    const as = Number(a.step), bs = Number(b.step);
+    if (Number.isFinite(as) && Number.isFinite(bs)) return as - bs;
+    return a.at.localeCompare(b.at);
+  });
 }
 
 /** Postar inskickningen som ett event till Klaviyo, som äger mailen.
