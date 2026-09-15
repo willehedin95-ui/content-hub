@@ -93,6 +93,7 @@
     ".chf-file-preview img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:none}" +
     ".chf-file-name{font-size:.9em;word-break:break-word;flex:1}" +
     ".chf-file-change{font-size:.86em;text-decoration:underline;color:#555}" +
+    ".chf-file-clear{margin-top:6px;font:inherit;font-size:.86em;background:none;border:0;text-decoration:underline;color:#555;cursor:pointer;position:relative;z-index:2}" +
     // Stegindikator: ett flerstegsformular ska visa var man ar.
     ".chf-steps{display:flex;align-items:center;gap:10px;margin:0 0 16px}" +
     ".chf-steps-label{font-size:.85em;color:#555;font-weight:600;white-space:nowrap}" +
@@ -249,6 +250,35 @@
     // under vecket och gor bilden till konkurrent i stallet for inramning.
     // Quizets egna valskarmar har ingen bild alls - det har ar mellanlaget.
     ".chf-app .chf-art.chf-art-sm{height:clamp(110px,18vh,160px)}" +
+    // Foto som bildblock. En riktig bild slar en ikon: hon ser vad hon ska
+    // astadkomma i stallet for att lasa om det. Blocket slapper sin fasta
+    // hojd nar det bar ett foto, sa bildens egna proportioner far rada.
+    ".chf-app .chf-shot{margin:0 0 14px}" +
+    // height:auto ar inte valfritt. Utan den vinner bildens height-attribut
+    // (presentational hint) och en 1100x614-bild ritades 335x614, alltsa
+    // uttanjd till dubbla hojden. Uppmatt i vyn, inte gissat.
+    ".chf-app .chf-shot{position:relative}" +
+    // Egen ram runt BILDEN. Taggarna satt forut absolut mot <figure>, vars
+    // botten inkluderar bildtexten - sa "DAG 1" lag ovanpa texten i stallet
+    // for pa bilden. Uppmatt i vyn.
+    ".chf-app .chf-shot-frame{position:relative;line-height:0}" +
+    ".chf-app .chf-shot img{display:block;width:100%;height:auto;border-radius:16px}" +
+    // Dag-etiketter direkt pa bilden. Utan dem ar det tva ansikten bredvid
+    // varandra och betraktaren far sjalv gissa vilket som ar fore.
+    ".chf-app .chf-shot-tag{position:absolute;bottom:10px;font-size:11px;font-weight:700;letter-spacing:.4px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:4px 10px;backdrop-filter:blur(2px)}" +
+    ".chf-app .chf-shot-tag--a{left:10px}" +
+    ".chf-app .chf-shot-tag--b{right:10px}" +
+    ".chf-app .chf-shot figcaption{display:flex;gap:6px;margin-top:8px;font-size:13px;" +
+    "color:var(--chf-muted);text-align:center;justify-content:center}" +
+    ".chf-app .chf-shot figcaption b{color:var(--chf-text)}" +
+    // Presentkortet. Ritat i SVG och inte genererat som bild: en bildmodell
+    // far inte "200 kr" och "ENVANA" ratt, och ett belopp som star fel i en
+    // mockup ar ett loftesfel. Se feedback_generate_parts_compose_in_code.
+    ".chf-app .chf-reward{display:flex;align-items:center;gap:14px;background:var(--chf-surface);" +
+    "border:1px solid rgba(50,13,1,.08);border-radius:16px;padding:14px;margin:0 0 14px}" +
+    ".chf-app .chf-reward svg{width:96px;height:auto;flex:none}" +
+    ".chf-app .chf-reward-txt{font-size:14px;line-height:1.5;color:var(--chf-muted);text-align:left}" +
+    ".chf-app .chf-reward-txt b{display:block;color:var(--chf-text);font-size:15px;margin-bottom:2px}" +
 
     // 16px ar inte estetik: under 16px zoomar iOS Safari in hela sidan nar
     // faltet far fokus, och da hoppar onboardingen ur sin layout.
@@ -305,7 +335,19 @@
     ".chf-app .chf-file-icon{width:48px;height:48px;color:var(--chf-brand);opacity:1}" +
     ".chf-app .chf-file-main{font-size:17px;color:var(--chf-text)}" +
     ".chf-app .chf-file-sub{color:var(--chf-muted)}" +
-    ".chf-app .chf-file-preview img{width:76px;height:76px;border-radius:12px}" +
+    ".chf-app .chf-file-preview{flex-direction:column;gap:12px;text-align:center}" +
+    ".chf-app .chf-file-preview img{width:100%;height:auto;max-height:44vh;object-fit:contain;" +
+    "border-radius:14px;background:rgba(50,13,1,.04)}" +
+    ".chf-app .chf-file-name{display:flex;flex-direction:column;align-items:center;gap:8px;" +
+    "font-size:14px;color:var(--chf-muted)}" +
+    ".chf-app .chf-file-clear{border:1px solid rgba(50,13,1,.16);background:var(--chf-surface);" +
+    "border-radius:999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;" +
+    "text-decoration:none;color:var(--chf-text);cursor:pointer;position:relative;z-index:2;min-height:40px}" +
+    // "Tryck for att byta" ar en INSTRUKTION om att ytan runtom ar klickbar,
+    // inte en egen lank. Understruken bredvid en riktig knapp last som tva
+    // konkurrerande atgarder.
+    ".chf-app .chf-file-change{text-decoration:none;color:var(--chf-muted);font-size:13px}" +
+    ".chf-app .chf-file-clear:active{transform:scale(.97)}" +
     ".chf-app .chf-file-change{color:var(--chf-brand)}" +
 
     // Avslutningen ar en egen skarm i en app, centrerad och lugn - inte ett
@@ -358,6 +400,10 @@
   }
   function interpolate(html) {
     return html.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, function (_m, key) {
+      // {{hub}} = hubbens origin. Bilder i hubbens /public maste refereras
+      // absolut: embedden kors pa Shopifys sida, dar en relativ sokvag letar
+      // hos Shopify och ger 404.
+      if (key === "hub") return HUB;
       var v = state.values[key];
       if (v === undefined || v === null) return "";
       var f = findField(key);
@@ -741,6 +787,24 @@
         var meta = elText("div", "chf-file-name");
         meta.appendChild(elText("div", null, namn));
         meta.appendChild(elText("div", "chf-file-change", "Tryck för att byta"));
+
+        // Angra. Hela rutan ar en tryckyta som oppnar filvaljaren igen, sa
+        // "byt bild" gick redan. Det som INTE gick var att backa ur helt -
+        // valde hon fel bild satt den kvar tills hon valde en annan, och det
+        // finns inget "ingen bild" att valja i en filvaljare. Knappen maste
+        // ligga OVANPA filinputen (som tacker hela rutan) och stoppa klicket
+        // fran att bubbla, annars oppnas valjaren i stallet for att rensa.
+        var clear = elText("button", "chf-file-clear", "Ta bort");
+        clear.type = "button";
+        clear.setAttribute("aria-label", "Ta bort vald bild");
+        clear.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          finp.value = "";
+          take(null);
+        });
+        meta.appendChild(clear);
+
         chosen.appendChild(meta);
         chosen.style.display = "flex";
       }

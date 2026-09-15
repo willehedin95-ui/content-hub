@@ -63,7 +63,47 @@ const progressbild: FormConfig = {
     // fran Ember/Weightless-onboardingen (SlideMetrics.artHeight = 40% av
     // skarmhojden) dar de redan ar provade. Ingen skarm ska krava scroll.
 
-    // --- Steg 1: e-post ---
+    // --- Steg 1: syftet, i BILD ---
+    // Den forsta skarmen ska visa vad hon far ut av det har, inte beskriva
+    // det. Ett formular som oppnar med text lases som en blankett; en
+    // before/after plus presentkortet gor lofte och belöning synliga innan
+    // hon lagt en sekund pa nagot.
+    //
+    // OBS: exempelbilden ar GENERERAD och far darfor aldrig presenteras som
+    // en kund. Bildtexten sager "Exempelbild" rakt ut. Byt mot en akta serie
+    // sa fort flodet levererat en - det ar hela poangen med flodet.
+    {
+      kind: "info",
+      key: "syfte_1",
+      showWhen: { field: "steg", in: ["1"] },
+      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Om 60 dagar är det din egen serie du ser här.</figcaption></figure>
+<h2 class="chf-slide-title">Så här ser 60 dagar ut</h2>
+<p class="chf-slide-sub">Tre bilder: en idag, en om 30 dagar och en om 60. Sedan ser du din egen skillnad sida vid sida.</p>`,
+    },
+    {
+      kind: "info",
+      key: "syfte_2",
+      showWhen: { field: "steg", in: ["2"] },
+      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Din egen jämförelse växer fram bild för bild.</figcaption></figure>
+<h2 class="chf-slide-title">Dags för bild två</h2>
+<p class="chf-slide-sub">Trettio dagar sedan startbilden. Den här bilden är den som gör jämförelsen möjlig.</p>`,
+    },
+    {
+      kind: "info",
+      key: "syfte_3",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Efter den här bilden får du se hela din egen serie.</figcaption></figure>
+<h2 class="chf-slide-title">Sista bilden</h2>
+<p class="chf-slide-sub">Sextio dagar. Efter den här får du se alla tre bredvid varandra.</p>`,
+    },
+    {
+      kind: "info",
+      key: "belon_intro",
+      html: `<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort pa 200 kronor"><defs><linearGradient id="chfg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>200 kr när alla tre är inne</b>Presentkortet kommer när du laddat upp bild tre. Bilderna är dina, vi visar dem aldrig för någon utan att fråga dig först.</div></div>`,
+    },
+    { kind: "pagebreak", key: "till_epost", label: "Jag börjar" },
+
+    // --- Steg 2: e-post ---
     {
       kind: "info",
       key: "art_epost",
@@ -80,12 +120,12 @@ const progressbild: FormConfig = {
     },
     { kind: "pagebreak", key: "till_tips", label: "Fortsätt" },
 
-    // --- Steg 2: sa blir bilden bra. Rutnatet ar stegets bildblock. ---
+    // --- Steg 3: sa blir bilden bra. Rutnatet ar stegets bildblock. ---
     {
       kind: "info",
       key: "tips_rubrik",
       html: `<h2 class="chf-slide-title">Så blir bilden bra</h2>
-<p class="chf-slide-sub">Följ tipsen så blir jämförelsen tydlig vid dag 30 och 60.</p>`,
+<p class="chf-slide-sub">En vanlig selfie på hela ansiktet, inte en närbild. Följ tipsen så blir jämförelsen tydlig vid dag 30 och 60.</p>`,
     },
     {
       kind: "info",
@@ -100,7 +140,7 @@ const progressbild: FormConfig = {
     },
     { kind: "pagebreak", key: "till_bild", label: "Jag är redo" },
 
-    // --- Steg 3: ta bilden. Uppladdningszonen ar stegets bildblock. ---
+    // --- Steg 4: ta bilden. Uppladdningszonen ar stegets bildblock. ---
     {
       kind: "info",
       key: "rubrik_1",
@@ -128,6 +168,12 @@ const progressbild: FormConfig = {
       accept: "image/*",
       maxFiles: 1,
       placeholder: "Välj en bild",
+    },
+    {
+      kind: "info",
+      key: "belon_paminnelse",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort pa 200 kronor"><defs><linearGradient id="chfg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg2)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>Sista bilden</b>När den här är uppe skickar vi ditt presentkort på 200 kr.</div></div>`,
     },
     {
       kind: "info",

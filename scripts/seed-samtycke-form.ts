@@ -32,7 +32,7 @@ import type { FormConfig } from "../src/types/forms";
 const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 
 const samtycke: FormConfig = {
-  submitLabel: "Skicka in mitt svar",
+  submitLabel: "Skicka in",
   ticket: { kindLabel: "Samtycke bilder", priority: 1 },
   // Inget helpdesk-ärende, samma skäl som progressbild. Samtyckesnivån ska
   // läsas ur form_submissions och filtreras på, inte hanteras av en agent.
@@ -49,35 +49,54 @@ const samtycke: FormConfig = {
     muted: "#7e6458",
   },
   fields: [
-    // Fragan ar rubriken. Tidigare lag den som faltlabel halvvags ner, under
-    // fem stycken text, och skarmen last som en vagg i stallet for ett val.
+    // --- Steg 1: hon har redan forttjanat sina 200 kr ---
+    // Belöningen ar VILLKORSLOS och presenteras forst. Da ar nasta skarms
+    // fraga ett erbjudande ovanpa nagot hon redan fatt, inte ett pris hon
+    // maste betala med sina bilder for att fa. Det ar ocksa det som gor
+    // samtycket giltigt: hon kan saga nej utan att forlora nagot.
     {
       kind: "info",
-      key: "intro",
-      html: `<div class="chf-art chf-art-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.8"/><path d="M3.5 17.5 9 12.4l3.2 3 3-2.5 5.2 4.6"/></svg></div>
-<h2 class="chf-slide-title">Får vi visa dina bilder?</h2>
-<p class="chf-slide-sub">Tre bilder, 60 dagar. Du är klar. Ditt presentkort på 200 kr kommer oavsett vad du svarar.</p>`,
+      key: "klart",
+      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Din egen serie ligger i mejlet vi just skickat.</figcaption></figure>
+<h2 class="chf-slide-title">Tre bilder, 60 dagar. Du är klar.</h2>
+<p class="chf-slide-sub">Ditt presentkort på 200 kr är ditt, oavsett vad du svarar på nästa fråga.</p>
+<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort"><defs><linearGradient id="chfg3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg3)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>200 kr</b>På väg till din inkorg.</div></div>`,
+    },
+    { kind: "pagebreak", key: "till_fragan", label: "Fortsätt" },
+
+    // --- Steg 2: fragan, som ETT ja eller inget ---
+    // Trappan med fyra niváer ar borta. Fyra val gjorde ett ja till ett
+    // formularbeslut. Nu ar det en kryssruta, och NIVAN utlases i stallet ur
+    // om hon fyller i sitt fornamn: namn ifyllt = med namn, tomt = anonymt.
+    // Samma information, noll extra val for henne.
+    {
+      kind: "info",
+      key: "fraga",
+      html: `<h2 class="chf-slide-title">Vill du dubbla det?</h2>
+<p class="chf-slide-sub">Vi letar efter äkta före och efter från riktiga kunder. Säger du ja till att vi får visa dina bilder skickar vi 200 kr till.</p>
+<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort"><defs><linearGradient id="chfg3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg3)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>200 kr till</b>Skickas samma dag som du säger ja.</div></div>`,
     },
     {
-      kind: "radio",
+      kind: "checkbox",
       key: "samtycke",
-      required: true,
-      options: [
-        { value: "nej", label: "Nej, bilderna är bara mina" },
-        { value: "anonymt", label: "Ja, men anonymt utan namn" },
-        { value: "fornamn", label: "Ja, med mitt förnamn" },
-        { value: "fornamn_alder", label: "Ja, med mitt förnamn och min ålder" },
-      ],
+      label: "Ja, Envana får visa mina bilder",
+      text: "I annonser, på sajten och i mejl. Du kan ändra dig när som helst och då tar vi bort dem.",
+    },
+    {
+      kind: "text",
+      key: "fornamn",
+      label: "Ditt förnamn",
+      help: "Lämnar du det tomt visas bilderna helt anonymt.",
+      showWhen: { field: "samtycke", notEmpty: true },
+      placeholder: "t.ex. Anna",
     },
     {
       kind: "textarea",
       key: "bildtext",
       label: "Vill du säga något om din resa?",
-      showWhen: { field: "samtycke", in: ["anonymt", "fornamn", "fornamn_alder"] },
+      showWhen: { field: "samtycke", notEmpty: true },
       placeholder: "Dina egna ord säger mer än något vi kan skriva.",
     },
-    // Forifylls fran lanken. Ligger sist for att den ar en teknikalitet, inte
-    // det hon ar har for.
     {
       kind: "email",
       key: "email",
@@ -96,6 +115,14 @@ const samtycke: FormConfig = {
     success: {
       title: "Tack!",
       html: `<p>Ditt svar är registrerat och ditt presentkort är på väg till din inkorg.</p>`,
+      variants: [
+        {
+          showWhen: { field: "samtycke", notEmpty: true },
+          title: "Tack, det betyder mycket",
+          html: `<p>Båda presentkorten är på väg till din inkorg, 400 kr totalt.</p>
+<p style="margin-top:14px">Ångrar du dig är det bara att mejla oss, så tar vi bort bilderna.</p>`,
+        },
+      ],
     },
   },
 };
