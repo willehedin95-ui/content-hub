@@ -54,6 +54,10 @@ export async function GET(req: NextRequest) {
       headers: {
         ...cors,
         "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+        // Vary satts av getFormsCORSHeaders. Rora aldrig s-maxage har utan att
+        // kontrollera att Origin fortfarande star i Vary - utan den serverar
+        // CDN:en ETT svars CORS-header till alla origins, och formularen pa
+        // butikernas Shopify-sidor slutar ladda. Uppmatt 2026-09-15.
       },
     }
   );

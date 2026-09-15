@@ -43,7 +43,7 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 390, height: 844 });
     const konsolfel: string[] = [];
-    page.on("pageerror", (e) => konsolfel.push(String(e.message).slice(0, 90)));
+    page.on("pageerror", (e: unknown) => konsolfel.push(String((e as Error)?.message ?? e).slice(0, 90)));
     await page.goto(`${BAS}/f/${f.ws}/${f.slug}?market=${f.market}`, { waitUntil: "domcontentloaded", timeout: 60000 });
     await new Promise((r) => setTimeout(r, 2200));
 
