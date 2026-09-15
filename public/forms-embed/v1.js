@@ -1298,11 +1298,37 @@
       if (fields[i].role === "email") { emailField = fields[i]; break; }
     }
     // No e-mail field at all: leave the button alone and let the server judge.
-    var deliverable = !emailField || !emailField.showWhen || conditionMet(emailField.showWhen);
+    //
+    // Tredje ledet ar tokenlanken. Kommer hon fran ett mail ar e-postfaltet
+    // bortvillkorat (`kund` ar satt), och da doldes skicka-knappen - alltsa
+    // gick dag 30 och dag 60 inte att skicka in over huvud taget. Adressen
+    // FINNS, den ligger bara i ett annat falt. Uppmatt i vyn 2026-09-15:
+    // button[type=submit] hade display:none pa hela tokenflodet.
+    var deliverable =
+      !emailField ||
+      !emailField.showWhen ||
+      conditionMet(emailField.showWhen) ||
+      adressIAnnatFalt(emailField);
     var btns = container.querySelectorAll(".chf-submit");
     for (var j = 0; j < btns.length; j++) {
       if (btns[j].type === "submit") btns[j].style.display = deliverable ? "" : "none";
     }
+  }
+
+  /** Bar nagot ANNAT falt som faktiskt skickas in en e-postadress? Speglar
+   *  serverns extractEmail, som letar i alla svar och inte bara i faltet med
+   *  role "email". Falt vars showWhen inte stammer samlas aldrig in
+   *  (collectAnswers hoppar over dem) och raknas darfor inte. */
+  function adressIAnnatFalt(emailField) {
+    var fields = state.config.fields || [];
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      if (f === emailField || f.kind === "info" || f.kind === "pagebreak") continue;
+      if (f.showWhen && !conditionMet(f.showWhen)) continue;
+      var v = state.values[f.key];
+      if (v !== undefined && v !== null && isEmail(String(v))) return true;
+    }
+    return false;
   }
 
   function findField(key) {

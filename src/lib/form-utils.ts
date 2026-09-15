@@ -194,6 +194,13 @@ function conditionMet(
 ): boolean {
   const current = valueOf(cond.field);
   const empty = !current || current === "(tomt svar)";
+  // isEmpty fanns bara i klienten. Utan den har blev e-postfältet - som är
+  // villkorat på `kund` och därför INTE skickas med när kunden kommer via en
+  // tokenlänk - räknat som obligatoriskt ändå, och hela dag 30 och dag 60
+  // svarade "Obligatoriska fält saknas: email". Uppmätt i vyn 2026-09-15.
+  // Två kopior av samma regel driver isär; den här är spegeln av
+  // conditionMet i public/forms-embed/v1.js och ska hållas i synk med den.
+  if (cond.isEmpty) return empty;
   if (cond.notEmpty) return !empty;
   if (cond.in) return !empty && cond.in.includes(current);
   return true;
