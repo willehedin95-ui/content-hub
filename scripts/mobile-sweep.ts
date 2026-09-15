@@ -23,7 +23,7 @@ const SIDOR: { namn: string; url: string; steg?: number }[] = [
   { namn: "mail: slutmail", url: BAS + "/mailpreview/slutmail.preview.html" },
   { namn: "formular dag 1", url: BAS + "/f/hydro13/progressbild?steg=1", steg: 7 },
   { namn: "formular dag 30", url: BAS + "/f/hydro13/progressbild?steg=2&e=a%40b.se", steg: 7 },
-  { namn: "formular dag 60", url: BAS + "/f/hydro13/progressbild?steg=3&e=a%40b.se", steg: 7 },
+  { namn: "formular dag 60", url: BAS + "/f/hydro13/progressbild?steg=3&e=a%40b.se", steg: 11 },
   { namn: "samtycke", url: BAS + "/f/hydro13/samtycke?e=a%40b.se", steg: 2 },
 ];
 

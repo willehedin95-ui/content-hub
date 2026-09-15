@@ -187,13 +187,13 @@
     // langst ner, som ar webbmonster - i en app sitter backen uppe till
     // vanster och ar alltid pa samma stalle oavsett hur langt steget ar.
     ".chf-app .chf-head{position:relative;display:flex;align-items:center;padding:14px 20px;min-height:64px;" +
+    "width:100%;max-width:680px;margin:0 auto;box-sizing:border-box}" +
     // Loggan absolut centrerad: headern bar en tillbakaknapp till vanster som
     // finns pa vissa steg och inte pa andra, och en logga som flyttar sig med
     // knappen laser som att skarmen hoppar mellan stegen.
     ".chf-app .chf-logo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);" +
-    "height:18px;color:var(--chf-text);opacity:.92;pointer-events:none}" +
+    "height:17px;color:var(--chf-text);opacity:.9;pointer-events:none}" +
     ".chf-app .chf-logo img{display:block;height:100%;width:auto}" +
-    "width:100%;max-width:680px;margin:0 auto;box-sizing:border-box}" +
     // Ett enstegsformular har varken tillbakaknapp eller stapel. Da ar headern
     // 64 px tom yta som trycker ner rubriken utan att bara nagot.
     ".chf-app.chf-bare .chf-head{min-height:0;padding:12px 20px 0}" +
@@ -514,6 +514,18 @@
     ".chf-app .chf-slot-cap{font-size:12px;font-weight:700;letter-spacing:.6px;" +
     "color:rgba(50,13,1,.38)}" +
     ".chf-app .chf-slot-cap-fylld{color:var(--chf-text)}" +
+    // Delningskortet pa tacksidan. Bilden ar serverrenderad, sa den gar att
+    // spara och dela som vilken bild som helst - en skarmdump av en CSS-layout
+    // hade burit hennes telefons statusrad med sig.
+    ".chf-app .chf-delning{margin:18px 0 0}" +
+    ".chf-app .chf-delning img{display:block;width:100%;height:auto;max-height:40vh;" +
+    "object-fit:contain;border-radius:18px}" +
+    ".chf-app .chf-dela{display:flex;align-items:center;justify-content:center;gap:9px;" +
+    "width:100%;margin:14px 0 0;min-height:56px;border:0;border-radius:14px;" +
+    "background:var(--chf-brand);color:#fff;font:inherit;font-size:17px;font-weight:700;" +
+    "cursor:pointer;box-shadow:0 8px 24px rgba(240,87,61,.22)}" +
+    ".chf-app .chf-dela:active{transform:scale(.98)}" +
+    ".chf-app .chf-dela svg{width:20px;height:20px}" +
     "@keyframes chf-pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}" +
     "@media (prefers-reduced-motion:reduce){.chf-app .chf-endmark{animation:none}}" +
     ".chf-app .chf-toperror{border-radius:12px}";
@@ -560,7 +572,7 @@
       if (key === "hub") return HUB;
       // Bild-URL:er kommer fran vart eget serieuppslag, inte fran kunden, och
       // ska in i ett src-attribut - escapeHtml hade gjort &amp; av en query.
-      if (key === "forra_bild_url" || key === "uppladdad_url") {
+      if (key === "forra_bild_url" || key === "uppladdad_url" || key === "vald_bild_url" || key === "token" || /^bild_\d_url$/.test(key)) {
         var u = state.values[key];
         return u ? String(u).replace(/"/g, "%22") : "";
       }
@@ -830,6 +842,26 @@
   }
 
   container.addEventListener("click", function (e) {
+    var delaBtn = e.target.closest && e.target.closest("[data-chf-dela]");
+    if (delaBtn) {
+      e.preventDefault();
+      var url = delaBtn.getAttribute("data-chf-dela");
+      delaBtn.disabled = true;
+      fetch(url)
+        .then(function (r) { return r.blob(); })
+        .then(function (blob) {
+          var fil = new File([blob], "min-envana-resa.jpg", { type: blob.type || "image/jpeg" });
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [fil] })) {
+            return navigator.share({ files: [fil] });
+          }
+          // Utan systemdelning: oppna bilden i en egen flik sa hon kan spara
+          // den. En <a download> ar blockerad i flera inbaddade lagen.
+          window.open(URL.createObjectURL(blob), "_blank");
+        })
+        .catch(function () {})
+        .then(function () { delaBtn.disabled = false; });
+      return;
+    }
     var trigger = e.target.closest && e.target.closest("[data-chf-guide]");
     if (!trigger) return;
     e.preventDefault();
@@ -1172,6 +1204,10 @@
         idle.style.display = "none";
         if (!asCta) fwrap.classList.add("chf-has-file");
         markStep(true);
+        if (list[0] && /^image\//.test(list[0].type)) {
+          if (state.values.vald_bild_url) URL.revokeObjectURL(state.values.vald_bild_url);
+          state.values.vald_bild_url = URL.createObjectURL(list[0]);
+        }
         chosen.replaceChildren();
         // I CTA-lage ar bilden hela skarmen, sa fragan star OVANFOR den och
         // inte under: hon laser "Ser den bra ut?" och tittar sedan.
@@ -1617,6 +1653,7 @@
     var t = null;
     try { t = new URLSearchParams(window.location.search).get("t"); } catch (e) {}
     if (!t) return Promise.resolve();
+    state.values.token = t;
     return fetch(HUB + "/api/forms/series?t=" + encodeURIComponent(t) +
                  "&workspace=" + encodeURIComponent(WORKSPACE) +
                  "&slug=" + encodeURIComponent(FORM_SLUG) +
@@ -1628,6 +1665,11 @@
         state.values.kund = d.email;
         state.values.email = d.email;
         if (d.latestUrl) state.values.forra_bild_url = d.latestUrl;
+        if (d.steps) {
+          for (var sk in d.steps) {
+            if (d.steps[sk]) state.values["bild_" + sk + "_url"] = d.steps[sk];
+          }
+        }
         state.values.antal_bilder = String(d.count || 0);
         if (d.daysSinceFirst !== null && d.daysSinceFirst !== undefined) {
           state.values.dagar_sedan_start = String(d.daysSinceFirst);

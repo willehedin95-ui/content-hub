@@ -236,6 +236,76 @@ const progressbild: FormConfig = {
         { value: "osaker", label: "Vet inte" },
       ],
     },
+    { kind: "pagebreak", key: "till_avslojande", label: "Fortsätt" },
+
+    // ================================ SVANSEN, BARA VID SISTA BILDEN ========
+    // Fyra skarmar i stallet for ett overlastat slutmail plus ett eget
+    // samtyckesformular. William 2026-09-15, efter monstret fran mobilspel:
+    // "forst presentera presentkortet och sen kommer en ny screen efter dar vi
+    // fragar om de vill dubbla vardet genom att ge samtycke".
+    //
+    // Det fungerar for att grundbelöningen redan ar intjanad och LIGGER SYNLIG
+    // nar erbjudandet kommer. Samma ordning som var redan beslutad, fast pa
+    // skarmen dar vi har hennes uppmarksamhet i stallet for i en inkorg.
+    //
+    // Skarm 1: avslojandet. Hennes tre bilder bredvid varandra. Bild tre ar
+    // annu inte uppladdad, sa den visas fran den lokala filen.
+    {
+      kind: "info",
+      key: "avslojande",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<p class="chf-lead chf-mid">Här är din resa. Tre bilder, 60 dagar, tagna av dig på dig.</p>
+<div class="chf-slots">
+<div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{bild_1_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 1</div></div>
+<div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{bild_2_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 30</div></div>
+<div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{vald_bild_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 60</div></div>
+</div>
+<p class="chf-slide-sub chf-mid" style="margin:18px 0 0">Spegeln visade ingenting från en dag till nästa. Tre bilder bredvid varandra gör det.</p>`,
+    },
+    { kind: "pagebreak", key: "till_belöning", label: "Fortsätt" },
+
+    // Skarm 2: pengarna. Ensam pa skarmen, och uttalat ovillkorade - det ar
+    // det som gor samtycket pa nasta skarm giltigt.
+    {
+      kind: "info",
+      key: "belöning",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.jpg" alt="Presentkort pa 200 kronor" width="1143" height="752" loading="eager"></div></figure>
+<h2 class="chf-slide-title chf-mid">200 kr, som tack</h2>
+<p class="chf-slide-sub chf-mid">Presentkortet är ditt. Vi mejlar det till <strong>{{email}}</strong> så fort du är klar här.</p>`,
+    },
+    { kind: "pagebreak", key: "till_samtycke", label: "Fortsätt" },
+
+    // Skarm 3: fragan. Nej kostar ingenting och star lika tydligt som ja.
+    {
+      kind: "info",
+      key: "samtycke_rubrik",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<h2 class="chf-slide-title chf-mid">Vill du dubbla det?</h2>
+<p class="chf-slide-sub chf-mid">Vi letar efter äkta före och efter från riktiga kunder. Säger du ja till att vi får visa dina bilder skickar vi <strong>200 kr till</strong>. Säger du nej händer ingenting, och de första 200 kronorna är kvar.</p>`,
+    },
+    {
+      kind: "checkbox",
+      key: "samtycke",
+      showWhen: { field: "steg", in: ["3"] },
+      text: "Ja, Envana får visa mina bilder i annonser, på sajten och i mejl. Du kan ändra dig när som helst och då tar vi bort dem.",
+    },
+    {
+      kind: "text",
+      key: "fornamn",
+      label: "Ditt förnamn",
+      showWhen: { field: "samtycke", notEmpty: true },
+      placeholder: "t.ex. Anna",
+      help: "Lämnar du det tomt visas bilderna helt anonymt.",
+    },
+    {
+      kind: "textarea",
+      key: "bildtext",
+      label: "Vill du säga något om din resa?",
+      showWhen: { field: "samtycke", notEmpty: true },
+      placeholder: "Dina egna ord säger mer än något vi kan skriva.",
+    },
+
   ],
   endings: {
     // --- Slide 4 ---
@@ -263,9 +333,14 @@ const progressbild: FormConfig = {
         },
         {
           showWhen: { field: "steg", in: ["3"] },
-          title: "Din resa är klar",
-          html: `<p><strong>3 av 3.</strong> Du har dokumenterat 60 dagar.</p>
-<p style="margin-top:14px">Vi mejlar hela din serie, alla tre bilderna bredvid varandra, tillsammans med dina 200 kr som tack.</p>`,
+          title: "Tack, det betyder mycket",
+          html: `<p>Presentkortet är på väg till <strong>{{email}}</strong>.</p>
+<div class="chf-delning">
+<img src="{{hub}}/api/forms/share-card?t={{token}}" alt="Din resa, dag 1 och dag 60" width="1080" height="1350" loading="eager">
+<button type="button" class="chf-dela" data-chf-dela="{{hub}}/api/forms/share-card?t={{token}}">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5V3.5"/><path d="M8.2 7.1 12 3.3l3.8 3.8"/><path d="M5 13v6.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V13"/></svg>
+Dela din resa</button>
+</div>`,
         },
       ],
     },
