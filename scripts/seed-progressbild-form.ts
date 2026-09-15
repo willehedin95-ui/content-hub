@@ -281,9 +281,9 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "samtycke_rubrik",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<h2 class="chf-slide-title chf-mid">Vill du dubbla det?</h2>
+      html: `<h2 class="chf-slide-title chf-mid">Vill du inspirera någon annan?</h2>
 <figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort-400.webp" alt="Presentkort pa 400 kronor" width="900" height="608" loading="eager"></div></figure>
-<p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Får vi använda dina bilder? Då blir det 400 kr i stället för 200.</p>`,
+<p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Det är precis sådana bilder någon annan behöver se innan hon vågar börja. Får vi visa dina dubblar vi ditt presentkort.</p>`,
     },
     // Valet ar TVA KNAPPAR, inte en kryssruta. William: "spelen gor det
     // LOCKANDE att klicka pa 2x reward". En kryssruta ar en blankett man
@@ -294,7 +294,7 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "samtycke_villkor",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi kan komma att använda dem i vår marknadsföring, eller inte alls. Du kan ändra dig när som helst, mejla oss så tar vi bort dem.</p>`,
+      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi kan komma att använda dem i vår marknadsföring. Du kan ändra dig när som helst genom att skicka ett mejl till oss.</p>`,
     },
         {
       kind: "choice",
