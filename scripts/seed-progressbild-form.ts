@@ -1,8 +1,8 @@
 /**
  * Seedar progressbildsformuläret (hydro13 workspace, market SE).
  *
- * Fyra slides enligt "Envana progress"-specen: intro, e-post, bild, klart.
- * Copy är tagen ordagrant därifrån. Slide 4 är formulärets success-ending.
+ * Fyra skärmar: introkarusell, e-post, bilden, frågan. Femte är endingen.
+ * Copy är tagen ordagrant ur "Envana progress"-specen.
  *
  * ETT formulär bär alla tre bilderna (dag 1, 30, 60). Vilken bild det gäller
  * kommer från ?steg=1|2|3 på värdsidan och fångas av ett `hidden`-fält, så vi
@@ -136,80 +136,60 @@ const progressbild: FormConfig = {
       showWhen: { field: "kund", isEmpty: true },
       placeholder: "din@epost.se",
     },
-    { kind: "pagebreak", key: "till_tips", label: "Fortsätt" },
-
-    // ---------------------------------------------------------------- STEG 3
-    // Fototipsen BARA vid forsta bilden. Vid bild tva och tre har hon redan
-    // last dem, och da ar ratt instruktion "gor som forra gangen" - den star
-    // bredvid uppladdningen i stallet, med hennes egen bild intill.
-    {
-      kind: "info",
-      key: "tips_rubrik",
-      showWhen: { field: "steg", in: ["1"] },
-      html: `<h2 class="chf-slide-title">Så blir bilden bra</h2>
-<p class="chf-slide-sub">En vanlig selfie på hela ansiktet, inte en närbild. Följ tipsen så blir jämförelsen tydlig vid dag 30 och 60.</p>`,
-    },
-    {
-      kind: "info",
-      key: "tips",
-      showWhen: { field: "steg", in: ["1"] },
-      html: `<div class="chf-tips">
-<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg><b>Naturligt ljus</b><span>Stå nära ett fönster</span></div>
-<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><b>Samma plats</b><span>Helst samma rum varje gång</span></div>
-<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 5.5h3"/></svg><b>Samma vinkel</b><span>Håll telefonen lika högt</span></div>
-<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M8.8 14.5c.9 1.1 2 1.7 3.2 1.7s2.3-.6 3.2-1.7"/></svg><b>Ren hud</b><span>Utan makeup eller filter</span></div>
-</div>
-<p class="chf-avoid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2h.01"/></svg><span>Undvik direkt solljus, mörka rum och filter.</span></p>`,
-    },
-    { kind: "pagebreak", key: "till_bild", label: "Jag är redo" },
+    { kind: "pagebreak", key: "till_bild", label: "Fortsätt" },
 
     // ------------------------------------------------ TA BILDEN (egen skarm)
-    // BARA bilden pa den har skarmen. Rubrik, knapp, exempel. Fragan flyttad
-    // till nasta steg - William: "dela upp alla steg i mindre steg sa det inte
-    // ar sa mycket pa samma stalle som kraver scroll".
+    // EN skarm, EN knapp. Anatomin ar Theas (matningen i vaulten): ledtext med
+    // feta nyckelord, en bild, och stegets CTA som oppnar valjaren.
+    //
+    // Har lag tidigare en hel tipsskarm med fyra ikonkort, en exempelbild OCH
+    // en knapp som oppnade ett ratt/fel-rutnat i en modal - tre ytor som sa
+    // samma sak om samma foto. William 2026-09-15: "det blir too much. Ta bort
+    // alla tips och ta bort knappen for se exempel. Det racker att visa en bild
+    // redan som exempel." Tipsskarmen, guide-knappen och modalen ar borta.
+    //
+    // "Rakt framifran" ar ocksa borta som krav. Vinkeln valjer hon sjalv, det
+    // som spelar roll ar att den ar densamma nasta gang - vilket ar precis vad
+    // hennes egen forra bild pa dag 30 och 60 visar.
     {
       kind: "info",
-      key: "rubrik_1",
+      key: "foto_lead_1",
       showWhen: { field: "steg", in: ["1"] },
-      html: `<h2 class="chf-slide-title">Dags att ta din första bild</h2>`,
+      html: `<p class="chf-lead chf-hide-on-photo">Vi börjar med en bild på <b>hela ansiktet</b>. Se till att den inte är <b>suddig</b> och att <b>ljuset är bra</b>.</p>
+<div class="chf-bigshot chf-hide-on-photo"><img src="{{hub}}/images/progressbild/exempel-bra.jpg" alt="Exempel på hur bilden ska se ut" width="491" height="614" loading="eager"></div>`,
     },
+    // Dag 30 och 60: ledtexten och bilden ar SKILDA block med olika villkor.
+    // Villkoren ar ett falt vardera (in / notEmpty), sa de gar inte att slaa
+    // ihop - och kommer hon hit utan att vi hittat hennes forra bild ska
+    // texten sta kvar anda.
     {
       kind: "info",
-      key: "rubrik_2",
-      showWhen: { field: "steg", in: ["2"] },
-      html: `<h2 class="chf-slide-title">Dags för bild två</h2>`,
-    },
-    {
-      kind: "info",
-      key: "rubrik_3",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<h2 class="chf-slide-title">Sista bilden</h2>`,
+      key: "foto_lead_2",
+      showWhen: { field: "steg", in: ["2", "3"] },
+      html: `<p class="chf-lead chf-hide-on-photo">Dags för <b>bild {{steg}} av 3</b>. Ta den på <b>samma plats</b> och i <b>samma vinkel</b> som förra gången, så blir jämförelsen rättvis.</p>`,
     },
     {
       kind: "info",
       key: "forra_bilden",
       showWhen: { field: "forra_bild_url", notEmpty: true },
-      html: `<div class="chf-forra"><img src="{{forra_bild_url}}" alt="Din förra bild"><div class="chf-forra-txt"><b>Så här tog du den förra</b>Samma plats, samma ljus, håll telefonen lika högt.</div></div>`,
+      html: `<div class="chf-bigshot chf-hide-on-photo"><img src="{{forra_bild_url}}" alt="Din förra bild"><span class="chf-shot-tag chf-shot-tag--a">DIN FÖRRA BILD</span></div>`,
     },
+    // `asCta`: ingen egen knapp har. Stegets CTA heter "Ta bild", oppnar
+    // systemets egen valjare (dar iOS sjalvt erbjuder kamera eller bibliotek)
+    // och byter till "Fortsätt" nar bilden ar vald.
     {
       kind: "file",
       key: "bild",
       required: true,
       accept: "image/*",
       maxFiles: 1,
-      placeholder: "Välj en bild",
-    },
-    // Exemplet UNDER knappen och som en tydlig sekundarknapp. Det last forut
-    // som en lank hogst upp pa skarmen, alltsa fore det den handlar om.
-    {
-      kind: "info",
-      key: "guide_knapp",
-      html: `<button type="button" class="chf-guide-btn" data-chf-guide="{{hub}}/images/progressbild/exempel-ratt-fel.jpg" data-chf-guide-title="Så ska bilden se ut" data-chf-guide-text="Ljuset är det som avgör. Stå vänd mot ett fönster eller en stark lampa, rakt framifrån, utan glasögon eller mössa. Inga filter."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Se exempel på en bra bild</button>`,
+      asCta: true,
+      ctaLabel: "Ta bild",
     },
     {
       kind: "info",
       key: "integritet",
-      html: `<p style="margin:0;text-align:center;font-size:14px;color:var(--chf-muted,#666)">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
+      html: `<p class="chf-privacy">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
     },
     { kind: "pagebreak", key: "till_fraga", label: "Fortsätt" },
 

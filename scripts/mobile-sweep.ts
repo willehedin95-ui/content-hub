@@ -21,9 +21,9 @@ const SIDOR: { namn: string; url: string; steg?: number }[] = [
   { namn: "mail: kvittens", url: BAS + "/mailpreview/kvittens.preview.html" },
   { namn: "mail: paminnelse", url: BAS + "/mailpreview/paminnelse.preview.html" },
   { namn: "mail: slutmail", url: BAS + "/mailpreview/slutmail.preview.html" },
-  { namn: "formular dag 1", url: BAS + "/f/hydro13/progressbild?steg=1", steg: 4 },
-  { namn: "formular dag 30", url: BAS + "/f/hydro13/progressbild?steg=2&e=a%40b.se", steg: 4 },
-  { namn: "formular dag 60", url: BAS + "/f/hydro13/progressbild?steg=3&e=a%40b.se", steg: 4 },
+  { namn: "formular dag 1", url: BAS + "/f/hydro13/progressbild?steg=1", steg: 7 },
+  { namn: "formular dag 30", url: BAS + "/f/hydro13/progressbild?steg=2&e=a%40b.se", steg: 7 },
+  { namn: "formular dag 60", url: BAS + "/f/hydro13/progressbild?steg=3&e=a%40b.se", steg: 7 },
   { namn: "samtycke", url: BAS + "/f/hydro13/samtycke?e=a%40b.se", steg: 2 },
 ];
 
@@ -70,6 +70,10 @@ async function main() {
             // Honeypot ligger AVSIKTLIGT utanfor skarmen - den ska botar hitta,
             // inte manniskor. Samma for det dolda laddningsmeddelandet.
             if (el.closest(".chf-hp, .chf-loading")) return;
+            // Nagot man inte KAN trycka pa ar ingen tryckyta. Bildskarmens
+            // filinput ar 1x1 och pointer-events:none - den oppnas av stegets
+            // CTA, aldrig av ett finger.
+            if (getComputedStyle(el).pointerEvents === "none") return;
             // Ligger kontrollen i en <label> ar det LABELN som ar tryckytan -
             // ett klick var som helst pa den togglar. Matt: 350x135, inte
             // kryssrutans 20x20.
@@ -102,6 +106,17 @@ async function main() {
         }
 
         if (i < antalSteg - 1) {
+          const ctaInput = await page.$('[data-step]:not([style*="display: none"]) .chf-file-cta input[type=file]');
+          if (ctaInput) {
+            const behovs = await page.evaluate(
+              (el) => (el as HTMLInputElement).files?.length === 0,
+              ctaInput
+            );
+            if (behovs) {
+              await ctaInput.uploadFile("public/images/progressbild/exempel-bra.jpg");
+              await new Promise((r) => setTimeout(r, 500));
+            }
+          }
           const gick = await page.evaluate((idx) => {
             const step = document.querySelector(`[data-step="${idx}"]`);
             const inp = step?.querySelector('input[type=email]') as HTMLInputElement | null;

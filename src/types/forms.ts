@@ -62,7 +62,13 @@ export type FormField =
   | ({ kind: "select" | "radio"; options: { value: string; label: string }[] } & FormFieldBase)
   // Checkbox with confirmation text (godkännande)
   | ({ kind: "checkbox"; text: string } & FormFieldBase)
-  | ({ kind: "file"; accept?: string; maxFiles?: number } & FormFieldBase)
+  // `asCta` gör stegets egen CTA till den som öppnar filväljaren, i stället för
+  // en separat knapp ovanför den. Skärmen "ta bilden" hade tre knappar (välj
+  // bild, se exempel, fortsätt) där den sista såg avstängd ut tills bilden var
+  // vald. Med asCta finns EN knapp: den heter `ctaLabel` och öppnar väljaren,
+  // och när bilden är vald byter den tillbaka till stegets vanliga etikett.
+  // Element med `data-chf-pick` i samma steg öppnar också väljaren.
+  | ({ kind: "file"; accept?: string; maxFiles?: number; asCta?: boolean; ctaLabel?: string } & FormFieldBase)
   // Osynligt fält vars värde kommer från query-strängen på sidan formuläret
   // ligger på (?steg=2). Låter ETT formulär bära flera varianter i stället för
   // en kopia per variant. `fromParam` = parameterns namn, `fallback` = värdet

@@ -436,13 +436,45 @@
     "font-size:14px;color:var(--chf-muted)}" +
     ".chf-app .chf-file-clear{border:1px solid rgba(50,13,1,.16);background:var(--chf-surface);" +
     "border-radius:999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;" +
-    "text-decoration:none;color:var(--chf-text);cursor:pointer;position:relative;z-index:2;min-height:40px}" +
+    "text-decoration:none;color:var(--chf-text);cursor:pointer;position:relative;z-index:2;min-height:44px}" +
     // "Tryck for att byta" ar en INSTRUKTION om att ytan runtom ar klickbar,
     // inte en egen lank. Understruken bredvid en riktig knapp last som tva
     // konkurrerande atgarder.
     ".chf-app .chf-file-change{text-decoration:none;color:var(--chf-muted);font-size:13px}" +
     ".chf-app .chf-file-clear:active{transform:scale(.97)}" +
     ".chf-app .chf-file-change{color:var(--chf-brand)}" +
+
+    // CTA-lage (`asCta`). Filfaltet ar INTE langre en knapp - stegets egen CTA
+    // oppnar valjaren. Skarmen hade tre knappar och den nedersta sag avstangd
+    // ut tills bilden var vald; William: "det ar for manga knappar, CTA ska
+    // inte vara disabled". Monstret ar Thea (matningen i vaulten): ledtext,
+    // bild, EN knapp.
+    ".chf-app .chf-file-cta{background:none;border:0;box-shadow:none;padding:0;margin:0;" +
+    "min-height:0;display:block;text-align:left;cursor:default}" +
+    // Inputen far inte ligga over nagot: den oppnas programmatiskt, aldrig
+    // genom att kunden traffar den. Basregeln sprider ut den over hela
+    // wrappern (inset:0), vilket i CTA-lage hade lagt en osynlig tryckyta
+    // ovanpa exempelbilden.
+    ".chf-app .chf-file-cta input[type=file]{position:absolute;width:1px;height:1px;" +
+    "opacity:0;pointer-events:none}" +
+    ".chf-app .chf-file-cta .chf-file-preview{gap:0}" +
+    ".chf-app .chf-file-cta .chf-file-title{font-size:19px;font-weight:700;" +
+    "color:var(--chf-text);text-align:center;margin:2px 0 14px}" +
+    ".chf-app .chf-file-cta .chf-file-preview img{max-height:41vh;object-fit:cover;" +
+    "border-radius:18px;margin:0 0 16px;background:none}" +
+    ".chf-app .chf-file-cta .chf-file-clear{margin:0 auto 16px}" +
+    // Nar bilden ar vald ar det bilden som ar skarmen. Instruktionen och
+    // exempelbilden har gjort sitt och ska inte ligga kvar och konkurrera.
+    ".chf-app .chf-step.chf-has-photo .chf-hide-on-photo{display:none}" +
+
+    // Ledtext i Thea-anatomin: brodtext med feta nyckelord, ingen rubrik.
+    ".chf-app .chf-lead{font-size:17px;line-height:1.55;color:var(--chf-text);margin:2px 0 16px}" +
+    ".chf-app .chf-lead b{font-weight:700}" +
+    ".chf-app .chf-bigshot{margin:0 0 16px;position:relative;font-size:0}" +
+    ".chf-app .chf-bigshot .chf-shot-tag{font-size:12px;line-height:1.25}" +
+    ".chf-app .chf-bigshot img{display:block;width:100%;height:auto;max-height:41vh;" +
+    "object-fit:cover;border-radius:18px}" +
+    ".chf-app .chf-privacy{margin:0;text-align:center;font-size:14px;color:var(--chf-muted)}" +
 
     // Avslutningen ar en egen skarm i en app, centrerad och lugn - inte ett
     // vansterstallt kvitto dar formularet stod.
@@ -885,13 +917,41 @@
         stepEl.appendChild(wrap);
       });
 
+      // Steg vars CTA ska oppna filvaljaren i stallet for att ga vidare, sa
+      // lange ingen bild ar vald. Etiketten byts i syncStepButtons().
+      var ctaFalt = null;
+      step.fields.forEach(function (f) {
+        if (f.kind === "file" && f.asCta) ctaFalt = f;
+      });
+      stepEl.__ctaFalt = ctaFalt;
+
+      /** Tomt lage: knappen ar en oppna-valjaren-knapp, inte en ga-vidare. */
+      function ctaVantarPaBild() {
+        return !!ctaFalt && !(state.files[ctaFalt.key] || []).length;
+      }
+      function oppnaValjaren() {
+        var inp = stepEl.querySelector('[data-key="' + ctaFalt.key + '"] input[type=file]');
+        if (inp) inp.click();
+      }
+      if (ctaFalt) {
+        // Allt i steget som ser ut som en tryckyta for bilden (platshallar-
+        // rutan, en ruta i serien) oppnar samma valjare. Utan detta ser rutan
+        // tryckbar ut men gor ingenting, vilket ar varre an ingen ruta alls.
+        stepEl.addEventListener("click", function (ev) {
+          var t = ev.target && ev.target.closest ? ev.target.closest("[data-chf-pick]") : null;
+          if (t) { ev.preventDefault(); oppnaValjaren(); }
+        });
+      }
+
       if (stepIdx < steps.length - 1) {
         // Mellansteg: Fortsätt-knapp som validerar stegets synliga fält
         var cont = elText("button", "chf-submit", step.continueLabel || "Fortsätt");
         cont.type = "button";
+        stepEl.__ctaKlarLabel = step.continueLabel || "Fortsätt";
         cont.addEventListener("click", function () {
           // Karusellen ager knappen tills sista panelen ar visad.
           if (stepEl.__carousel && stepEl.__carousel.advance()) return;
+          if (ctaVantarPaBild()) { oppnaValjaren(); return; }
           topError.style.display = "none";
           if (!validate(form, step.fields)) {
             var firstInvalid = stepEl.querySelector(".chf-invalid");
@@ -923,11 +983,15 @@
         // med textContent, sa den ska varken escapas eller tolkas som HTML.
         var submit = elText("button", "chf-submit", fillPlaceholders(cfg.submitLabel || "Skicka in"));
         submit.type = "submit";
+        stepEl.__ctaKlarLabel = fillPlaceholders(cfg.submitLabel || "Skicka in");
         stepEl.appendChild(submit);
         addBackButton(stepEl, stepIdx);
 
         form.addEventListener("submit", function (ev) {
           ev.preventDefault();
+          // Ligger bilden pa sista steget ar samma knapp bade "ta bild" och
+          // "skicka in" - den far inte skicka in en tom inskickning.
+          if (ctaVantarPaBild()) { oppnaValjaren(); return; }
           onSubmit(form, submit, topError);
         });
       }
@@ -1012,7 +1076,10 @@
       return clab;
     }
     if (f.kind === "file") {
-      var fwrap = elText("div", "chf-file");
+      // asCta: stegets egen CTA oppnar valjaren. Da ska filfaltet inte rita
+      // nagon knapp alls - bara den dolda inputen och forhandsvisningen.
+      var asCta = !!f.asCta;
+      var fwrap = elText("div", asCta ? "chf-file chf-file-cta" : "chf-file");
       var finp = document.createElement("input");
       finp.type = "file";
       finp.id = id;
@@ -1048,16 +1115,28 @@
       var chosen = elText("div", "chf-file-preview");
       chosen.style.display = "none";
 
+      /** Markerar steget nar en bild ar vald, sa allt som bara galler det tomma
+       *  laget (ledtext, exempelbild) kan doljas med `chf-hide-on-photo`. */
+      function markStep(harBild) {
+        var st = fwrap.closest ? fwrap.closest("[data-step]") : null;
+        if (st) st.classList.toggle("chf-has-photo", harBild);
+      }
+
       function render(list) {
         if (!list.length) {
           idle.style.display = "";
           chosen.style.display = "none";
           fwrap.classList.remove("chf-has-file");
+          markStep(false);
           return;
         }
         idle.style.display = "none";
-        fwrap.classList.add("chf-has-file");
+        if (!asCta) fwrap.classList.add("chf-has-file");
+        markStep(true);
         chosen.replaceChildren();
+        // I CTA-lage ar bilden hela skarmen, sa fragan star OVANFOR den och
+        // inte under: hon laser "Ser den bra ut?" och tittar sedan.
+        if (asCta) chosen.appendChild(elText("div", "chf-file-title", "Ser den bra ut?"));
         var file = list[0];
         if (/^image\//.test(file.type)) {
           var img = document.createElement("img");
@@ -1072,7 +1151,7 @@
         // bekraftelse pa vad filen heter. Filnamnet sager henne ingenting -
         // hon har tre snarlika selfies i rullen och behover se VILKEN hon
         // valde och fa en chans att ta om.
-        meta.appendChild(elText("div", "chf-file-main", "Ser den bra ut?"));
+        if (!asCta) meta.appendChild(elText("div", "chf-file-main", "Ser den bra ut?"));
 
         // Angra. Hela rutan ar en tryckyta som oppnar filvaljaren igen, sa
         // "byt bild" gick redan. Det som INTE gick var att backa ur helt -
@@ -1119,7 +1198,7 @@
         });
       });
 
-      fwrap.appendChild(idle);
+      if (!asCta) fwrap.appendChild(idle);
       fwrap.appendChild(chosen);
       fwrap.appendChild(finp);
       return fwrap;
@@ -1180,6 +1259,19 @@
       var el = stepEls[i];
       var knapp = el.querySelector(".chf-submit");
       if (!knapp) continue;
+      // CTA-lage: knappen har tva jobb. Utan bild heter den "Ta bild" och
+      // oppnar valjaren, och da ar den INTE vantande - att trycka pa den ar
+      // precis vad hon ska gora. Med bild byter den tillbaka till stegets
+      // vanliga etikett och vanlig dampning galler igen.
+      var cf = el.__ctaFalt;
+      if (cf) {
+        var harBild = (state.files[cf.key] || []).length > 0;
+        knapp.textContent = harBild
+          ? el.__ctaKlarLabel || "Fortsätt"
+          : cf.ctaLabel || "Ta bild";
+        knapp.classList.remove("chf-submit-vantar");
+        if (!harBild) continue;
+      }
       var klar = true;
       var wraps = el.querySelectorAll("[data-key]");
       for (var j = 0; j < wraps.length; j++) {
