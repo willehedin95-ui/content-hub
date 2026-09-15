@@ -1,15 +1,20 @@
 /**
  * Seedar progressbildsformuläret (hydro13 workspace, market SE).
  *
- * ETT formulär bär alla tre bilderna. Vilket steg det gäller kommer från
- * query-strängen på sidan formuläret ligger på (?steg=1|2|3) och fångas av
- * ett `hidden`-fält. Zooki har ett formulär per milstolpe och måste därför
- * hålla fyra kopior i synk; det slipper vi.
+ * Fyra slides enligt "Envana progress"-specen: intro, e-post, bild, klart.
+ * Copy är tagen ordagrant därifrån. Slide 4 är formulärets success-ending.
  *
- * Kunden skriver sin e-post EN gång, vid första bilden. Kortet i paketet är
- * tryckt och därmed identiskt för alla, så vi kan inte veta vem som skannar.
- * Mailen därefter skickas från Klaviyo och sätter ?e= från profilen, så
- * e-postfältet är redan ifyllt vid bild två och tre.
+ * ETT formulär bär alla tre bilderna (dag 1, 30, 60). Vilken bild det gäller
+ * kommer från ?steg=1|2|3 på värdsidan och fångas av ett `hidden`-fält, så vi
+ * slipper hålla tre kopior i synk. Zooki har ett formulär per milstolpe.
+ *
+ * E-postfältet förifylls från ?e= i länken. Mailen från Klaviyo sätter den
+ * från profilen, så adressen skrivs bara en gång: vid första bilden, som nås
+ * via QR-koden på det tryckta kortet (identiskt för alla, därför ingen
+ * identitet i länken).
+ *
+ * Samtycket ligger INTE här. Det är en egen sida enligt specen, seedad av
+ * scripts/seed-samtycke-form.ts, och den triggar belöningen.
  *
  * Idempotent: upsertar på (workspace_id, slug, market).
  *
@@ -29,75 +34,59 @@ import type { FormConfig } from "../src/types/forms";
 
 const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 
-/** Meningen som gör att hon vågar ladda upp, och som förbereder
- *  samtyckesfrågan vid steg 3. Tagen från Zooki, översatt. */
-const INTEGRITETSRAD = `<p style="font-size:13px;line-height:1.5;opacity:.8">Bilderna är till för din egen skull. Vi använder dem aldrig i marknadsföring eller någon annan kommunikation utan att fråga dig först.</p>`;
-
 const progressbild: FormConfig = {
-  intro: `<p>Ta en bild i samma ljus och från samma håll varje gång. Då blir jämförelsen rättvis, och du ser skillnader som spegeln missar.</p>`,
-  submitLabel: "Skicka in min bild",
+  submitLabel: "Ladda upp bilden",
   ticket: { kindLabel: "Progressbild", priority: 1 },
   fields: [
     // Bärs av länken: ?steg=1|2|3. Utan parameter antas första bilden.
     { kind: "hidden", key: "steg", label: "Steg", fromParam: "steg", fallback: "1" },
 
+    // --- Slide 1: intro ---
     {
-      // Förifylls från länken (?e=...). Mailen vi skickar sätter parametern
-      // från Klaviyo-profilen, så hon slipper skriva adressen igen. Kortet i
-      // paketet kan inte göra det - det är tryckt och likadant för alla - så
-      // vid första bilden skriver hon den en gång.
+      kind: "info",
+      key: "slide1",
+      html: `<h2 style="margin:0 0 10px;font-size:20px;line-height:1.3">Följ din resa i 60 dagar. Få ett presentkort på 200 kr.</h2>
+<p style="margin:0">Ladda upp din första bild idag och följ hur din hud förändras över tid.</p>`,
+    },
+    { kind: "pagebreak", key: "till_epost", label: "Kom igång" },
+
+    // --- Slide 2: e-post ---
+    // Frågan står som label och förklaringen som help, så de renderas i den
+    // ordning specen visar dem (fråga, förklaring, fält).
+    {
       kind: "email",
       key: "email",
-      label: "Din e-postadress",
+      label: "Innan du laddar upp din första bild behöver vi din e-postadress.",
       required: true,
       role: "email",
       fromParam: "e",
-      help: "Använd samma adress varje gång, så hamnar bilderna i samma serie.",
+      help: "Vi använder den för att koppla dina bilder till dig och påminna dig när det är dags att ta nästa bild.",
+    },
+    { kind: "pagebreak", key: "till_bild", label: "Fortsätt" },
+
+    // --- Slide 3: bilden ---
+    {
+      kind: "info",
+      key: "slide3",
+      html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din första bild</h2>
+<p>Du väljer själv vad du vill följa. Du kan ta en bild på hela ansiktet eller fokusera på ett område där du särskilt vill se förändring, till exempel runt ögonen, munnen eller på halsen.</p>
+<p>Det viktigaste är att bilden är tydlig och tagen i bra ljus. Försök gärna att ta dina kommande bilder på samma plats, i samma ljus och från samma vinkel. Då blir det mycket lättare att jämföra din utveckling över tid.</p>
+<p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
     },
     {
       kind: "file",
       key: "bild",
-      label: "Din bild",
+      label: "Välj en bild eller dra den hit",
       required: true,
       accept: "image/*",
       maxFiles: 1,
     },
-    { kind: "info", key: "integritet", html: INTEGRITETSRAD },
-
-    {
-      kind: "textarea",
-      key: "noterat",
-      label: "Har du märkt något? (valfritt)",
-      role: "message",
-      placeholder: "Naglar, hår, hud, energi, sömn ... vad som helst du lagt märke till.",
-    },
-
-    // --- Endast vid sista bilden: samtycke och egen bildtext ---
-    {
-      kind: "radio",
-      key: "samtycke",
-      label: "Får vi visa din före- och efterbild?",
-      showWhen: { field: "steg", in: ["3"] },
-      help: "Du kan ändra dig när som helst genom att höra av dig till oss.",
-      options: [
-        { value: "nej", label: "Nej, bilderna är bara mina" },
-        { value: "anonymt", label: "Ja, men anonymt utan namn" },
-        { value: "fornamn", label: "Ja, med mitt förnamn" },
-        { value: "fornamn_alder", label: "Ja, med mitt förnamn och min ålder" },
-      ],
-    },
-    {
-      kind: "textarea",
-      key: "bildtext",
-      label: "Vill du säga något om din resa? (valfritt)",
-      showWhen: { field: "samtycke", in: ["anonymt", "fornamn", "fornamn_alder"] },
-      placeholder: "Dina egna ord säger mer än något vi kan skriva.",
-    },
   ],
   endings: {
+    // --- Slide 4 ---
     success: {
-      title: "Tack, din bild är sparad",
-      html: `<p>Vi hör av oss när det är dags för nästa. Under tiden: ta den varje dag, det är det som avgör.</p>`,
+      title: "Klart!",
+      html: `<p>Din första bild är på väg till din inkorg.</p><p style="opacity:.75">Det kan ta några minuter.</p>`,
     },
   },
 };
