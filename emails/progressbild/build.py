@@ -30,36 +30,45 @@ def cond(expr, inner, els=""):
         return out + "{% endif %}"
     return inner
 
-def slot_cell(n, label, filled, width=164):
-    """En ruta i serien. Fylld = hennes bild. Tom = det som drar tillbaka henne."""
+def slot_cell(n, label, filled):
+    """En ruta i serien, utan etikett - den ligger pa en egen tabellrad.
+
+    Procentuell bredd, aldrig fasta pixlar. Tre bilder a 164 px tvingade den
+    yttre tabellen till 624 px i en 390 px telefon, alltsa sidledsscroll i
+    inkorgen. Uppmatt, inte antaget.
+    """
     if filled:
-        # height satt explicit: den tomma rutans 2px-ram laggs UTANFOR hojden i
-        # mail, sa en bild pa 183 och en tom ruta pa 183 blev 183 mot 187 och
-        # etiketterna hamnade pa olika rader. Uppmatt i den renderade bilden.
-        inner = (
-          '<img src="%s" width="%d" height="187" alt="%s" style="display:block;width:%dpx;'
-          'height:187px;object-fit:cover;border-radius:10px;border:0;">'
-          '<div style="font:700 11px %s;letter-spacing:.6px;color:%s;padding-top:7px;">%s</div>'
-          % (img(str(n), label), width, label, width, FONT, HEAD, label)
+        return (
+          '<td width="33%%" align="center" valign="bottom" style="padding:0 5px;">'
+          '<img src="%s" alt="%s" width="164" style="display:block;width:100%%;max-width:164px;'
+          'height:auto;border-radius:10px;border:0;"></td>'
+          % (img(str(n), label), label)
         )
-    else:
-        inner = (
-          '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="%d"><tr>'
-          '<td height="183" align="center" valign="middle" style="width:%dpx;height:183px;'
-          'background:#f7ece8;border:2px dashed %s;border-radius:10px;">'
-          '<span style="font:700 26px %s;color:%s;opacity:.45;">?</span></td></tr></table>'
-          '<div style="font:700 11px %s;letter-spacing:.6px;color:%s;padding-top:7px;">%s</div>'
-          % (width, width, BRAND, FONT, BRAND, FONT, MUTED, label)
-        )
-    return '<td align="center" valign="top" style="padding:0 5px;">%s</td>' % inner
+    # Tomrutan ar en BILD med exakt samma proportion som kundens foton. En
+    # CSS-ram med fast hojd kan inte folja med nar bredden ar procentuell, och
+    # i mail finns ingen aspect-ratio att lita pa - resultatet blev en bild pa
+    # 116 px bredvid tomrutor pa 150 px. Som bild krymper allt identiskt.
+    src = "tom-ruta.png" if MODE == "preview" else "{{ organization.url }}/images/progressbild/tom-ruta.png"
+    return (
+      '<td width="33%%" align="center" valign="bottom" style="padding:0 5px;">'
+      '<img src="%s" alt="Tom ruta, vantar pa din bild" width="164" '
+      'style="display:block;width:100%%;max-width:164px;height:auto;border:0;"></td>' % src
+    )
+
+def label_cell(label, filled):
+    return ('<td width="33%%" align="center" style="padding:7px 5px 0;">'
+            '<span style="font:700 12px %s;letter-spacing:.6px;color:%s;">%s</span></td>'
+            % (FONT, HEAD if filled else MUTED, label))
 
 def series(filled_count):
-    cells = "".join(
-        slot_cell(n, ("DAG 1", "DAG 30", "DAG 60")[n - 1], n <= filled_count)
-        for n in (1, 2, 3)
-    )
+    labels = ("DAG 1", "DAG 30", "DAG 60")
+    row1 = "".join(slot_cell(n, labels[n - 1], n <= filled_count) for n in (1, 2, 3))
+    # Etiketterna pa en EGEN rad. Forut lag de under respektive ruta, och da
+    # hamnade DAG 1 pa en annan hojd an DAG 30 sa fort bild och tomruta inte
+    # var exakt lika hoga - vilket de aldrig ar nar bredden ar procentuell.
+    row2 = "".join(label_cell(labels[n - 1], n <= filled_count) for n in (1, 2, 3))
     return ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
-            '<tr>' + cells + '</tr></table>')
+            '<tr>' + row1 + '</tr><tr>' + row2 + '</tr></table>')
 
 def button(text, href="#"):
     return (
@@ -74,9 +83,9 @@ def gift(amount="200 kr", sub="Presentkort"):
     return (
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="200" align="center">'
       '<tr><td bgcolor="%s" style="border-radius:13px;padding:16px 18px;">'
-      '<div style="font:700 10px %s;letter-spacing:1.8px;color:#ffffff;opacity:.9;">%s</div>'
+      '<div style="font:700 11px %s;letter-spacing:1.8px;color:#ffffff;opacity:.9;">%s</div>'
       '<div style="font:800 32px %s;color:#ffffff;padding-top:6px;">%s</div>'
-      '<div style="font:700 10px %s;letter-spacing:2.6px;color:#ffffff;opacity:.92;padding-top:8px;">ENVANA</div>'
+      '<div style="font:700 11px %s;letter-spacing:2.6px;color:#ffffff;opacity:.92;padding-top:8px;">ENVANA</div>'
       '</td></tr></table>' % (BRAND, FONT, sub.upper(), FONT, amount, FONT)
     )
 
@@ -89,7 +98,7 @@ def shell(preheader, body):
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">%(pre)s</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" style="background:%(bg)s;">
 <tr><td align="center" style="padding:28px 12px 40px;">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:100%%;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%%;max-width:600px;">
 <tr><td align="center" style="padding:0 0 22px;">
 <div style="font:700 13px %(font)s;letter-spacing:3.4px;color:%(head)s;">ENVANA</div></td></tr>
 <tr><td style="background:%(surface)s;border-radius:18px;padding:30px 26px;">%(body)s</td></tr>
@@ -97,7 +106,7 @@ def shell(preheader, body):
 <div style="font:400 12px %(font)s;line-height:1.6;color:%(muted)s;">
 Du får det här mejlet för att du dokumenterar din Envana-resa.<br>
 Bilderna är dina. Vi visar dem aldrig för någon utan att fråga dig först.<br>
-<a href="{%% unsubscribe %%}" style="color:%(muted)s;">Avsluta påminnelserna</a>
+<a href="{%% unsubscribe %%}" style="display:inline-block;padding:14px 10px;color:%(muted)s;">Avsluta påminnelserna</a>
 </div></td></tr>
 </table></td></tr></table></body></html>""" % dict(bg=BG, pre=preheader, font=FONT, head=HEAD,
                                                   surface=SURFACE, body=body, muted=MUTED)
@@ -139,20 +148,20 @@ elif OUT.endswith("paminnelse"):
                   "{% else %}Dags för bild två{% endif %}")
         forra = cond("event.antal_bilder == 2", 
                      '<img src="{{ event.bild_2_url }}" width="240" alt="Din bild fran dag 30" '
-                     'style="display:block;width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">',
+                     'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">',
                      '<img src="{{ event.bild_1_url }}" width="240" alt="Din startbild" '
-                     'style="display:block;width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
+                     'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
     else:
         rubrik = "Dags för bild två"
         forra = ('<img src="dag1.jpg" width="240" alt="Din startbild" '
-                 'style="display:block;width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
+                 'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
     body = (
       '<h1 %s>%s</h1>'
       '<p %s>Så här såg din förra bild ut. Ställ dig på samma plats, i samma ljus och håll '
       'telefonen lika högt, så blir jämförelsen rättvis.</p>'
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
       '<tr><td align="center" style="padding:4px 0 8px;">%s'
-      '<div style="font:700 11px %s;letter-spacing:.6px;color:%s;padding-top:9px;">DIN FÖRRA BILD</div>'
+      '<div style="font:700 12px %s;letter-spacing:.6px;color:%s;padding-top:9px;">DIN FÖRRA BILD</div>'
       '</td></tr></table>'
       '<div style="height:22px;"></div>%s'
       '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:18px 0 0;text-align:center;">'

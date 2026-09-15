@@ -190,12 +190,12 @@
     // Ett enstegsformular har varken tillbakaknapp eller stapel. Da ar headern
     // 64 px tom yta som trycker ner rubriken utan att bara nagot.
     ".chf-app.chf-bare .chf-head{min-height:0;padding:12px 20px 0}" +
-    ".chf-app .chf-headback{width:36px;height:36px;padding:0;border:0;border-radius:50%;" +
+    ".chf-app .chf-headback{width:44px;height:44px;padding:0;border:0;border-radius:50%;" +
     "background:rgba(0,0,0,.04);color:var(--chf-text);display:flex;align-items:center;" +
     "justify-content:center;cursor:pointer;transition:background .15s,transform .15s}" +
     ".chf-app .chf-headback:hover{background:rgba(0,0,0,.08)}" +
     ".chf-app .chf-headback:active{transform:scale(.94)}" +
-    ".chf-app .chf-headback svg{width:18px;height:18px}" +
+    ".chf-app .chf-headback svg{width:20px;height:20px}" +
     ".chf-app .chf-headback[hidden]{visibility:hidden}" +
 
     // Progressbar kant till kant under headern. Den gamla satt inne i
@@ -265,7 +265,7 @@
     ".chf-app .chf-shot img{display:block;width:100%;height:auto;border-radius:16px}" +
     // Dag-etiketter direkt pa bilden. Utan dem ar det tva ansikten bredvid
     // varandra och betraktaren far sjalv gissa vilket som ar fore.
-    ".chf-app .chf-shot-tag{position:absolute;bottom:10px;font-size:11px;font-weight:700;letter-spacing:.4px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:4px 10px;backdrop-filter:blur(2px)}" +
+    ".chf-app .chf-shot-tag{position:absolute;bottom:10px;font-size:12px;font-weight:700;letter-spacing:.4px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:4px 10px;backdrop-filter:blur(2px)}" +
     ".chf-app .chf-shot-tag--a{left:10px}" +
     ".chf-app .chf-shot-tag--b{right:10px}" +
     ".chf-app .chf-shot figcaption{display:flex;gap:6px;margin-top:8px;font-size:13px;" +
