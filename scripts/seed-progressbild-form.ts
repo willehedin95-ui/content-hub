@@ -156,7 +156,7 @@ const progressbild: FormConfig = {
       key: "foto_lead_1",
       showWhen: { field: "steg", in: ["1"] },
       html: `<p class="chf-lead chf-hide-on-photo">Vi börjar med en bild på <b>hela ansiktet</b>. Se till att den inte är <b>suddig</b> och att <b>ljuset är bra</b>.</p>
-<div class="chf-bigshot chf-hide-on-photo"><img src="{{hub}}/images/progressbild/exempel-bra.jpg" alt="Exempel på hur bilden ska se ut" width="491" height="614" loading="eager"></div>`,
+<div class="chf-bigshot chf-hide-on-photo"><img src="{{hub}}/images/progressbild/exempel-bra.jpg" alt="Exempel på hur bilden ska se ut" width="491" height="613" loading="eager"></div>`,
     },
     // Dag 30 och 60: ledtexten och bilden ar SKILDA block med olika villkor.
     // Villkoren ar ett falt vardera (in / notEmpty), sa de gar inte att slaa
