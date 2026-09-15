@@ -218,6 +218,12 @@
     "@keyframes chf-step-in{from{opacity:0}to{opacity:1}}" +
     "@media (prefers-reduced-motion:reduce){.chf-app .chf-step.chf-in{animation:none}}" +
     ".chf-app .chf-step>.chf-submit{margin-top:auto}" +
+    // Nar tangentbordet ar uppe ar den pinnade knappen kvar pa sin plats
+    // LANGST NER i layouten, alltsa bakom tangentbordet. William sag den
+    // halvtackt bakom iOS-tangentbordet vid forsta riktiga testet. Da ska
+    // knappen sluta vara pinnad och folja direkt efter faltet i stallet.
+    ".chf-app.chf-kb .chf-step>.chf-submit{margin-top:16px}" +
+    ".chf-app.chf-kb .chf-art{display:none}" +
 
     ".chf-app .chf-slide-title{font-size:22px;font-weight:700;line-height:1.35;" +
     "color:var(--chf-text);margin:0 0 6px}" +
@@ -491,6 +497,19 @@
 
     var body = elText("div", "chf-body");
     container.appendChild(body);
+
+    // Tangentbordsdetektering. visualViewport krymper nar tangentbordet
+    // oppnas medan window.innerHeight star stilla, sa skillnaden ar
+    // tangentbordets hojd. 140 px skiljer ett tangentbord fran adressfaltets
+    // egna in- och utglidning, som ar ca 60-90 px och inte ska rakna.
+    if (window.visualViewport) {
+      var vv = window.visualViewport;
+      var onViewport = function () {
+        container.classList.toggle("chf-kb", window.innerHeight - vv.height > 140);
+      };
+      vv.addEventListener("resize", onViewport);
+      onViewport();
+    }
     return body;
   }
 
@@ -955,6 +974,15 @@
   function showEnding(gate) {
     var endings = state.config.endings || {};
     var ending = (gate && endings[gate]) || endings.success || { title: "Tack!" };
+    // Villkorad avslutning: forsta variant vars showWhen stammer vinner. Ett
+    // formular som bar flera tillfallen (progressbild ?steg=1|2|3) maste kunna
+    // saga olika saker nar serien fortsatter och nar den ar slut.
+    if (ending.variants && ending.variants.length) {
+      for (var vi = 0; vi < ending.variants.length; vi++) {
+        var v = ending.variants[vi];
+        if (!v.showWhen || conditionMet(v.showWhen)) { ending = v; break; }
+      }
+    }
     var box = elText("div", "chf-ending");
 
     if (state.app) {

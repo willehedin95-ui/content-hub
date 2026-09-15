@@ -37,6 +37,12 @@ const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 const progressbild: FormConfig = {
   submitLabel: "Ladda upp bilden",
   ticket: { kindLabel: "Progressbild", priority: 1 },
+  // INGEN helpdesk-leverans. En progressbild är inte en supportfråga; med
+  // helpdesk fick kunden ett "vi återkommer inom 24 timmar" som ingen tänker
+  // svara på, och kundservice hade fått tre ärenden per deltagare.
+  // Inskickningen sparas och syns i /forms som förut. Byts till "klaviyo" när
+  // adaptern finns - det är den som ska trigga mailen.
+  delivery: "none",
   // Fullskärms onboarding i stället för formulär i en vit ruta. Färgerna är
   // Envanas tokens ur designsystemet i Figma (brand/500, bg/base,
   // text/heading, text/muted), inte valda på känsla.
@@ -133,15 +139,35 @@ const progressbild: FormConfig = {
   ],
   endings: {
     // --- Slide 4 ---
+    // Varianter per steg. Samma text vid alla tre var direkt felaktig vid den
+    // sista bilden: "vi hör av oss om 30 dagar" när serien just tagit slut.
+    // Varje variant säger dessutom var i serien hon är - en påbörjad serie med
+    // ett hål kvar är det som får henne tillbaka, starkare än belöningen.
     success: {
       title: "Klart!",
-      // Specen skriver "Din första bild" - den beskriver första uppladdningen.
-      // Samma ending visas vid alla tre och kan inte villkoras, så ordet
-      // "första" är struket. Sista raden är tillagd: hon ska veta vad som
-      // händer härnäst, inte bara att något hände.
-      html: `<p>Din bild är på väg till din inkorg.</p>
-<p style="opacity:.75">Det kan ta några minuter.</p>
-<p style="margin-top:14px">Vi hör av oss när det är dags för nästa bild om 30 dagar. Ta Envana varje dag tills dess, det är det som avgör hur mycket du ser.</p>`,
+      html: `<p>Din bild är sparad.</p>`,
+      variants: [
+        {
+          showWhen: { field: "steg", in: ["1"] },
+          title: "Första bilden är inne",
+          html: `<p><strong>1 av 3.</strong> Nästa bild tar du om 30 dagar.</p>
+<p style="margin-top:14px">Titta efter naglarna och håret först. De svarar tidigare än huden, ofta redan innan du ser något i ansiktet.</p>
+<p style="margin-top:14px">Vi hör av oss när det är dags. Ta Envana varje dag tills dess, det är det som avgör hur mycket du ser.</p>`,
+        },
+        {
+          showWhen: { field: "steg", in: ["2"] },
+          title: "Halvvägs",
+          html: `<p><strong>2 av 3.</strong> En bild kvar.</p>
+<p style="margin-top:14px">Det är nu det börjar hända. Mellan dag 30 och dag 60 är förändringen som störst, och den sista bilden är den som visar den.</p>
+<p style="margin-top:14px">Vi hör av oss om 30 dagar.</p>`,
+        },
+        {
+          showWhen: { field: "steg", in: ["3"] },
+          title: "Din resa är klar",
+          html: `<p><strong>3 av 3.</strong> Du har dokumenterat 60 dagar.</p>
+<p style="margin-top:14px">Vi mejlar hela din serie, alla tre bilderna bredvid varandra, tillsammans med dina 200 kr som tack.</p>`,
+        },
+      ],
     },
   },
 };

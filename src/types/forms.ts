@@ -19,7 +19,18 @@ export type FormFieldRole =
  *  först när ett ämne är valt" (Fillout-paritet). */
 export type FormCondition = { field: string; in?: string[]; notEmpty?: boolean };
 
-export type FormEnding = { title: string; html?: string };
+/** Avslutningsskärmen. `variants` väljs före basen: första variant vars
+ *  `showWhen` stämmer vinner, annars används `title`/`html`.
+ *
+ *  Finns för att ETT formulär kan bära flera tillfällen. Progressbild kör tre
+ *  bilder genom samma formulär, och utan varianter fick sista bilden samma
+ *  "vi hör av oss om 30 dagar" som de två första - vilket inte är sant, då är
+ *  serien slut. William fångade det vid sitt första riktiga test 2026-09-15. */
+export type FormEnding = {
+  title: string;
+  html?: string;
+  variants?: { showWhen?: FormCondition; title: string; html?: string }[];
+};
 
 export interface FormFieldBase {
   key: string;
@@ -96,12 +107,27 @@ export interface FormTheme {
   muted?: string;
 }
 
+/** Vart en inskickning tar vägen.
+ *
+ *  Utan fältet: workspacets helpdesk. Det är rätt för kontakt, ångerrätt och
+ *  garanti - ärenden en människa ska svara på.
+ *
+ *  `"none"`: inskickningen sparas och syns i /forms, men skapar inget ärende.
+ *  En progressbild är ingen supportfråga. Med helpdesk-leverans får kunden ett
+ *  "vi återkommer inom 24 timmar" som ingen tänker svara på, och kundservice
+ *  får tre ärenden per deltagare. William fick exakt det mailet vid sitt första
+ *  riktiga test 2026-09-15.
+ *
+ *  När Klaviyo-adaptern finns blir det här fältet `"klaviyo"`. */
+export type FormDelivery = "helpdesk" | "none";
+
 export interface FormConfig {
   title?: string;
   /** HTML intro shown above the fields */
   intro?: string;
   submitLabel?: string;
   theme?: FormTheme;
+  delivery?: FormDelivery;
   fields: FormField[];
   endings: {
     success: FormEnding;

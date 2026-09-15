@@ -37,7 +37,10 @@ export async function GET(
 <html lang="sv">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- interactive-widget: layouten ska KRYMPA nar tangentbordet oppnas, inte
+       skjutas undan bakom det. Utan den hamnar en bottenpinnad knapp bakom
+       iOS-tangentbordet. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <meta name="robots" content="noindex, nofollow">
   <title>Formulär</title>
   <style>
