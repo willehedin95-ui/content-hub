@@ -12,6 +12,9 @@ import io, os, sys
 
 OUT = sys.argv[1]
 MODE = sys.argv[2]  # "klaviyo" | "preview"
+# Vilket lage forhandsvisningen ska visa. I klaviyo-lage styr villkoren i
+# mallen och det har argumentet ignoreras.
+VARIANT = sys.argv[3] if len(sys.argv) > 3 else "1"
 
 BRAND, BG, SURFACE, HEAD, MUTED = "#f0573d", "#fefaf8", "#ffffff", "#320d01", "#7e6458"
 
@@ -159,9 +162,14 @@ if OUT.endswith("kvittens"):
                  + "".join(label_cell(("DAG 1", "DAG 30", "DAG 60")[n - 1], True) for n in (1, 2, 3))
                  + '</tr></table>')
     else:
-        rubrik, text, serie = ("Första bilden är sparad",
-            "Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter naglarna och "
-            "håret först - de svarar tidigare än huden.", series(1))
+        if VARIANT == "2":
+            rubrik, text, serie = ("Halvvägs, en bild kvar",
+                "Trettio dagar sedan startbilden. Nästa bild är den sista, och det är mellan "
+                "nu och då som förändringen brukar vara som störst.", series(2))
+        else:
+            rubrik, text, serie = ("Första bilden är sparad",
+                "Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter naglarna och "
+                "håret först - de svarar tidigare än huden.", series(1))
     body = ('<h1 %s>%s</h1><p %s>%s</p>%s'
             '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:20px 0 0;text-align:center;">'
             'Rutorna fylls i takt med att du laddar upp.</p>' % (H, rubrik, P, text, serie, FONT, MUTED))
@@ -181,9 +189,10 @@ elif OUT.endswith("paminnelse"):
                      '<img src="{{ event.bild_1_url }}" width="240" alt="Din startbild" '
                      'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
     else:
-        rubrik = "Dags för bild två"
-        forra = ('<img src="dag1.jpg" width="240" alt="Din startbild" '
-                 'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
+        rubrik = "Dags för din sista bild" if VARIANT == "2" else "Dags för bild två"
+        forra = ('<img src="%s" width="240" alt="Din forra bild" '
+                 'style="display:block;width:100%%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">'
+                 % ("dag30.jpg" if VARIANT == "2" else "dag1.jpg"))
     body = (
       '<h1 %s>%s</h1>'
       '<p %s>Så här såg din förra bild ut. Ställ dig på samma plats, i samma ljus och håll '
