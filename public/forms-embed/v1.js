@@ -222,6 +222,7 @@
           wrap.appendChild(elText("div", "chf-error", ""));
         }
         wrap.setAttribute("data-key", f.key);
+        if (f.kind === "hidden") wrap.style.display = "none";
         if (f.showWhen) {
           wrap.setAttribute("data-showwhen", "1");
           if (!conditionMet(f.showWhen)) wrap.style.display = "none";
@@ -275,6 +276,13 @@
 
   function buildInput(f) {
     var id = "chf-" + f.key;
+    if (f.kind === "hidden") {
+      var hid = document.createElement("input");
+      hid.type = "hidden";
+      hid.id = id;
+      hid.value = state.values[f.key] || "";
+      return hid;
+    }
     if (f.kind === "textarea") {
       var ta = elText("textarea", "chf-textarea");
       ta.id = id;
@@ -426,6 +434,20 @@
     return ok;
   }
 
+  /** Fyller `hidden`-fält från query-strängen pa varden-sidan. Kors en gang,
+   *  innan forsta render, sa att vardet finns i state nar faltet byggs. */
+  function applyHiddenParams() {
+    if (!state.config || !state.config.fields) return;
+    var qs = null;
+    try { qs = new URLSearchParams(window.location.search); } catch (e) { qs = null; }
+    state.config.fields.forEach(function (f) {
+      if (f.kind !== "hidden") return;
+      var v = qs && f.fromParam ? qs.get(f.fromParam) : null;
+      if (v === null || v === "") v = f.fallback || "";
+      state.values[f.key] = String(v).slice(0, 200);
+    });
+  }
+
   // ------------------------------------------------------------------ submit
   function collectAnswers() {
     var answers = [];
@@ -568,6 +590,7 @@
     })
     .then(function (data) {
       state.config = data.form.config;
+      applyHiddenParams();
       container.removeAttribute("aria-busy");
       render();
     })

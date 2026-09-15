@@ -39,6 +39,11 @@ export type FormField =
   // Checkbox with confirmation text (godkännande)
   | ({ kind: "checkbox"; text: string } & FormFieldBase)
   | ({ kind: "file"; accept?: string; maxFiles?: number } & FormFieldBase)
+  // Osynligt fält vars värde kommer från query-strängen på sidan formuläret
+  // ligger på (?steg=2). Låter ETT formulär bära flera varianter i stället för
+  // en kopia per variant. `fromParam` = parameterns namn, `fallback` = värdet
+  // när parametern saknas.
+  | ({ kind: "hidden"; fromParam: string; fallback?: string } & FormFieldBase)
   // Page break: splits the form into steps. `label` = the continue-button
   // text for the step BEFORE the break (e.g. "Fortsätt"). Used for the
   // EU-mandated two-step ångerrätt confirmation.
