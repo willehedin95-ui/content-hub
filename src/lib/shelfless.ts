@@ -117,7 +117,11 @@ export interface ShelflessDelivery {
   senderProfileId: number | null;
   pickupPointId: string | null;
   shipments: ShelflessShipment[] | null;
-  deliveryRows: Array<{ productNumber: string | null; quantity: number }> | null;
+  deliveryRows: Array<{
+    productNumber: string | null;
+    productName: string | null;
+    quantity: number;
+  }> | null;
   deliveryNotificationDetails: { email?: string | null; mobileNumber?: string | null } | null;
   deliveryAddress: { name?: string | null; countryCode?: string | null } | null;
 }
@@ -182,9 +186,26 @@ export function primaryTrackingNumber(d: ShelflessDelivery): string | null {
   return null;
 }
 
-/** True om leveransen innehaller minst en kollagen-artikel. */
+/**
+ * True om leveransen innehaller minst en kollagen-artikel.
+ *
+ * Matchar pa BADE artikelnummer och produktnamn. Bara numret racker inte:
+ * av de 14 artiklarna i Shelfless 2026-09-15 har 5 "COLLAGEN" i numret
+ * (COLLAGEN-MARINE-*), medan 9 heter TEMP<siffror> och bara avslojar sig i
+ * namnet ("Hydro 13 - Travel Edition", "Marine Collagen 10000mg", "Liquid
+ * Collagen Shots"). Ingen av TEMP-artiklarna forekom i de 2000 leveranser som
+ * granskades, men en order pa fel artikelnummer hade tyst gett flaggan false
+ * och kunden inget mejl.
+ */
 export function hasCollagenRow(d: ShelflessDelivery): boolean {
-  return (d.deliveryRows ?? []).some((r) => (r.productNumber ?? "").toUpperCase().includes("COLLAGEN"));
+  return (d.deliveryRows ?? []).some((r) => {
+    const haystack = `${r.productNumber ?? ""} ${r.productName ?? ""}`.toUpperCase();
+    return (
+      haystack.includes("COLLAGEN") ||
+      haystack.includes("KOLLAGEN") ||
+      haystack.replace(/\s+/g, "").includes("HYDRO13")
+    );
+  });
 }
 
 /**
