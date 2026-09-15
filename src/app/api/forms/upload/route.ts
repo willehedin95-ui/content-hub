@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
 
   let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
   let outMime = mime;
+  let varning: string | null = null;
   let ext = EXT_BY_MIME[mime] ?? "bin";
 
   // Bilder normaliseras; PDF lamnas orord.
@@ -119,14 +120,37 @@ export async function POST(req: NextRequest) {
       // samma sak bada gangerna - och ar de INTE det, raddar den bilden i
       // stallet for att leverera ett konsekvent utsnitt av en axel.
       const outW = Math.min(cw, MAX_WIDTH);
-      buffer = await rotated
-        .resize(outW, Math.round(outW / RATIO), {
-          fit: "cover",
-          position: sharp.strategy.attention,
-          withoutEnlargement: false,
-        })
-        .jpeg({ quality: 88, mozjpeg: true })
-        .toBuffer();
+      const beskuren = rotated.resize(outW, Math.round(outW / RATIO), {
+        fit: "cover",
+        position: sharp.strategy.attention,
+        withoutEnlargement: false,
+      });
+      buffer = await beskuren.jpeg({ quality: 88, mozjpeg: true }).toBuffer();
+
+      // Ljuskoll pa den FARDIGA bilden.
+      //
+      // Uppmatt over atta selfie-appar: ljus ar det enda radet som ges i 8 av
+      // 8. Inget annat ar i narheten. Det ar alltsa det fel som faktiskt
+      // intraffar, och det ar ocksa det som forstor en jamforelse - en mork
+      // bild gar inte att stalla bredvid en ljus och kalla det ett resultat.
+      //
+      // Monstret ar Jomos "Nice try, but the photo doesn't match your
+      // description" (Mobbin): appen SAGER TILL i stallet for att tyst ta emot
+      // en oanvandbar bild. Men vi VARNAR bara, vi avvisar inte. En bild vi
+      // tyckte var for mork ar fortfarande hennes bild, och att neka henne
+      // uppladdningen kostar oss hela serien.
+      try {
+        const st = await sharp(buffer).stats();
+        const kanaler = st.channels.slice(0, 3);
+        const medel = kanaler.reduce((a, c) => a + c.mean, 0) / kanaler.length;
+        // 62 av 255 ar satt mot testbilderna: en normalt exponerad selfie
+        // inomhus landar pa 95-150, den som ar tydligt undeexponerad under 60.
+        if (medel < 62) {
+          varning = "Bilden ser mörk ut. Ljuset är det som avgör om jämförelsen blir tydlig - ta gärna om den vänd mot ett fönster.";
+        }
+      } catch {
+        // Statistiken ar en extratjanst, inte ett krav for att spara bilden.
+      }
       outMime = "image/jpeg";
       ext = "jpg";
     } catch (e) {
@@ -150,5 +174,8 @@ export async function POST(req: NextRequest) {
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "");
   const url = `${base}/storage/v1/object/public/form-uploads/${path}`;
-  return NextResponse.json({ ok: true, url, filename: file.name.slice(0, 200) }, { headers: cors });
+  return NextResponse.json(
+    { ok: true, url, filename: file.name.slice(0, 200), warning: varning },
+    { headers: cors }
+  );
 }
