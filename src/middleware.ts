@@ -75,6 +75,9 @@ export async function middleware(request: NextRequest) {
     "/api/forms/config",
     "/api/forms/submit",
     "/api/forms/upload",
+    // Serieuppslaget. Skyddas av en signerad token, inte av inloggning - det
+    // ar kunden sjalv som ska na sina egna bilder fran formularet.
+    "/api/forms/series",
   ];
   const path = request.nextUrl.pathname;
   if (
@@ -111,6 +114,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Match all routes except static files and Next.js internals
-    "/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // mailpreview = statiska forhandsvisningar av mailmallarna, inget kunddata.
+    // Utan undantaget skickar middlewaren dem till inloggningen och de gar inte
+    // att titta pa, vilket ar hela deras syfte.
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|mailpreview|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

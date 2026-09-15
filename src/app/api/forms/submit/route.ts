@@ -180,7 +180,10 @@ export async function POST(req: NextRequest) {
       gate_status: gate,
       // Testläge levererar aldrig till helpdesk; gate-utvärderingen behålls
       // så testläget visar samma ending som skarp drift skulle göra.
-      delivery_status: gate || isTest ? "skipped" : "pending",
+      // config.delivery === "none" -> sparas och syns i /forms, men blir aldrig
+      // ett helpdesk-ärende. Progressbilderna är inte supportfrågor.
+      delivery_status:
+        gate || isTest || form.config.delivery === "none" ? "skipped" : "pending",
     },
     { onConflict: "client_submission_id", ignoreDuplicates: true }
   );

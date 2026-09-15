@@ -1,3 +1,24 @@
+## Progressbildsflodet (Envana/Hydro13)
+
+Formularen ar byggda och verifierade pa branchen `progressbilder` (2026-09-15, opushad).
+Spec: SharedVault `envana/envana-progressbilder-flode-spec.md`.
+
+- [ ] **Klaviyo-adapter i `src/lib/form-delivery.ts`** - BLOCKERAR hela flodet. Utan den
+      kan ingen av mailen triggas. Filen sager sjalv hur: ny adapter + peka om
+      `workspaces.settings.forms_helpdesk`.
+- [ ] **Beslut: vilken butik?** Envana pa Loop (8 aktiva prenumeranter) eller
+      SwedishBalance pa Appstle (393). Blockerar belongslogiken.
+- [ ] **Byt Loop-token i `.env.local`** - den nuvarande ar bunden till nedlagda
+      `get-renew.myshopify.com`.
+- [ ] **Beslut: presentkort eller Loop-rabatt?** Tryckt copy sager presentkort och
+      binder oss; resonemanget sa rabatt i forsta hand.
+- [ ] **Sidan `shopenvana.com/pages/resa`** med embed-koden. QR-koden ska leda dit.
+- [ ] **Kortet till tryck** - QR pa framsidan, exempelbilder pa baksidan.
+- [ ] **Uppdatera integritetspolicyn + App Privacy** innan nagon bild samlas in i skarpt
+      lage. Samtycket maste ga att aterkalla, alltsa maste vi kunna hitta och radera en
+      specifik kunds bilder.
+- [ ] Pusha `progressbilder` nar William vill ha en Vercel-preview att testa i telefonen.
+
 # Backlog
 
 - [ ] **Vakten: varje timme + tysta notiser?** Andringen nekades 2026-08-20, oklart

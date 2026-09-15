@@ -37,13 +37,22 @@ export async function GET(
 <html lang="sv">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- interactive-widget: layouten ska KRYMPA nar tangentbordet oppnas, inte
+       skjutas undan bakom det. Utan den hamnar en bottenpinnad knapp bakom
+       iOS-tangentbordet. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <meta name="robots" content="noindex, nofollow">
   <title>Formulär</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f6f4; margin: 0; padding: 32px 16px 64px; }
     .chp-card { max-width: 680px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 28px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
     @media (max-width: 480px) { .chp-card { padding: 18px; } }
+    /* Formulär i app-läge (config.theme.mode === "app") bär sin egen bakgrund
+       och fyller skärmen. Kortet runt om skulle göra onboardingen till en vit
+       ruta som slutar mitt på sidan - exakt det den är byggd för att sluta
+       vara. Embeddens klass styr, så inget behöver synkas härifrån. */
+    body:has(.chf-app) { background: transparent; padding: 0; }
+    .chp-card:has(.chf-app) { max-width: none; margin: 0; background: none; border-radius: 0; padding: 0; box-shadow: none; }
   </style>
 </head>
 <body>

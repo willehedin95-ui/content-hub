@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8"><title>Progressbild - mailmallar</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;background:#f4f1ee;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#320d01}
+  header{padding:26px 20px 8px;max-width:1240px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 6px}
+  p.lead{margin:0;color:#7e6458;font-size:15px}
+  .grid{display:grid;gap:22px;padding:20px;max-width:1240px;margin:0 auto;
+        grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+  .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+  .card h2{font-size:15px;margin:0;padding:14px 16px;border-bottom:1px solid #eee}
+  .card h2 span{display:block;font-weight:400;font-size:13px;color:#7e6458;margin-top:3px}
+  iframe{display:block;width:100%;height:760px;border:0}
+</style>
+<header>
+  <h1>Progressbildsflödet - mailmallar</h1>
+  <p class="lead">Förhandsvisning med exempelbilder. I skarpt läge fylls rutorna av kundens egna
+  uppladdningar via <code>event.bild_1_url</code> och framåt.</p>
+</header>
+<div class="grid">
+  <div class="card"><h2>1. Kvittens<span>Efter varje uppladdning. Tomma rutor för det som fattas.</span></h2>
+    <iframe src="kvittens.preview.html"></iframe></div>
+  <div class="card"><h2>2. Påminnelse<span>Dag 30 och 60. Visar hennes förra bild som vinkelguide.</span></h2>
+    <iframe src="paminnelse.preview.html"></iframe></div>
+  <div class="card"><h2>3. Slutmail<span>Dag 60. Hela serien, pengarna, sedan frågan.</span></h2>
+    <iframe src="slutmail.preview.html"></iframe></div>
+</div>

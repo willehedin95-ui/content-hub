@@ -42,6 +42,19 @@ export function getFormsCORSHeaders(origin: string | null): Record<string, strin
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
+    // Vary: Origin ar inte valfritt nar svaret ar cachebart.
+    //
+    // /api/forms/config skickar s-maxage=60, sa Vercels CDN cachar svaret.
+    // Utan Vary cachas ocksa Access-Control-Allow-Origin, och DET FORSTA
+    // svaret bestammer for alla efterfoljande. Uppmatt i produktion
+    // 2026-09-15: med cache-bust kom "https://shopenvana.com" tillbaka, utan
+    // kom "null" - aven for en tillaten origin. Da blockerar webblasaren
+    // hamtningen och formularet laddar aldrig.
+    //
+    // Det drabbar varje formular pa bada butikernas Shopify-sidor, och det
+    // gor det INTERMITTENT: efter en cache-miss fungerar det, tills nasta
+    // cachade svar med fel header serveras.
+    Vary: "Origin",
   };
 }
 

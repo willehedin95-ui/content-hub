@@ -17,9 +17,27 @@ export type FormFieldRole =
 /** Show a field only when another field's value is in the list (`in`) or has
  *  any non-empty value (`notEmpty`) - the latter powers "visa kontaktfälten
  *  först när ett ämne är valt" (Fillout-paritet). */
-export type FormCondition = { field: string; in?: string[]; notEmpty?: boolean };
+/** `isEmpty` behovs for "visa det har BARA om vi inte redan vet det": e-post-
+ *  steget i progressbild doljs nar tokenuppslaget redan gett oss adressen. */
+export type FormCondition = {
+  field: string;
+  in?: string[];
+  notEmpty?: boolean;
+  isEmpty?: boolean;
+};
 
-export type FormEnding = { title: string; html?: string };
+/** Avslutningsskärmen. `variants` väljs före basen: första variant vars
+ *  `showWhen` stämmer vinner, annars används `title`/`html`.
+ *
+ *  Finns för att ETT formulär kan bära flera tillfällen. Progressbild kör tre
+ *  bilder genom samma formulär, och utan varianter fick sista bilden samma
+ *  "vi hör av oss om 30 dagar" som de två första - vilket inte är sant, då är
+ *  serien slut. William fångade det vid sitt första riktiga test 2026-09-15. */
+export type FormEnding = {
+  title: string;
+  html?: string;
+  variants?: { showWhen?: FormCondition; title: string; html?: string }[];
+};
 
 export interface FormFieldBase {
   key: string;
@@ -29,6 +47,12 @@ export interface FormFieldBase {
   help?: string;
   role?: FormFieldRole;
   showWhen?: FormCondition;
+  /** Förifyll fältet från query-strängen på sidan formuläret ligger på.
+   *  `fromParam: "e"` + länk `?e=anna@exempel.se` fyller fältet åt kunden.
+   *  Värdet går att ändra - det är en genväg, inte en låsning. */
+  fromParam?: string;
+  /** Värde när parametern saknas i länken. */
+  fallback?: string;
 }
 
 export type FormField =
@@ -39,6 +63,11 @@ export type FormField =
   // Checkbox with confirmation text (godkännande)
   | ({ kind: "checkbox"; text: string } & FormFieldBase)
   | ({ kind: "file"; accept?: string; maxFiles?: number } & FormFieldBase)
+  // Osynligt fält vars värde kommer från query-strängen på sidan formuläret
+  // ligger på (?steg=2). Låter ETT formulär bära flera varianter i stället för
+  // en kopia per variant. `fromParam` = parameterns namn, `fallback` = värdet
+  // när parametern saknas.
+  | ({ kind: "hidden" } & FormFieldBase)
   // Page break: splits the form into steps. `label` = the continue-button
   // text for the step BEFORE the break (e.g. "Fortsätt"). Used for the
   // EU-mandated two-step ångerrätt confirmation.
@@ -62,11 +91,63 @@ export interface FormTicketConfig {
   tags?: string[];
 }
 
+/** Utseendeläge. `"app"` renderar formuläret som en fullskärms onboarding i
+ *  stället för ett webbformulär i en vit ruta: brandfärgad bakgrund kant till
+ *  kant, rund tillbakaknapp uppe till vänster, tunn progressbar under headern
+ *  och en CTA i brandfärgen. Anatomin är mätt ur quiz-runtimen
+ *  (runtime/quiz-runtime/src/renderer.tsx) - samma funnel som doginwork-quizet.
+ *
+ *  Sätts per formulär. Kontakt och ångerrätt ska förbli formulär och lämnas
+ *  utan `theme`; progressbild och samtycke är en resa och kör "app".
+ *  Färgerna är valfria - utan dem används Envanas tokens som default. */
+export interface FormTheme {
+  mode?: "app";
+  /** Primärfärg: CTA, progressbar, aktiva ramar. Envana brand/500. */
+  brand?: string;
+  /** Sidbakgrund kant till kant. Envana bg/base. */
+  bg?: string;
+  /** Kort och fält som ligger PÅ bakgrunden. */
+  surface?: string;
+  /** Rubriker. Envana text/heading. */
+  text?: string;
+  /** Brödtext och hjälptext. Envana text/muted. */
+  muted?: string;
+}
+
+/** Vart en inskickning tar vägen.
+ *
+ *  Utan fältet: workspacets helpdesk. Det är rätt för kontakt, ångerrätt och
+ *  garanti - ärenden en människa ska svara på.
+ *
+ *  `"none"`: inskickningen sparas och syns i /forms, men skapar inget ärende.
+ *  En progressbild är ingen supportfråga. Med helpdesk-leverans får kunden ett
+ *  "vi återkommer inom 24 timmar" som ingen tänker svara på, och kundservice
+ *  får tre ärenden per deltagare. William fick exakt det mailet vid sitt första
+ *  riktiga test 2026-09-15.
+ *
+ *  `{ type: "klaviyo" }`: inskickningen postas som ett event till Klaviyo, som
+ *  äger mailen. `brand` väljer konto (Envana och SwedishBalance har var sitt),
+ *  `metric` är metricens namn i Klaviyo och blir flödets trigger.
+ *  `seriesField` pekar ut fältet som säger vilket tillfälle i en serie det är
+ *  (progressbild: "steg"); finns det med skickar adaptern även kundens
+ *  tidigare bilder, så mailet kan visa serien och de tomma rutorna. */
+export type FormDelivery =
+  | "helpdesk"
+  | "none"
+  | {
+      type: "klaviyo";
+      brand: "envana" | "swedishbalance";
+      metric: string;
+      seriesField?: string;
+    };
+
 export interface FormConfig {
   title?: string;
   /** HTML intro shown above the fields */
   intro?: string;
   submitLabel?: string;
+  theme?: FormTheme;
+  delivery?: FormDelivery;
   fields: FormField[];
   endings: {
     success: FormEnding;
