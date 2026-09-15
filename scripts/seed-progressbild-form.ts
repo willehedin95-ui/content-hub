@@ -291,6 +291,12 @@ const progressbild: FormConfig = {
     // en knapp som sager vad den betyder ar dessutom ett STARKARE samtycke an
     // en ikryssad ruta.
     {
+      kind: "info",
+      key: "samtycke_villkor",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi kan komma att använda dem i vår marknadsföring, eller inte alls. Du kan ändra dig när som helst, mejla oss så tar vi bort dem.</p>`,
+    },
+        {
       kind: "choice",
       key: "samtycke",
       showWhen: { field: "steg", in: ["3"] },
@@ -304,13 +310,7 @@ const progressbild: FormConfig = {
         { value: "nej", label: "Nej tack, behåll 200 kr", style: "quiet" },
       ],
     },
-    {
-      kind: "info",
-      key: "samtycke_villkor",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi kan komma att använda dem i vår marknadsföring, eller inte alls. Du kan ändra dig när som helst, mejla oss så tar vi bort dem.</p>`,
-    },
-    { kind: "pagebreak", key: "till_namn", label: "Fortsätt" },
+{ kind: "pagebreak", key: "till_namn", label: "Fortsätt" },
 
     // Namnet och orden kommer EFTER jaet. Pa valskarmen ska det bara finnas
     // ett val.

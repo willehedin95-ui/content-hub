@@ -528,7 +528,8 @@
     ".chf-app .chf-dela svg{width:20px;height:20px}" +
     // Valknappar. Den primara ar stor och fylld, den tysta ar en textrad -
     // samma viktning som mobilspelens "Double Reward" mot "Free".
-    ".chf-app .chf-choices{display:flex;flex-direction:column;gap:10px;margin:auto 0 0}" +
+    ".chf-app .chf-choices{display:flex;flex-direction:column;gap:6px}" +
+    ".chf-app .chf-field-choice{margin:auto 0 0;display:flex;flex-direction:column;justify-content:flex-end}" +
     ".chf-app .chf-choice{display:flex;flex-direction:column;align-items:center;gap:3px;" +
     "width:100%;border:0;border-radius:14px;padding:17px 20px;font:inherit;cursor:pointer;" +
     "transition:transform .15s}" +
@@ -992,6 +993,7 @@
           wrap.appendChild(buildInput(f));
           wrap.appendChild(elText("div", "chf-error", ""));
         }
+        if (f.kind === "choice") wrap.classList.add("chf-field-choice");
         wrap.setAttribute("data-key", f.key);
         if (f.kind === "hidden") wrap.style.display = "none";
         if (f.showWhen) {
