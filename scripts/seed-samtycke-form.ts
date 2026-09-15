@@ -35,28 +35,19 @@ const samtycke: FormConfig = {
   submitLabel: "Skicka in mitt svar",
   ticket: { kindLabel: "Samtycke bilder", priority: 1 },
   fields: [
+    // Fragan ar rubriken. Tidigare lag den som faltlabel halvvags ner, under
+    // fem stycken text, och skarmen last som en vagg i stallet for ett val.
     {
       kind: "info",
       key: "intro",
-      html: `<h2 style="margin:0 0 10px;font-size:20px;line-height:1.3">Du har gjort hela resan</h2>
-<p>Tre bilder, 60 dagar. Ditt presentkort på 200 kr är på väg till din inkorg oavsett vad du svarar här nedanför.</p>
-<p style="margin-bottom:0">Vi skulle vilja fråga en sak till: får vi visa din före- och efterbild för andra som funderar på samma resa?</p>`,
-    },
-    {
-      kind: "email",
-      key: "email",
-      label: "Din e-postadress",
-      required: true,
-      role: "email",
-      fromParam: "e",
-      help: "Samma adress som du använde när du laddade upp dina bilder.",
+      html: `<p style="margin:0 0 6px;font-size:.9em;color:#555">Tre bilder, 60 dagar. Du är klar.</p>
+<h2>Får vi visa dina bilder?</h2>
+<p style="margin:0">Ditt presentkort på 200 kr kommer oavsett vad du svarar.</p>`,
     },
     {
       kind: "radio",
       key: "samtycke",
-      label: "Får vi visa dina bilder?",
       required: true,
-      help: "Du kan ändra dig när som helst. Hör bara av dig till support@shopenvana.com så tar vi bort dem.",
       options: [
         { value: "nej", label: "Nej, bilderna är bara mina" },
         { value: "anonymt", label: "Ja, men anonymt utan namn" },
@@ -67,9 +58,24 @@ const samtycke: FormConfig = {
     {
       kind: "textarea",
       key: "bildtext",
-      label: "Vill du säga något om din resa? (valfritt)",
+      label: "Vill du säga något om din resa?",
       showWhen: { field: "samtycke", in: ["anonymt", "fornamn", "fornamn_alder"] },
       placeholder: "Dina egna ord säger mer än något vi kan skriva.",
+    },
+    // Forifylls fran lanken. Ligger sist for att den ar en teknikalitet, inte
+    // det hon ar har for.
+    {
+      kind: "email",
+      key: "email",
+      label: "Din e-postadress",
+      required: true,
+      role: "email",
+      fromParam: "e",
+    },
+    {
+      kind: "info",
+      key: "angra",
+      html: `<p style="margin:0;font-size:.9em;color:#555">Du kan ändra dig när som helst. Mejla <a href="mailto:support@shopenvana.com">support@shopenvana.com</a> så tar vi bort dem.</p>`,
     },
   ],
   endings: {

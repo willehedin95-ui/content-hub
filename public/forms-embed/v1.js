@@ -98,6 +98,17 @@
     ".chf-back{display:block;width:100%;margin-top:10px;padding:12px;background:none;border:0;" +
     "font:inherit;color:#555;text-decoration:underline;cursor:pointer;min-height:44px}" +
     ".chf-optional{font-weight:400;color:#555}" +
+    // Tipsrutnat: samma monster som selfieguiden i Hydro13-appen (2x2 kort med
+    // ikon, kort rubrik, en rad text). Instruktioner om hur man tar ett bra
+    // foto ar visuella till sin natur - som brodtext blir de hoppade over.
+    ".chf-tips{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}" +
+    ".chf-tip{border:1px solid #e5e5e5;border-radius:10px;padding:12px;background:#fff}" +
+    ".chf-tip svg{width:22px;height:22px;display:block;margin-bottom:7px;color:#8a6a12}" +
+    ".chf-tip b{display:block;font-size:.95em;margin-bottom:2px}" +
+    ".chf-tip span{font-size:.85em;color:#555;line-height:1.35}" +
+    ".chf-avoid{display:flex;gap:9px;align-items:flex-start;font-size:.88em;color:#555;" +
+    "background:#fdf6f6;border-radius:9px;padding:11px 13px;margin:0}" +
+    ".chf-avoid svg{width:17px;height:17px;flex:none;margin-top:1px;color:#b45309}" +
     ".chf-error{color:#b91c1c;font-size:.9em;margin-top:5px;display:none}" +
     ".chf-field.chf-invalid .chf-error{display:block}" +
     ".chf-field.chf-invalid .chf-input,.chf-field.chf-invalid .chf-textarea,.chf-field.chf-invalid .chf-select{border-color:#b91c1c}" +

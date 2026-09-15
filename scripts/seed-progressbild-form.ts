@@ -97,14 +97,27 @@ const progressbild: FormConfig = {
       // Normal vikt, inte fet. I fetstil tog den sex rader och mer visuell
       // tyngd an bade uppladdningszonen och knappen, alltsa tvartemot
       // hierarkin pa skarmen. Den ska inge trygghet, inte konkurrera.
-      html: `<p style="margin:0;font-size:.92em;color:#444">Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</p>`,
+      // En rad, inte sex. Originalet sa samma sak tva ganger ("privata och
+      // anvands bara for din resa" + "anvands aldrig utan godkannande") och
+      // sköt ner tipsen under fold. Kärnan ar loftet, inte formuleringen.
+      html: `<p style="margin:0;font-size:.9em;color:#555">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
     },
+    // Fyra tipskort i stallet for tva stycken brodtext. Samma fyra rad som
+    // selfieguiden i Hydro13-appen, dar monstret redan ar provat: ikon, tva
+    // ord, en rad. Hur man tar ett bra foto ar visuell information - som
+    // lopande text blev den hoppad over, vilket ar precis vad vi inte har rad
+    // med: samma ljus och vinkel ar det som avgor om tva bilder blir en
+    // anvandbar fore och efter.
     {
       kind: "info",
       key: "tips",
-      html: `<details style="margin:0"><summary style="cursor:pointer;font-weight:600">Så tar du en bra bild</summary>
-<p style="margin:10px 0 0">Du väljer själv vad du vill följa. Du kan ta en bild på hela ansiktet eller fokusera på ett område där du särskilt vill se förändring, till exempel runt ögonen, munnen eller på halsen.</p>
-<p style="margin:10px 0 0">Det viktigaste är att bilden är tydlig och tagen i bra ljus. Försök gärna att ta dina kommande bilder på samma plats, i samma ljus och från samma vinkel. Då blir det mycket lättare att jämföra din utveckling över tid.</p></details>`,
+      html: `<div class="chf-tips">
+<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg><b>Naturligt ljus</b><span>Stå nära ett fönster</span></div>
+<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><b>Samma plats</b><span>Helst samma rum varje gång</span></div>
+<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 5.5h3"/></svg><b>Samma vinkel</b><span>Håll telefonen lika högt</span></div>
+<div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M8.8 14.5c.9 1.1 2 1.7 3.2 1.7s2.3-.6 3.2-1.7"/></svg><b>Ren hud</b><span>Utan makeup eller filter</span></div>
+</div>
+<p class="chf-avoid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2h.01"/></svg><span>Undvik direkt solljus, mörka rum och filter.</span></p>`,
     },
   ],
   endings: {
