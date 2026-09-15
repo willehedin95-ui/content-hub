@@ -93,11 +93,23 @@
     ".chf-file-name{font-size:.9em;word-break:break-word;flex:1}" +
     ".chf-file-change{font-size:.86em;text-decoration:underline;color:#555}" +
     // Stegindikator: ett flerstegsformular ska visa var man ar.
-    ".chf-steps{font-size:.85em;color:#555;margin:0 0 14px;font-weight:600}" +
+    ".chf-steps{display:flex;align-items:center;gap:10px;margin:0 0 16px}" +
+    ".chf-steps-label{font-size:.85em;color:#555;font-weight:600;white-space:nowrap}" +
+    ".chf-steps-track{flex:1;height:5px;background:#e8e8e8;border-radius:999px;overflow:hidden}" +
+    ".chf-steps-fill{height:100%;background:#111;border-radius:999px;width:0;transition:width .3s ease}" +
     // Tillbaka: sekundar, alltid minst 44px hog trots att den ar textlank.
     ".chf-back{display:block;width:100%;margin-top:10px;padding:12px;background:none;border:0;" +
     "font:inherit;color:#555;text-decoration:underline;cursor:pointer;min-height:44px}" +
     ".chf-optional{font-weight:400;color:#555}" +
+    // App-onboarding-anatomi, matt fran Ember/Weightless (SlideMetrics.swift):
+    // bildblocket overst pa 40% av skarmhojden (min 210, max 330), texten i en
+    // TAT klump under - aldrig lodratt centrerad. Centrerat innehall lamnar en
+    // tom halva over rubriken och laser som att skarmen inte laddat klart.
+    ".chf-art{display:flex;align-items:center;justify-content:center;" +
+    "height:clamp(150px,34vh,300px);margin:0 0 4px}" +
+    ".chf-art svg{width:auto;height:58%;max-height:150px;color:#8a6a12;opacity:.9}" +
+    ".chf-slide-title{text-align:center;font-size:1.45em;font-weight:700;line-height:1.25;margin:0 0 8px}" +
+    ".chf-slide-sub{text-align:center;color:#555;margin:0 0 18px;font-size:.95em}" +
     // Tipsrutnat: samma monster som selfieguiden i Hydro13-appen (2x2 kort med
     // ikon, kort rubrik, en rad text). Instruktioner om hur man tar ett bra
     // foto ar visuella till sin natur - som brodtext blir de hoppade over.
@@ -224,10 +236,14 @@
   /** "Steg 2 av 3" - ett flerstegsformular ska visa var man ar och hur mycket
    *  som aterstar. Utan den vet hon inte om det ar ett steg kvar eller fem. */
   function updateStepIndicator(idx, total) {
-    var el = container.querySelector(".chf-steps");
-    if (!el) return;
-    if (total < 2) { el.style.display = "none"; return; }
-    el.textContent = "Steg " + (idx + 1) + " av " + total;
+    var wrap = container.querySelector(".chf-steps");
+    if (!wrap) return;
+    if (total < 2) { wrap.style.display = "none"; return; }
+    wrap.style.display = "";
+    var label = wrap.querySelector(".chf-steps-label");
+    var fill = wrap.querySelector(".chf-steps-fill");
+    if (label) label.textContent = "Steg " + (idx + 1) + " av " + total;
+    if (fill) fill.style.width = Math.round(((idx + 1) / total) * 100) + "%";
   }
 
   function showStep(idx) {
@@ -247,7 +263,12 @@
     if (cfg.title) container.appendChild(elText("h2", "chf-title", cfg.title));
     if (cfg.intro) container.appendChild(elHtml("div", "chf-intro", cfg.intro));
 
-    container.appendChild(elText("div", "chf-steps", ""));
+    var stepsBar = elText("div", "chf-steps");
+    stepsBar.appendChild(elText("span", "chf-steps-label", ""));
+    var track = elText("div", "chf-steps-track");
+    track.appendChild(elText("div", "chf-steps-fill"));
+    stepsBar.appendChild(track);
+    container.appendChild(stepsBar);
 
     var form = elText("form", "chf-form");
     form.setAttribute("novalidate", "novalidate");

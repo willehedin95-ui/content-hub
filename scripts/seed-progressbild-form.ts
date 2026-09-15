@@ -38,76 +38,38 @@ const progressbild: FormConfig = {
   submitLabel: "Ladda upp bilden",
   ticket: { kindLabel: "Progressbild", priority: 1 },
   fields: [
-    // Bärs av länken: ?steg=1|2|3. Utan parameter antas första bilden.
+    // Bars av lanken: ?steg=1|2|3. Utan parameter antas forsta bilden.
     { kind: "hidden", key: "steg", label: "Steg", fromParam: "steg", fallback: "1" },
 
-    // --- Slide 2: e-post ---
-    // ETT fält. Två fält med samma key men olika showWhen gick inte: embedens
-    // villkorsuppdatering slår upp wrappen med querySelector('[data-key=...]'),
-    // som bara hittar den första, så det andra fältet doldes aldrig och båda
-    // syntes samtidigt. Labeln är därför formulerad så den håller för alla tre
-    // bilderna. Förklaringen under är specens, ordagrant.
+    // Tre korta steg med app-onboarding-anatomi: bildblock overst, tat
+    // textklump under, en sak per skarm. Monstret och proportionerna ar tagna
+    // fran Ember/Weightless-onboardingen (SlideMetrics.artHeight = 40% av
+    // skarmhojden) dar de redan ar provade. Ingen skarm ska krava scroll.
+
+    // --- Steg 1: e-post ---
+    {
+      kind: "info",
+      key: "art_epost",
+      html: `<div class="chf-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5z"/><path d="M3.4 7.2 12 13l8.6-5.8"/></svg></div><h2 class="chf-slide-title">Vi börjar med din e-post</h2>
+<p class="chf-slide-sub">Vi kopplar dina bilder till dig och påminner när det är dags för nästa.</p>`,
+    },
     {
       kind: "email",
       key: "email",
-      label: "Din e-postadress",
       required: true,
       role: "email",
       fromParam: "e",
-      help: "Vi använder den för att koppla dina bilder till dig och påminna dig när det är dags att ta nästa bild.",
+      placeholder: "din@epost.se",
     },
-    { kind: "pagebreak", key: "till_bild", label: "Fortsätt" },
+    { kind: "pagebreak", key: "till_tips", label: "Fortsätt" },
 
-    // --- Slide 3: bilden ---
-    // Rubriken forst, sedan uppladdningszonen, sedan instruktionerna. Tidigare
-    // lag 108 ord text ovanfor rutan: 625 av 812 px pa en telefon, sa det hon
-    // kom for hamnade vid fold-kanten.
+    // --- Steg 2: sa blir bilden bra. Rutnatet ar stegets bildblock. ---
     {
       kind: "info",
-      key: "rubrik_1",
-      showWhen: { field: "steg", in: ["1"] },
-      html: `<h2>Dags att ta din första bild</h2>`,
+      key: "tips_rubrik",
+      html: `<h2 class="chf-slide-title">Så blir bilden bra</h2>
+<p class="chf-slide-sub">Följ tipsen så blir jämförelsen tydlig vid dag 30 och 60.</p>`,
     },
-    {
-      kind: "info",
-      key: "rubrik_2",
-      showWhen: { field: "steg", in: ["2"] },
-      html: `<h2>Dags att ta din 30-dagarsbild</h2>`,
-    },
-    {
-      kind: "info",
-      key: "rubrik_3",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<h2>Dags att ta din sista bild</h2><p style="margin:0">Bild tre av tre.</p>`,
-    },
-    {
-      kind: "file",
-      key: "bild",
-      label: "Din bild",
-      required: true,
-      accept: "image/*",
-      maxFiles: 1,
-      placeholder: "Välj en bild",
-    },
-    // Integritetsloftet star kvar direkt under rutan - det ar det som far
-    // henne att vaga ladda upp, och far inte hamna bakom en utfallning.
-    {
-      kind: "info",
-      key: "integritet",
-      // Normal vikt, inte fet. I fetstil tog den sex rader och mer visuell
-      // tyngd an bade uppladdningszonen och knappen, alltsa tvartemot
-      // hierarkin pa skarmen. Den ska inge trygghet, inte konkurrera.
-      // En rad, inte sex. Originalet sa samma sak tva ganger ("privata och
-      // anvands bara for din resa" + "anvands aldrig utan godkannande") och
-      // sköt ner tipsen under fold. Kärnan ar loftet, inte formuleringen.
-      html: `<p style="margin:0;font-size:.9em;color:#555">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
-    },
-    // Fyra tipskort i stallet for tva stycken brodtext. Samma fyra rad som
-    // selfieguiden i Hydro13-appen, dar monstret redan ar provat: ikon, tva
-    // ord, en rad. Hur man tar ett bra foto ar visuell information - som
-    // lopande text blev den hoppad over, vilket ar precis vad vi inte har rad
-    // med: samma ljus och vinkel ar det som avgor om tva bilder blir en
-    // anvandbar fore och efter.
     {
       kind: "info",
       key: "tips",
@@ -118,6 +80,42 @@ const progressbild: FormConfig = {
 <div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M8.8 14.5c.9 1.1 2 1.7 3.2 1.7s2.3-.6 3.2-1.7"/></svg><b>Ren hud</b><span>Utan makeup eller filter</span></div>
 </div>
 <p class="chf-avoid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2h.01"/></svg><span>Undvik direkt solljus, mörka rum och filter.</span></p>`,
+    },
+    { kind: "pagebreak", key: "till_bild", label: "Jag är redo" },
+
+    // --- Steg 3: ta bilden. Uppladdningszonen ar stegets bildblock. ---
+    {
+      kind: "info",
+      key: "rubrik_1",
+      showWhen: { field: "steg", in: ["1"] },
+      html: `<h2 class="chf-slide-title">Dags att ta din första bild</h2>`,
+    },
+    {
+      kind: "info",
+      key: "rubrik_2",
+      showWhen: { field: "steg", in: ["2"] },
+      html: `<h2 class="chf-slide-title">Dags att ta din 30-dagarsbild</h2>
+<p class="chf-slide-sub">Samma plats, samma ljus, samma vinkel som första bilden.</p>`,
+    },
+    {
+      kind: "info",
+      key: "rubrik_3",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<h2 class="chf-slide-title">Dags att ta din sista bild</h2>
+<p class="chf-slide-sub">Bild tre av tre. Sedan ser du hela din resa.</p>`,
+    },
+    {
+      kind: "file",
+      key: "bild",
+      required: true,
+      accept: "image/*",
+      maxFiles: 1,
+      placeholder: "Välj en bild",
+    },
+    {
+      kind: "info",
+      key: "integritet",
+      html: `<p style="margin:0;text-align:center;font-size:.88em;color:#666">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
     },
   ],
   endings: {

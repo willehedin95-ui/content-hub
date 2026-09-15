@@ -45,6 +45,16 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(
     { form },
-    { headers: { ...cors, "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+    // max-age=0 -> webblasaren revaliderar ALLTID. Utan den tog en andring i
+    // ett formular upp till fem minuter att sla igenom, och i praktiken langre:
+    // "public" utan max-age later webblasaren cacha heuristiskt, sa en redigerad
+    // slide kunde visa gammal text tills kunden hard-laddade om. s-maxage lamnas
+    // kvar sa CDN:en fortfarande absorberar trafiken.
+    {
+      headers: {
+        ...cors,
+        "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+      },
+    }
   );
 }
