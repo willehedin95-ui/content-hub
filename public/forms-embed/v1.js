@@ -357,6 +357,18 @@
     ".chf-app .chf-reward svg{width:96px;height:auto;flex:none}" +
     ".chf-app .chf-reward-txt{font-size:14px;line-height:1.5;color:var(--chf-muted);text-align:left}" +
     ".chf-app .chf-reward-txt b{display:block;color:var(--chf-text);font-size:15px;margin-bottom:2px}" +
+    // Presentkortet som bildblock: det ar belöningen panelen handlar om, och
+    // en paketikon sa bara "present" en gang till. Kortet behaller sina egna
+    // fargen, sa chf-art:s currentColor ror det inte. Bredden begransas har -
+    // 100% hojd av ett 300 px block hade gjort det 481 px brett.
+    ".chf-app .chf-art-kort{display:flex;align-items:center;justify-content:center}" +
+    ".chf-app .chf-art-kort svg{height:auto;width:min(272px,74%);max-height:100%}" +
+    // Integritetskortet handlar om trygghet, inte om pengar. Hanglas i en
+    // tonad cirkel, samma form som avslutningens bockmarke.
+    ".chf-app .chf-reward-ikon{width:48px;height:48px;border-radius:50%;flex:none;" +
+    "display:flex;align-items:center;justify-content:center;" +
+    "background:color-mix(in srgb,var(--chf-brand) 12%,#fff)}" +
+    ".chf-app .chf-reward .chf-reward-ikon svg{width:24px;height:24px;color:var(--chf-brand)}" +
 
     // 16px ar inte estetik: under 16px zoomar iOS Safari in hela sidan nar
     // faltet far fokus, och da hoppar onboardingen ur sin layout.
