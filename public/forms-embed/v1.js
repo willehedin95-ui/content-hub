@@ -287,6 +287,7 @@
       var ta = elText("textarea", "chf-textarea");
       ta.id = id;
       if (f.placeholder) ta.placeholder = f.placeholder;
+      if (state.values[f.key] !== undefined) ta.value = String(state.values[f.key]);
       ta.addEventListener("input", function () { setValue(f.key, ta.value); });
       return ta;
     }
@@ -352,6 +353,7 @@
     inp2.className = "chf-input";
     inp2.id = id;
     inp2.type = f.kind === "email" ? "email" : f.kind === "date" ? "date" : "text";
+    if (state.values[f.key] !== undefined) inp2.value = String(state.values[f.key]);
     if (f.placeholder) inp2.placeholder = f.placeholder;
     if (f.kind === "email") inp2.autocomplete = "email";
     inp2.addEventListener("input", function () { setValue(f.key, inp2.value); });
@@ -434,16 +436,20 @@
     return ok;
   }
 
-  /** Fyller `hidden`-fält från query-strängen pa varden-sidan. Kors en gang,
-   *  innan forsta render, sa att vardet finns i state nar faltet byggs. */
-  function applyHiddenParams() {
+  /** Forifyller falt fran query-strangen pa varden-sidan: `fromParam: "e"` plus
+   *  lanken `?e=anna@exempel.se` fyller faltet at kunden. Kors en gang, innan
+   *  forsta render, sa att vardet finns i state nar faltet byggs. Galler alla
+   *  falttyper - for `hidden` ar det enda vagen in, for synliga falt en genvag
+   *  som kunden fortfarande kan andra. */
+  function applyParamDefaults() {
     if (!state.config || !state.config.fields) return;
     var qs = null;
     try { qs = new URLSearchParams(window.location.search); } catch (e) { qs = null; }
     state.config.fields.forEach(function (f) {
-      if (f.kind !== "hidden") return;
+      if (!f.fromParam && f.kind !== "hidden") return;
       var v = qs && f.fromParam ? qs.get(f.fromParam) : null;
       if (v === null || v === "") v = f.fallback || "";
+      if (v === "") return;
       state.values[f.key] = String(v).slice(0, 200);
     });
   }
@@ -590,7 +596,7 @@
     })
     .then(function (data) {
       state.config = data.form.config;
-      applyHiddenParams();
+      applyParamDefaults();
       container.removeAttribute("aria-busy");
       render();
     })

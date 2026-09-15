@@ -8,7 +8,8 @@
  *
  * Kunden skriver sin e-post EN gång, vid första bilden. Kortet i paketet är
  * tryckt och därmed identiskt för alla, så vi kan inte veta vem som skannar.
- * Efter första submission är identiteten känd och länkarna framåt bär den.
+ * Mailen därefter skickas från Klaviyo och sätter ?e= från profilen, så
+ * e-postfältet är redan ifyllt vid bild två och tre.
  *
  * Idempotent: upsertar på (workspace_id, slug, market).
  *
@@ -41,11 +42,16 @@ const progressbild: FormConfig = {
     { kind: "hidden", key: "steg", label: "Steg", fromParam: "steg", fallback: "1" },
 
     {
+      // Förifylls från länken (?e=...). Mailen vi skickar sätter parametern
+      // från Klaviyo-profilen, så hon slipper skriva adressen igen. Kortet i
+      // paketet kan inte göra det - det är tryckt och likadant för alla - så
+      // vid första bilden skriver hon den en gång.
       kind: "email",
       key: "email",
       label: "Din e-postadress",
       required: true,
       role: "email",
+      fromParam: "e",
       help: "Använd samma adress varje gång, så hamnar bilderna i samma serie.",
     },
     {

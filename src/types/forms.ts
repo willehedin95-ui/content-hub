@@ -29,6 +29,12 @@ export interface FormFieldBase {
   help?: string;
   role?: FormFieldRole;
   showWhen?: FormCondition;
+  /** Förifyll fältet från query-strängen på sidan formuläret ligger på.
+   *  `fromParam: "e"` + länk `?e=anna@exempel.se` fyller fältet åt kunden.
+   *  Värdet går att ändra - det är en genväg, inte en låsning. */
+  fromParam?: string;
+  /** Värde när parametern saknas i länken. */
+  fallback?: string;
 }
 
 export type FormField =
@@ -43,7 +49,7 @@ export type FormField =
   // ligger på (?steg=2). Låter ETT formulär bära flera varianter i stället för
   // en kopia per variant. `fromParam` = parameterns namn, `fallback` = värdet
   // när parametern saknas.
-  | ({ kind: "hidden"; fromParam: string; fallback?: string } & FormFieldBase)
+  | ({ kind: "hidden" } & FormFieldBase)
   // Page break: splits the form into steps. `label` = the continue-button
   // text for the step BEFORE the break (e.g. "Fortsätt"). Used for the
   // EU-mandated two-step ångerrätt confirmation.
