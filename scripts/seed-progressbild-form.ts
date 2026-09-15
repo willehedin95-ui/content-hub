@@ -163,7 +163,10 @@ const progressbild: FormConfig = {
     },
     { kind: "pagebreak", key: "till_bild", label: "Jag är redo" },
 
-    // ---------------------------------------------------------------- STEG 4
+    // ------------------------------------------------ TA BILDEN (egen skarm)
+    // BARA bilden pa den har skarmen. Rubrik, knapp, exempel. Fragan flyttad
+    // till nasta steg - William: "dela upp alla steg i mindre steg sa det inte
+    // ar sa mycket pa samma stalle som kraver scroll".
     {
       kind: "info",
       key: "rubrik_1",
@@ -182,19 +185,11 @@ const progressbild: FormConfig = {
       showWhen: { field: "steg", in: ["3"] },
       html: `<h2 class="chf-slide-title">Sista bilden</h2>`,
     },
-    // Hennes EGEN forra bild, direkt ovanfor uppladdningen. Det har ar den
-    // basta vinkelguidning vi kan ge utan kamera i webblasaren: hon ser hur
-    // bilden togs i stallet for att lasa om hur den borde tas.
     {
       kind: "info",
       key: "forra_bilden",
       showWhen: { field: "forra_bild_url", notEmpty: true },
       html: `<div class="chf-forra"><img src="{{forra_bild_url}}" alt="Din förra bild"><div class="chf-forra-txt"><b>Så här tog du den förra</b>Samma plats, samma ljus, håll telefonen lika högt.</div></div>`,
-    },
-    {
-      kind: "info",
-      key: "guide_knapp",
-      html: `<button type="button" class="chf-guide-btn" data-chf-guide="{{hub}}/images/progressbild/exempel-ratt-fel.jpg" data-chf-guide-title="Så ska bilden se ut" data-chf-guide-text="Ljuset är det som avgör. Stå vänd mot ett fönster eller en stark lampa, rakt framifrån, utan glasögon eller mössa. Inga filter."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Se exempel på en bra bild</button>`,
     },
     {
       kind: "file",
@@ -204,27 +199,61 @@ const progressbild: FormConfig = {
       maxFiles: 1,
       placeholder: "Välj en bild",
     },
-    // Hennes egna ord. Ger HENNE nagot att titta efter och OSS en citatbank
-    // som ar sann - hennes formuleringar blir battre annonscopy an vara.
-    // Valfri med flit: ett obligatoriskt fritextfalt hade kostat uppladdningar.
+    // Exemplet UNDER knappen och som en tydlig sekundarknapp. Det last forut
+    // som en lank hogst upp pa skarmen, alltsa fore det den handlar om.
     {
-      kind: "textarea",
-      key: "forvantan",
-      showWhen: { field: "steg", in: ["1"] },
-      label: "Vad hoppas du på?",
-      placeholder: "Skriv en mening om vad du vill se förändras.",
-    },
-    {
-      kind: "textarea",
-      key: "markt",
-      showWhen: { field: "steg", in: ["2", "3"] },
-      label: "Har du märkt något?",
-      placeholder: "Naglar, hår, hud, energi. Vad som helst du lagt märke till.",
+      kind: "info",
+      key: "guide_knapp",
+      html: `<button type="button" class="chf-guide-btn" data-chf-guide="{{hub}}/images/progressbild/exempel-ratt-fel.jpg" data-chf-guide-title="Så ska bilden se ut" data-chf-guide-text="Ljuset är det som avgör. Stå vänd mot ett fönster eller en stark lampa, rakt framifrån, utan glasögon eller mössa. Inga filter."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Se exempel på en bra bild</button>`,
     },
     {
       kind: "info",
       key: "integritet",
       html: `<p style="margin:0;text-align:center;font-size:14px;color:var(--chf-muted,#666)">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
+    },
+    { kind: "pagebreak", key: "till_fraga", label: "Fortsätt" },
+
+    // ------------------------------------------------- FRAGAN (egen skarm)
+    // VAL, inte fritext. William: "Vad hoppas du pa ar vardelos. Ingen orkar
+    // skriva fritext sa. Vi maste anvanda oss av olika val."
+    //
+    // Fragan och alternativen ar Hydro13-appens egna (PrimaryGoal i
+    // UserProfile.swift), inte nyskrivna - hon har redan svarat pa den i
+    // appen och kanner igen den.
+    {
+      kind: "info",
+      key: "fraga_rubrik_1",
+      showWhen: { field: "steg", in: ["1"] },
+      html: `<h2 class="chf-slide-title">Vad vill du förbättra mest?</h2>
+<p class="chf-slide-sub">Vi vet vad du ska titta efter, och när.</p>`,
+    },
+    {
+      kind: "radio",
+      key: "mal",
+      showWhen: { field: "steg", in: ["1"] },
+      options: [
+        { value: "skin", label: "Hud och rynkor" },
+        { value: "hair_nails", label: "Hår och naglar" },
+        { value: "complete", label: "Hela kroppen" },
+      ],
+    },
+    {
+      kind: "info",
+      key: "fraga_rubrik_2",
+      showWhen: { field: "steg", in: ["2", "3"] },
+      html: `<h2 class="chf-slide-title">Har du märkt någon skillnad?</h2>
+<p class="chf-slide-sub">Det finns inget fel svar. Vi frågar för att veta vad som faktiskt händer.</p>`,
+    },
+    {
+      kind: "radio",
+      key: "markt",
+      showWhen: { field: "steg", in: ["2", "3"] },
+      options: [
+        { value: "tydligt", label: "Ja, tydligt" },
+        { value: "lite", label: "Ja, lite grann" },
+        { value: "inte_an", label: "Inte än" },
+        { value: "osaker", label: "Vet inte" },
+      ],
     },
   ],
   endings: {

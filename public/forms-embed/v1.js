@@ -325,9 +325,14 @@
     // Stakes photo guide (Mobbin): en lank oppnar ett rutnat med ETT ratt och
     // TRE vanliga fel. Text beskriver ett fel, en bild visar det - och hon kan
     // jamfora sin egen bild mot rutan i stallet for att tolka en mening.
-    ".chf-app .chf-guide-btn{display:inline-flex;align-items:center;gap:7px;margin:0 auto 14px;" +
-    "background:none;border:0;padding:11px 8px;font:inherit;font-size:15px;font-weight:600;" +
-    "color:var(--chf-brand);cursor:pointer;min-height:44px}" +
+    // Sekundarknapp med ram. Utan ram last den som en lank i brodtexten, och
+    // det syntes inte att den gick att trycka pa.
+    ".chf-app .chf-guide-btn{display:flex;align-items:center;justify-content:center;gap:8px;" +
+    "width:100%;margin:0 0 14px;background:var(--chf-surface);border:1.5px solid " +
+    "color-mix(in srgb,var(--chf-brand) 30%,#fff);border-radius:14px;padding:15px 18px;" +
+    "font:inherit;font-size:16px;font-weight:600;color:var(--chf-brand);cursor:pointer;" +
+    "min-height:52px;transition:background .15s,transform .15s}" +
+    ".chf-app .chf-guide-btn:active{transform:scale(.99)}" +
     ".chf-app .chf-guide-btn svg{width:18px;height:18px}" +
     ".chf-modal{position:fixed;inset:0;z-index:2147483000;background:rgba(20,6,2,.72);" +
     "display:flex;align-items:center;justify-content:center;padding:18px;" +
@@ -371,6 +376,8 @@
     ".chf-app .chf-submit:active{transform:scale(.98)}" +
     ".chf-app .chf-submit:disabled{opacity:1;box-shadow:none;" +
     "background:color-mix(in srgb,var(--chf-brand) 45%,#fff)}" +
+    ".chf-app .chf-submit-vantar{background:color-mix(in srgb,var(--chf-brand) 30%,#fff);" +
+    "box-shadow:none}" +
 
     // Valkort: samma anatomi som quizets alternativ - 2px ram, radius 16,
     // hela kortet ar tryckyta och det valda fylls i brandfargen. Samtyckets
@@ -398,18 +405,32 @@
     "border-radius:12px;color:var(--chf-muted);font-size:14px;padding:12px 14px}" +
     ".chf-app .chf-avoid svg{color:var(--chf-brand)}" +
 
-    // Uppladdningszonen ar stegets bildblock och ska darfor vara stor och
-    // inbjudande, inte en tunn gra streckad ruta.
-    ".chf-app .chf-file{background:var(--chf-surface);border:2px dashed " +
-    "color-mix(in srgb,var(--chf-brand) 55%,#fff);border-radius:20px;min-height:230px;" +
-    "transition:border-color .2s,background .2s}" +
-    ".chf-app .chf-file:hover,.chf-app .chf-file.chf-file-over{border-color:var(--chf-brand);" +
-    "background:color-mix(in srgb,var(--chf-brand) 6%,#fff)}" +
-    ".chf-app .chf-file-icon{width:48px;height:48px;color:var(--chf-brand);opacity:1}" +
-    ".chf-app .chf-file-main{font-size:17px;color:var(--chf-text)}" +
-    ".chf-app .chf-file-sub{color:var(--chf-muted)}" +
+    // KNAPP, inte drop-area. En streckad ruta att "slappa filer i" ar ett
+    // datormonster - pa en telefon finns inget att dra, och rutan blir en
+    // onodigt stor tryckyta som dessutom ser ut som ett fel.
+    //
+    // Uppmatt over sju appar i Mobbin (Polarsteps, Craft, Partiful, GroupMe,
+    // MacroFactor, Future Pro, LooksMax): INGEN anvander en drop-area. Alla
+    // har en knapp som oppnar systemets egen valjare, dar iOS sjalvt erbjuder
+    // "Ta foto" och "Valj fran bibliotek".
+    ".chf-app .chf-file{background:var(--chf-brand);border:0;border-radius:14px;" +
+    "min-height:58px;flex-direction:row;gap:10px;padding:16px 22px;margin:0 0 10px;" +
+    "box-shadow:0 8px 24px rgba(240,87,61,.22);transition:opacity .2s,transform .2s}" +
+    ".chf-app .chf-file:active{transform:scale(.98)}" +
+    ".chf-app .chf-file-icon{width:22px;height:22px;color:#fff;opacity:1;margin:0}" +
+    ".chf-app .chf-file-main{font-size:17px;font-weight:700;color:#fff;letter-spacing:.2px}" +
+    // Underraden ar overflodig nar knappen sager vad den gor. Systemets egen
+    // valjare forklarar resten.
+    ".chf-app .chf-file-sub{display:none}" +
+    // Nar en bild ar vald ar det BILDEN som ar ytan, inte knappen.
+    ".chf-app .chf-file.chf-has-file{background:var(--chf-surface);box-shadow:none;" +
+    "flex-direction:column;padding:12px;min-height:0;border:1px solid rgba(50,13,1,.08)}" +
+    // Texten ar VIT i knappskepnaden. Nar rutan blir ett vitt kort maste den
+    // bli mork igen, annars star "Ser den bra ut?" vitt pa vitt.
+    ".chf-app .chf-file.chf-has-file .chf-file-main{color:var(--chf-text);font-size:16px}" +
+    ".chf-app .chf-file.chf-has-file .chf-file-icon{display:none}" +
     ".chf-app .chf-file-preview{flex-direction:column;gap:12px;text-align:center}" +
-    ".chf-app .chf-file-preview img{width:100%;height:auto;max-height:44vh;object-fit:contain;" +
+    ".chf-app .chf-file-preview img{width:100%;height:auto;max-height:30vh;object-fit:contain;" +
     "border-radius:14px;background:rgba(50,13,1,.04)}" +
     ".chf-app .chf-file-name{display:flex;flex-direction:column;align-items:center;gap:8px;" +
     "font-size:14px;color:var(--chf-muted)}" +
@@ -623,6 +644,7 @@
       stepEls[i].style.display = String(idx) === stepEls[i].getAttribute("data-step") ? "" : "none";
     }
     updateStepIndicator(idx, stepEls.length);
+    syncStepButtons();
     if (state.app) {
       // Skarmbyte, inte en rullning inom en sida: hoppa direkt till toppen och
       // spela om inanimationen. Klassen maste tas bort och sattas igen med en
@@ -916,6 +938,7 @@
 
     mount.appendChild(form);
     syncSubmitVisibility();
+    syncStepButtons();
     // Hoppa fram till forsta steget som faktiskt HAR innehall. render() visade
     // alltid steg 0, och for en kund som kom via tokenlank var steg 0
     // bortvillkorat - hon motte en tom skarm med bara en knapp pa.
@@ -1029,9 +1052,11 @@
         if (!list.length) {
           idle.style.display = "";
           chosen.style.display = "none";
+          fwrap.classList.remove("chf-has-file");
           return;
         }
         idle.style.display = "none";
+        fwrap.classList.add("chf-has-file");
         chosen.replaceChildren();
         var file = list[0];
         if (/^image\//.test(file.type)) {
@@ -1048,7 +1073,6 @@
         // hon har tre snarlika selfies i rullen och behover se VILKEN hon
         // valde och fa en chans att ta om.
         meta.appendChild(elText("div", "chf-file-main", "Ser den bra ut?"));
-        meta.appendChild(elText("div", "chf-file-change", "Tryck på bilden för att byta"));
 
         // Angra. Hela rutan ar en tryckyta som oppnar filvaljaren igen, sa
         // "byt bild" gick redan. Det som INTE gick var att backa ur helt -
@@ -1114,6 +1138,9 @@
 
   function setValue(key, value) {
     state.values[key] = value;
+    // Knappens dampning maste folja med varje andring, annars star den kvar
+    // som vantande efter att faltet fyllts i.
+    setTimeout(syncStepButtons, 0);
     // Re-evaluate conditional visibility
     var nodes = container.querySelectorAll('[data-showwhen="1"]');
     for (var i = 0; i < nodes.length; i++) {
@@ -1140,6 +1167,38 @@
    *  condition is itself a visible field. Evaluated across the whole form, not
    *  per step, since a multi-step form keeps e-mail on an earlier step than
    *  its submit button. */
+  /** Dampar stegets knapp tills stegets obligatoriska falt ar ifyllda.
+   *
+   *  Skarmen "ta bilden" hade tva FYLLDA knappar i brandfargen samtidigt -
+   *  "Valj en bild" och "Fortsatt" - och de konkurrerade om blicken. Nu finns
+   *  en aktiv handling i taget. Knappen ar inte disabled: den gar att trycka
+   *  pa och ger da samma valideringsfel som forut, sa ingen kan fastna utan
+   *  att forsta varfor. */
+  function syncStepButtons() {
+    var stepEls = container.querySelectorAll("[data-step]");
+    for (var i = 0; i < stepEls.length; i++) {
+      var el = stepEls[i];
+      var knapp = el.querySelector(".chf-submit");
+      if (!knapp) continue;
+      var klar = true;
+      var wraps = el.querySelectorAll("[data-key]");
+      for (var j = 0; j < wraps.length; j++) {
+        var w = wraps[j];
+        if (w.style.display === "none") continue;
+        var f = findField(w.getAttribute("data-key"));
+        if (!f || !f.required) continue;
+        if (f.kind === "file") {
+          var lista = state.files[f.key] || [];
+          if (!lista.length) klar = false;
+        } else {
+          var v = state.values[f.key];
+          if (v === undefined || v === null || v === "" || v === false) klar = false;
+        }
+      }
+      knapp.classList.toggle("chf-submit-vantar", !klar);
+    }
+  }
+
   function syncSubmitVisibility() {
     var fields = state.config.fields || [];
     var emailField = null;
