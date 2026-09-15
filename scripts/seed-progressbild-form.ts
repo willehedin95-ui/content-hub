@@ -72,23 +72,48 @@ const progressbild: FormConfig = {
     { kind: "hidden", key: "forra_bild_url", label: "Förra bilden" },
     { kind: "hidden", key: "dagar_sedan_start", label: "Dagar sedan start" },
 
-    // ---------------------------------------------------------------- STEG 1
-    // Syftet. Kanner vi henne visar vi HENNES bild, annars exempelbilden.
+    // ------------------------------------------------------ INTROKARUSELL
+    // ETT steg, tre paneler man swajpar mellan, med prickar och en knapp som
+    // STAR STILL. Formen ar Weightless introCarousel
+    // (app-venture/snowball/.../OnboardingModels.swift), dar William bad om
+    // den 2026-08-26 med skalet "folk ska veta vad appen GOR innan de fyller i
+    // uppgifter", och dar den i sin tur ar matt ur Mobbin: F1, Mercury, Cleo,
+    // bunq, MyFitnessPal och Tabby bygger alla likadant. Tre SEPARATA steg med
+    // varsin knapp var fel form - knappen ska inte flytta sig.
+    //
+    // COPYN ar Hydro13-appens egen, inte paditad. SelfiePromptSlide.swift har
+    // redan "Se skillnaden med egna ogon", "Vi hjalper dig dokumentera resan"
+    // och "Efter din forsta dos far du ta ett foto. Vid dag 30 och 60
+    // paminner vi dig igen" - skrivet for exakt den har produkten och den har
+    // kunden. Att skriva nytt hade betytt tva olika roster for samma sak.
+    //
+    // Nytta, inte funktion: varje panel svarar pa "vad far JAG ut av det".
+    // Visas BARA for den som ar ny - den som kommer via en tokenlank vid dag
+    // 30 ska inte laras om flodet igen.
     {
       kind: "info",
-      key: "syfte_ny",
+      key: "intro",
       showWhen: { field: "kund", isEmpty: true },
-      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Om 60 dagar är det din egen serie du ser här.</figcaption></figure>
-<h2 class="chf-slide-title">Så här ser 60 dagar ut</h2>
-<p class="chf-slide-sub">Tre bilder: en idag, en om 30 dagar och en om 60. Sedan ser du din egen skillnad sida vid sida.</p>`,
+      html: `<div class="chf-carousel">
+<div class="chf-panel">
+<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild.</figcaption></figure>
+<h2 class="chf-slide-title">Se skillnaden med egna ögon</h2>
+<p class="chf-slide-sub">Spegeln visar ingenting från en dag till nästa. Två bilder bredvid varandra gör det.</p>
+</div>
+<div class="chf-panel">
+<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/tidslinje.jpg" alt="En bild tagen idag och tva tomma rutor for dag 30 och dag 60" width="1004" height="479" loading="eager"></div></figure>
+<h2 class="chf-slide-title">Vi hjälper dig dokumentera resan</h2>
+<p class="chf-slide-sub">Du tar ett foto idag. Vid dag 30 och 60 påminner vi dig igen, och visar din förra bild så du vet hur den togs.</p>
+</div>
+<div class="chf-panel">
+<div class="chf-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="8" width="19" height="12.5" rx="2"/><path d="M2.5 12h19M12 8v12.5"/><path d="M12 8s-1.2-4-3.8-4a2.2 2.2 0 0 0 0 4z"/><path d="M12 8s1.2-4 3.8-4a2.2 2.2 0 0 1 0 4z"/></svg></div>
+<h2 class="chf-slide-title">Och du får 200 kr för besväret</h2>
+<p class="chf-slide-sub">Presentkortet kommer när alla tre bilderna är inne.</p>
+<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort pa 200 kronor"><defs><linearGradient id="chfg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>Bilderna är dina</b>Vi visar dem aldrig för någon utan att fråga dig först.</div></div>
+</div>
+</div>`,
     },
-    {
-      kind: "info",
-      key: "belon_intro",
-      showWhen: { field: "kund", isEmpty: true },
-      html: `<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort pa 200 kronor"><defs><linearGradient id="chfg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>200 kr när alla tre är inne</b>Presentkortet kommer när du laddat upp bild tre. Bilderna är dina, vi visar dem aldrig för någon utan att fråga dig först.</div></div>`,
-    },
-    { kind: "pagebreak", key: "till_epost", label: "Jag börjar" },
+    { kind: "pagebreak", key: "till_epost", label: "Fortsätt" },
 
     // ---------------------------------------------------------------- STEG 2
     // E-post BARA nar vi inte redan vet vem hon ar. Kommer hon fran ett mail

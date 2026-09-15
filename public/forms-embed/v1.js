@@ -277,6 +277,31 @@
     ".chf-app .chf-forra img{width:82px;height:auto;border-radius:11px;flex:none;display:block}" +
     ".chf-app .chf-forra-txt{font-size:14px;line-height:1.5;color:var(--chf-muted);text-align:left}" +
     ".chf-app .chf-forra-txt b{display:block;color:var(--chf-text);font-size:15px;margin-bottom:2px}" +
+    // Introkarusell: tre paneler man swajpar mellan, med prickar och en knapp
+    // som STAR STILL. Monstret ar Weightless introCarousel
+    // (app-venture/snowball/.../OnboardingModels.swift), dar William bad om
+    // det 2026-08-26 med skalet "folk ska veta vad appen GOR innan de fyller i
+    // uppgifter" - och dar det i sin tur ar matt ur Mobbin: F1, Mercury, Cleo,
+    // Too Good To Go, bunq, Waking Up, MyFitnessPal och Tabby bygger likadant.
+    //
+    // Panelerna byter INTE plats i sidled, de korsar over PA PLATS. Det ar
+    // skillnaden mot en vanlig slider, och det ar det som gor att prickarna
+    // och knappen kan sta stilla medan innehallet vaxlar.
+    ".chf-app .chf-carousel{position:relative;flex:1;display:flex;flex-direction:column}" +
+    ".chf-app .chf-panel{display:none;flex-direction:column;flex:1}" +
+    // flex:0 0 auto och inte flex:1. Vaxte panelen tog den allt utrymme och
+    // prickarnas margin-top:auto hade inget kvar att trycka emot, sa de
+    // hamnade klistrade under brodtexten i stallet for hos knappen.
+    ".chf-app .chf-panel.chf-panel-on{display:flex;flex:0 0 auto;animation:chf-panel-in .26s ease-out both}" +
+    "@keyframes chf-panel-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}" +
+    "@media (prefers-reduced-motion:reduce){.chf-app .chf-panel.chf-panel-on{animation:none}}" +
+    // Prickarna hor till CHROMET, inte till texten. I forlagan star de
+    // tillsammans med knappen i botten och rors inte nar panelen vaxlar;
+    // klistrade under brodtexten hoppar de i stallet med varje panels hojd.
+    ".chf-app .chf-dots{display:flex;gap:7px;justify-content:center;margin-top:auto;padding:18px 0 2px}" +
+    ".chf-app .chf-dot{width:7px;height:7px;border-radius:999px;background:rgba(50,13,1,.16);" +
+    "transition:background .2s,width .2s}" +
+    ".chf-app .chf-dot-on{width:22px;background:var(--chf-brand)}" +
     // "Se exempel" som en KNAPP i stallet for ett eget steg. Monstret ar
     // Stakes photo guide (Mobbin): en lank oppnar ett rutnat med ETT ratt och
     // TRE vanliga fel. Text beskriver ett fel, en bild visar det - och hon kan
@@ -618,6 +643,8 @@
       ' stroke-linecap="round" stroke-linejoin="round">' +
       '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>';
     back.addEventListener("click", function () {
+      var cur = container.querySelector('[data-step="' + state.currentStep + '"]');
+      if (cur && cur.__carousel && cur.__carousel.back()) return;
       if (state.currentStep > 0) showStep(state.currentStep - 1);
     });
     head.appendChild(back);
@@ -701,6 +728,59 @@
     );
   });
 
+  /** Gor ett steg med .chf-carousel till en karusell: ritar prickar, visar en
+   *  panel i taget och later stegets EGEN knapp ga vidare panel for panel
+   *  innan den lamnar steget.
+   *
+   *  Knappen ar stegets, inte karusellens - det ar det som gor att den star
+   *  still medan innehallet vaxlar. */
+  function wireCarousel(stepEl) {
+    var wrap = stepEl.querySelector(".chf-carousel");
+    if (!wrap) return null;
+    var paneler = wrap.querySelectorAll(".chf-panel");
+    if (paneler.length < 2) return null;
+
+    var dots = elText("div", "chf-dots");
+    for (var i = 0; i < paneler.length; i++) dots.appendChild(elText("div", "chf-dot"));
+    wrap.appendChild(dots);
+
+    var nu = 0;
+    function visa(idx) {
+      nu = Math.max(0, Math.min(paneler.length - 1, idx));
+      for (var j = 0; j < paneler.length; j++) {
+        paneler[j].classList.toggle("chf-panel-on", j === nu);
+        dots.children[j].classList.toggle("chf-dot-on", j === nu);
+      }
+    }
+    visa(0);
+
+    // Swajp. Utan den ser prickarna ut som att man kan dra, och det forsta man
+    // provar nar man ser prickar ar att dra.
+    var x0 = null;
+    wrap.addEventListener("touchstart", function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+    wrap.addEventListener("touchend", function (e) {
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0;
+      x0 = null;
+      if (Math.abs(dx) < 45) return;
+      visa(nu + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+
+    return {
+      /** Sant om knappen konsumerades av karusellen (det fanns en panel kvar). */
+      advance: function () {
+        if (nu >= paneler.length - 1) return false;
+        visa(nu + 1);
+        return true;
+      },
+      back: function () {
+        if (nu <= 0) return false;
+        visa(nu - 1);
+        return true;
+      },
+    };
+  }
+
   function render() {
     container.innerHTML = "";
     container.classList.remove("chf-app");
@@ -769,6 +849,8 @@
         var cont = elText("button", "chf-submit", step.continueLabel || "Fortsätt");
         cont.type = "button";
         cont.addEventListener("click", function () {
+          // Karusellen ager knappen tills sista panelen ar visad.
+          if (stepEl.__carousel && stepEl.__carousel.advance()) return;
           topError.style.display = "none";
           if (!validate(form, step.fields)) {
             var firstInvalid = stepEl.querySelector(".chf-invalid");
@@ -809,6 +891,7 @@
         });
       }
 
+      stepEl.__carousel = wireCarousel(stepEl);
       form.appendChild(stepEl);
     });
 
