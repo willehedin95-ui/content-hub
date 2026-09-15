@@ -230,6 +230,20 @@
     ".chf-app .chf-slide-title{font-size:22px;font-weight:700;line-height:1.35;" +
     "color:var(--chf-text);margin:0 0 6px}" +
     ".chf-app .chf-slide-sub{font-size:16px;line-height:1.6;color:var(--chf-muted);margin:0 0 20px}" +
+    // Karusellens typografi ar Weightless egna, uppmatt i IntroCarousel:
+    // rubriken 29 bold pa EN rad som KRYMPER i stallet for att brytas (den
+    // langsta panelrubriken ar en rad), brodtexten 16 SEMIBOLD och centrerad,
+    // 10 px mellan dem. Mina 22/regular last som ett formular.
+    ".chf-app .chf-panel .chf-slide-title{font-size:29px;font-weight:700;line-height:1.18;" +
+    "letter-spacing:-.4px;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:clip}" +
+    ".chf-app .chf-panel .chf-slide-sub{font-size:16px;font-weight:600;line-height:1.5;margin:0}" +
+    // Krymp rubriken pa smal skarm i stallet for att bryta den. CSS har inget
+    // minimumScaleFactor, sa taket satts per brytpunkt - uppmatt mot den
+    // langsta rubriken vi har.
+    "@media (max-width:400px){.chf-app .chf-panel .chf-slide-title{font-size:25px}}" +
+    "@media (max-width:344px){.chf-app .chf-panel .chf-slide-title{font-size:22px}}" +
+    // Luften ner mot chromet. Weightless: padding-bottom 96.
+    ".chf-app .chf-panel>*:last-child{margin-bottom:0}" +
     ".chf-app .chf-title{font-size:22px;font-weight:700;line-height:1.35;text-align:center;margin:0 0 6px}" +
     ".chf-app .chf-info{font-size:16px;line-height:1.6;color:var(--chf-muted)}" +
     ".chf-app .chf-info h2{color:var(--chf-text)}" +
@@ -287,6 +301,11 @@
     // Panelerna byter INTE plats i sidled, de korsar over PA PLATS. Det ar
     // skillnaden mot en vanlig slider, och det ar det som gor att prickarna
     // och knappen kan sta stilla medan innehallet vaxlar.
+    // Karusellen ligger i ett info-block, och det blocket ar en vanlig div.
+    // Utan att GORA den till flex har karusellens flex:1 ingenting att vaxa
+    // i, och da kan prickarnas margin-top:auto inte trycka dem ner till
+    // knappen. Uppmatt: de lag kvar direkt under brodtexten.
+    ".chf-app .chf-info:has(.chf-carousel){display:flex;flex-direction:column;flex:1;margin:0}" +
     ".chf-app .chf-carousel{position:relative;flex:1;display:flex;flex-direction:column}" +
     ".chf-app .chf-panel{display:none;flex-direction:column;flex:1}" +
     // flex:0 0 auto och inte flex:1. Vaxte panelen tog den allt utrymme och
@@ -298,7 +317,7 @@
     // Prickarna hor till CHROMET, inte till texten. I forlagan star de
     // tillsammans med knappen i botten och rors inte nar panelen vaxlar;
     // klistrade under brodtexten hoppar de i stallet med varje panels hojd.
-    ".chf-app .chf-dots{display:flex;gap:7px;justify-content:center;margin-top:auto;padding:18px 0 2px}" +
+    ".chf-app .chf-dots{display:flex;gap:7px;justify-content:center;margin-top:auto;padding:18px 0 20px}" +
     ".chf-app .chf-dot{width:7px;height:7px;border-radius:999px;background:rgba(50,13,1,.16);" +
     "transition:background .2s,width .2s}" +
     ".chf-app .chf-dot-on{width:22px;background:var(--chf-brand)}" +
