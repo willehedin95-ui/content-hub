@@ -52,7 +52,8 @@ const progressbild: FormConfig = {
 
     // --- Slide 2: e-post ---
     // Frågan står som label och förklaringen som help, så de renderas i den
-    // ordning specen visar dem (fråga, förklaring, fält).
+    // ordning specen visar dem (fråga, förklaring, fält). Tre varianter:
+    // specens text gäller första bilden, de andra två följer samma ton.
     {
       kind: "email",
       key: "email",
@@ -60,7 +61,18 @@ const progressbild: FormConfig = {
       required: true,
       role: "email",
       fromParam: "e",
+      showWhen: { field: "steg", in: ["1"] },
       help: "Vi använder den för att koppla dina bilder till dig och påminna dig när det är dags att ta nästa bild.",
+    },
+    {
+      kind: "email",
+      key: "email",
+      label: "Bekräfta din e-postadress.",
+      required: true,
+      role: "email",
+      fromParam: "e",
+      showWhen: { field: "steg", in: ["2", "3"] },
+      help: "Samma adress som förra gången, så hamnar bilden i din serie.",
     },
     { kind: "pagebreak", key: "till_bild", label: "Fortsätt" },
 
@@ -68,9 +80,26 @@ const progressbild: FormConfig = {
     {
       kind: "info",
       key: "slide3",
+      showWhen: { field: "steg", in: ["1"] },
       html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din första bild</h2>
 <p>Du väljer själv vad du vill följa. Du kan ta en bild på hela ansiktet eller fokusera på ett område där du särskilt vill se förändring, till exempel runt ögonen, munnen eller på halsen.</p>
 <p>Det viktigaste är att bilden är tydlig och tagen i bra ljus. Försök gärna att ta dina kommande bilder på samma plats, i samma ljus och från samma vinkel. Då blir det mycket lättare att jämföra din utveckling över tid.</p>
+<p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
+    },
+    {
+      kind: "info",
+      key: "slide3_b",
+      showWhen: { field: "steg", in: ["2"] },
+      html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din 30-dagarsbild</h2>
+<p>Ta den på samma plats, i samma ljus och från samma vinkel som din första bild. Då blir jämförelsen rättvis.</p>
+<p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
+    },
+    {
+      kind: "info",
+      key: "slide3_c",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din sista bild</h2>
+<p>Det här är bild tre av tre. Ta den på samma plats, i samma ljus och från samma vinkel som de förra, så ser du hela din 60-dagarsresa sida vid sida.</p>
 <p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
     },
     {
@@ -86,7 +115,10 @@ const progressbild: FormConfig = {
     // --- Slide 4 ---
     success: {
       title: "Klart!",
-      html: `<p>Din första bild är på väg till din inkorg.</p><p style="opacity:.75">Det kan ta några minuter.</p>`,
+      // Specen skriver "Din första bild" - den beskriver första uppladdningen.
+      // Samma ending visas vid alla tre, och en ending kan inte villkoras, så
+      // ordet "första" är borttaget. Resten är ordagrant.
+      html: `<p>Din bild är på väg till din inkorg.</p><p style="opacity:.75">Det kan ta några minuter.</p>`,
     },
   },
 };
