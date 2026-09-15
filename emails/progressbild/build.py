@@ -80,6 +80,16 @@ def label_cell(label, filled):
             '<span style="font:700 12px %s;letter-spacing:.6px;color:%s;">%s</span></td>'
             % (FONT, HEAD if filled else MUTED, label))
 
+def par(fylld_slot, fylld_label, tom_label):
+    """Tva rutor: hennes senaste bild och den hon ska ta nu. William
+    2026-09-15: paminnelsen ska visa RUTORNA, inte bara selfien."""
+    row1 = (slot_cell(fylld_slot, fylld_label, True).replace('width="33%%"', 'width="50%%"')
+            + slot_cell(0, tom_label, False).replace('width="33%%"', 'width="50%%"'))
+    row2 = (label_cell(fylld_label, True).replace('width="33%%"', 'width="50%%"')
+            + label_cell(tom_label, False).replace('width="33%%"', 'width="50%%"'))
+    return ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
+            '<tr>' + row1 + '</tr><tr>' + row2 + '</tr></table>')
+
 def series(filled_count):
     labels = ("DAG 1", "DAG 30", "DAG 60")
     row1 = "".join(slot_cell(n, labels[n - 1], n <= filled_count) for n in (1, 2, 3))
@@ -100,13 +110,19 @@ def button(text, href="#"):
     )
 
 def gift(amount="200 kr", sub="Presentkort"):
+    """Presentkortet som BILD. Beloppet och wordmarken ar satta i kod ovanpa ett
+    genererat kortunderlag (Higgsfield), inte genererade - en bildmodell far
+    inte "200 kr" ratt, och ett fel belopp ar ett loftesfel.
+
+    Tabellvarianten som stod har forut ritade kortet med CSS, vilket Outlook
+    och Gmail renderade som en platt fyrkant utan radie."""
+    src = "presentkort.jpg" if MODE == "preview" else "{{ organization.url }}/images/progressbild/presentkort.jpg"
     return (
-      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="200" align="center">'
-      '<tr><td bgcolor="%s" style="border-radius:13px;padding:16px 18px;">'
-      '<div style="font:700 11px %s;letter-spacing:1.8px;color:#ffffff;opacity:.9;">%s</div>'
-      '<div style="font:800 32px %s;color:#ffffff;padding-top:6px;">%s</div>'
-      '<div style="font:700 11px %s;letter-spacing:2.6px;color:#ffffff;opacity:.92;padding-top:8px;">ENVANA</div>'
-      '</td></tr></table>' % (BRAND, FONT, sub.upper(), FONT, amount, FONT)
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" align="center">'
+      '<tr><td align="center">'
+      '<img src="%s" width="290" alt="Presentkort pa 200 kronor" '
+      'style="display:block;width:100%%;max-width:290px;height:auto;border:0;">'
+      '</td></tr></table>' % src
     )
 
 def shell(preheader, body):
@@ -183,28 +199,23 @@ elif OUT.endswith("paminnelse"):
     if MODE == "klaviyo":
         rubrik = ("{% if event.antal_bilder == 2 %}Dags för din sista bild"
                   "{% else %}Dags för bild två{% endif %}")
-        forra = cond("event.antal_bilder == 2", 
-                     '<img src="{{ event.bild_2_url }}" width="240" alt="Din bild fran dag 30" '
-                     'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">',
-                     '<img src="{{ event.bild_1_url }}" width="240" alt="Din startbild" '
-                     'style="display:block;width:100%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">')
+        forra = cond("event.antal_bilder == 2",
+                     par(2, "DAG 30", "DAG 60"),
+                     par(1, "DAG 1", "DAG 30"))
     else:
         rubrik = "Dags för din sista bild" if VARIANT == "2" else "Dags för bild två"
-        forra = ('<img src="%s" width="240" alt="Din forra bild" '
-                 'style="display:block;width:100%%;max-width:240px;height:auto;border-radius:12px;border:0;margin:0 auto;">'
-                 % ("dag30.jpg" if VARIANT == "2" else "dag1.jpg"))
+        forra = par(2, "DAG 30", "DAG 60") if VARIANT == "2" else par(1, "DAG 1", "DAG 30")
     body = (
       '<h1 %s>%s</h1>'
       '<p %s>Så här såg din förra bild ut. Ställ dig på samma plats, i samma ljus och håll '
       'telefonen lika högt, så blir jämförelsen rättvis.</p>'
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
       '<tr><td align="center" style="padding:4px 0 8px;">%s'
-      '<div style="font:700 12px %s;letter-spacing:.6px;color:%s;padding-top:9px;">DIN FÖRRA BILD</div>'
       '</td></tr></table>'
       '<div style="height:22px;"></div>%s'
       '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:18px 0 0;text-align:center;">'
       'Tar 30 sekunder. Presentkortet på 200 kr kommer när alla tre är inne.</p>'
-      % (H, rubrik, P, forra, FONT, MUTED, button("Ta bilden", lank(FORM_BAS, "{% if event.antal_bilder == 2 %}3{% else %}2{% endif %}")), FONT, MUTED))
+      % (H, rubrik, P, forra, button("Ta bilden", lank(FORM_BAS, "{% if event.antal_bilder == 2 %}3{% else %}2{% endif %}")), FONT, MUTED))
     html = shell("Det är dags för nästa progressbild.", body)
 
 # ---------------------------------------------------------------- 3. SLUTMAIL
