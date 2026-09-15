@@ -107,7 +107,7 @@ const progressbild: FormConfig = {
 <p class="chf-slide-sub">Du tar ett foto idag. Vid dag 30 och 60 påminner vi dig igen, och visar din förra bild så du vet hur den togs.</p>
 </div>
 <div class="chf-panel">
-<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.jpg" alt="Presentkort pa 200 kronor" width="1143" height="752" loading="eager"></div></figure>
+<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.webp" alt="Presentkort pa 200 kronor" width="900" height="608" loading="eager"></div></figure>
 <h2 class="chf-slide-title">200 kr när du är klar</h2>
 <p class="chf-slide-sub">Presentkortet kommer när alla tre bilderna är inne.</p>
 <div class="chf-reward"><span class="chf-reward-ikon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.3" width="15" height="10.2" rx="2.6"/><path d="M8 10.3V7.7a4 4 0 0 1 8 0v2.6"/><path d="M12 14.2v2.6"/></svg></span><div class="chf-reward-txt"><b>Bilderna är dina</b>Vi visar dem aldrig för någon utan att fråga dig först.</div></div>
@@ -270,7 +270,7 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "belöning",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.jpg" alt="Presentkort pa 200 kronor" width="1143" height="752" loading="eager"></div></figure>
+      html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.webp" alt="Presentkort pa 200 kronor" width="900" height="608" loading="eager"></div></figure>
 <h2 class="chf-slide-title chf-mid">200 kr, som tack</h2>
 <p class="chf-slide-sub chf-mid">Presentkortet är ditt. Vi mejlar det till <strong>{{email}}</strong> så fort du är klar här.</p>`,
     },
@@ -282,8 +282,8 @@ const progressbild: FormConfig = {
       key: "samtycke_rubrik",
       showWhen: { field: "steg", in: ["3"] },
       html: `<h2 class="chf-slide-title chf-mid">Vill du dubbla det?</h2>
-<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort-400.jpg" alt="Presentkort pa 400 kronor" width="1143" height="752" loading="eager"></div></figure>
-<p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Låt oss visa dina bilder så skickar vi 400 kr i stället för 200.</p>`,
+<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort-400.webp" alt="Presentkort pa 400 kronor" width="900" height="608" loading="eager"></div></figure>
+<p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Får vi använda dina bilder? Då blir det 400 kr i stället för 200.</p>`,
     },
     // Valet ar TVA KNAPPAR, inte en kryssruta. William: "spelen gor det
     // LOCKANDE att klicka pa 2x reward". En kryssruta ar en blankett man
@@ -298,7 +298,7 @@ const progressbild: FormConfig = {
         {
           value: "ja",
           label: "Ja, dubbla till 400 kr",
-          sub: "Envana får visa mina bilder",
+          sub: "Envana får använda mina bilder",
           style: "primary",
         },
         { value: "nej", label: "Nej tack, behåll 200 kr", style: "quiet" },
@@ -308,7 +308,7 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "samtycke_villkor",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi visar dem i annonser, på sajten och i mejl. Du kan ändra dig när som helst, mejla oss så tar vi bort dem.</p>`,
+      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi kan komma att använda dem i vår marknadsföring, eller inte alls. Du kan ändra dig när som helst, mejla oss så tar vi bort dem.</p>`,
     },
     { kind: "pagebreak", key: "till_namn", label: "Fortsätt" },
 

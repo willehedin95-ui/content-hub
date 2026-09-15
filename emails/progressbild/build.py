@@ -116,7 +116,7 @@ def gift(amount="200 kr", sub="Presentkort"):
 
     Tabellvarianten som stod har forut ritade kortet med CSS, vilket Outlook
     och Gmail renderade som en platt fyrkant utan radie."""
-    src = "presentkort.jpg" if MODE == "preview" else "{{ organization.url }}/images/progressbild/presentkort.jpg"
+    src = "presentkort-mail.jpg" if MODE == "preview" else "{{ organization.url }}/images/progressbild/presentkort-mail.jpg"
     return (
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" align="center">'
       '<tr><td align="center">'
