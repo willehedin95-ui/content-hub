@@ -277,9 +277,6 @@
     ".chf-app .chf-forra img{width:82px;height:auto;border-radius:11px;flex:none;display:block}" +
     ".chf-app .chf-forra-txt{font-size:14px;line-height:1.5;color:var(--chf-muted);text-align:left}" +
     ".chf-app .chf-forra-txt b{display:block;color:var(--chf-text);font-size:15px;margin-bottom:2px}" +
-    ".chf-filewarn{display:flex;gap:9px;align-items:flex-start;margin:10px 0 0;padding:11px 13px;" +
-    "border-radius:11px;background:#fdf3e7;color:#7a4b12;font-size:13.5px;line-height:1.45;text-align:left}" +
-    ".chf-filewarn svg{width:17px;height:17px;flex:none;margin-top:1px}" +
     // "Se exempel" som en KNAPP i stallet for ett eget steg. Monstret ar
     // Stakes photo guide (Mobbin): en lank oppnar ett rutnat med ETT ratt och
     // TRE vanliga fel. Text beskriver ett fel, en bild visar det - och hon kan
@@ -972,67 +969,11 @@
         chosen.style.display = "flex";
       }
 
-      /** Mater bildens medelljus och varnar om den ar for mork.
-       *
-       *  Uppmatt over atta selfie-appar: ljus ar det ENDA rad som ges i 8 av
-       *  8. Det ar alltsa det fel som faktiskt intraffar, och en mork bild gar
-       *  inte att stalla bredvid en ljus och kalla det ett resultat.
-       *
-       *  Monstret ar Jomos "Nice try, but the photo doesn't match your
-       *  description" (Mobbin): sag till i stallet for att tyst ta emot en
-       *  oanvandbar bild. Men VARNA, avvisa inte - en bild vi tyckte var mork
-       *  ar fortfarande hennes bild, och att neka henne kostar hela serien.
-       *
-       *  Matningen sker i webblasaren och inte pa servern, for servern far
-       *  bilden forst vid submit - da har hon redan skickat in och varningen
-       *  ar meningslos. */
-      function kollaLjus(file, vid) {
-        if (!/^image\//.test(file.type) || !window.FileReader) return;
-        var img = new Image();
-        img.onload = function () {
-          try {
-            var c = document.createElement("canvas");
-            // 48x48 racker for ett medelvarde och kostar ingenting att rita.
-            c.width = 48; c.height = 48;
-            var g = c.getContext("2d");
-            g.drawImage(img, 0, 0, 48, 48);
-            var d = g.getImageData(0, 0, 48, 48).data;
-            var sum = 0;
-            for (var i = 0; i < d.length; i += 4) {
-              // Rec. 601-luma: ogat vager gront tyngst, sa ett rakt
-              // medelvarde av R/G/B skulle domma fel pa hudtoner.
-              sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            }
-            var medel = sum / (d.length / 4);
-            if (medel < 62) vid(medel);
-          } catch (e) {
-            // Canvas kan vara blockerad. Da hoppar vi over kollen.
-          }
-          URL.revokeObjectURL(img.src);
-        };
-        img.onerror = function () { URL.revokeObjectURL(img.src); };
-        img.src = URL.createObjectURL(file);
-      }
-
       function take(files) {
         var list = Array.prototype.slice.call(files || []).slice(0, f.maxFiles || 3);
         state.files[f.key] = list;
         setValue(f.key, list.map(function (x) { return x.name; }).join(", "));
         render(list);
-        if (list.length) {
-          kollaLjus(list[0], function () {
-            if (!chosen.querySelector(".chf-filewarn")) {
-              var v = elText("div", "chf-filewarn");
-              v.innerHTML =
-                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"' +
-                ' stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/>' +
-                '<path d="M12 7.5v5M12 16.2h.01"/></svg>';
-              v.appendChild(elText("span", null,
-                "Bilden ser mörk ut. Ljuset avgör om jämförelsen blir tydlig - ta gärna om den vänd mot ett fönster."));
-              chosen.appendChild(v);
-            }
-          });
-        }
       }
 
       finp.addEventListener("change", function () { take(finp.files); });
