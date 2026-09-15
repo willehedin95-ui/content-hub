@@ -37,12 +37,18 @@ const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 const progressbild: FormConfig = {
   submitLabel: "Ladda upp bilden",
   ticket: { kindLabel: "Progressbild", priority: 1 },
-  // INGEN helpdesk-leverans. En progressbild är inte en supportfråga; med
-  // helpdesk fick kunden ett "vi återkommer inom 24 timmar" som ingen tänker
-  // svara på, och kundservice hade fått tre ärenden per deltagare.
-  // Inskickningen sparas och syns i /forms som förut. Byts till "klaviyo" när
-  // adaptern finns - det är den som ska trigga mailen.
-  delivery: "none",
+  // Klaviyo äger mailen. INGEN helpdesk: en progressbild är inte en
+  // supportfråga, och med helpdesk fick kunden ett "vi återkommer inom 24
+  // timmar" som ingen tänker svara på.
+  //
+  // `metric` är flödets trigger i Klaviyo. Ändra den ALDRIG efter att ett
+  // flöde kopplats på den - ett flöde går inte att peka om via API:t
+  // (se klaviyo-api-limits), så en ändring kräver att flödet byggs om.
+  //
+  // `seriesField: "steg"` gör att eventet även bär hennes tidigare bilder som
+  // bild_1_url / bild_2_url / bild_3_url. Det är det som låter mailet visa
+  // serien och de tomma rutorna, Zookis starkaste grepp.
+  delivery: { type: "klaviyo", brand: "envana", metric: "Progressbild uppladdad", seriesField: "steg" },
   // Fullskärms onboarding i stället för formulär i en vit ruta. Färgerna är
   // Envanas tokens ur designsystemet i Figma (brand/500, bg/base,
   // text/heading, text/muted), inte valda på känsla.

@@ -10,6 +10,7 @@
 // Swapping helpdesk = write a new adapter below + repoint the setting.
 
 import { createServerSupabase } from "@/lib/supabase-admin";
+import { trackKlaviyoEvent, type KlaviyoBrand } from "@/lib/klaviyo-events";
 import { sendTelegramNotification, escapeHtml as tgEscape } from "@/lib/telegram";
 import {
   buildTicketSubject,
@@ -182,6 +183,98 @@ async function alertDeliveryFailure(submission: FormSubmissionRow, formName: str
  * Attempt delivery of one submission. Loads fresh state, skips if already
  * delivered/skipped, updates delivery bookkeeping on success/failure.
  */
+/** Kundens hela bildserie i ETT formulär, äldst först.
+ *
+ *  Zookis starkaste grepp är att mailet visar hennes egen tidigare bild plus
+ *  tomma rutor för de som fattas - en påbörjad serie med hål i vill man fylla.
+ *  Det kräver att eventet bär URL:erna, för Klaviyo kan inte slå upp dem.
+ *
+ *  Nyckeln är e-post, vilket är kedjans svagaste punkt: skriver hon fel adress
+ *  vid bild två börjar en ny serie utan att någon märker det. Tills länkarna
+ *  bär en signerad token är det här så bra det blir, och det är samma
+ *  begränsning Zooki har.
+ *
+ *  Testinskickningar utesluts - annars hamnar våra egna testbilder i en riktig
+ *  kunds serie om adresserna råkar vara samma. */
+async function fetchImageSeries(
+  formId: string,
+  email: string,
+  seriesField: string
+): Promise<{ step: string | null; url: string; at: string }[]> {
+  const supabase = createServerSupabase();
+  const { data } = await supabase
+    .from("form_submissions")
+    .select("payload, files, created_at")
+    .eq("form_id", formId)
+    .eq("email", email.toLowerCase())
+    .eq("is_test", false)
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  const out: { step: string | null; url: string; at: string }[] = [];
+  for (const row of (data ?? []) as Pick<FormSubmissionRow, "payload" | "files" | "created_at">[]) {
+    const file = (row.files ?? [])[0];
+    if (!file?.url) continue;
+    const stepAnswer = (row.payload ?? []).find((a) => a.key === seriesField);
+    out.push({
+      step: stepAnswer ? String(stepAnswer.value ?? "") : null,
+      url: file.url,
+      at: row.created_at,
+    });
+  }
+  return out;
+}
+
+/** Postar inskickningen som ett event till Klaviyo, som äger mailen.
+ *
+ *  Ingen ticket skapas och inget svar väntas - det här är ingen supportfråga.
+ *  `unique_id` sätts till submissionens client_submission_id, så en retry
+ *  efter en timeout aldrig kan skicka mailet två gånger (Klaviyo svarar 409 på
+ *  ett redan mottaget id och trackKlaviyoEvent behandlar det som lyckat). */
+async function deliverViaKlaviyo(
+  input: DeliveryInput,
+  cfg: { brand: KlaviyoBrand; metric: string; seriesField?: string }
+): Promise<DeliveryResult> {
+  const { submission, form, email } = input;
+
+  const properties: Record<string, unknown> = {
+    formular: form.slug,
+    marknad: submission.market,
+    submission_id: submission.client_submission_id,
+  };
+  // Svaren platt, så Klaviyo kan villkora flödet på dem (samtycke, förnamn).
+  for (const answer of submission.payload ?? []) {
+    properties[answer.key] = answer.display ?? answer.value;
+  }
+  const own = (submission.files ?? [])[0];
+  if (own?.url) properties.bild_url = own.url;
+
+  if (cfg.seriesField) {
+    const series = await fetchImageSeries(form.id, email, cfg.seriesField);
+    properties.antal_bilder = series.length;
+    // Namngivna nycklar, inte en array: Klaviyos malleditor kan inte indexera
+    // en lista i en <img src>, men {{ event.bild_1_url }} fungerar rakt av.
+    for (const shot of series) {
+      if (shot.step) properties[`bild_${shot.step}_url`] = shot.url;
+    }
+    // Och i ordning, för mallar som hellre vill ha "senaste" oavsett steg.
+    series.forEach((shot, i) => {
+      properties[`serie_${i + 1}_url`] = shot.url;
+    });
+  }
+
+  await trackKlaviyoEvent({
+    brand: cfg.brand,
+    metricName: cfg.metric,
+    email,
+    properties,
+    time: submission.created_at,
+    uniqueId: submission.client_submission_id,
+  });
+
+  return { ticketId: null };
+}
+
 export async function deliverSubmission(submissionId: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = createServerSupabase();
 
@@ -276,7 +369,10 @@ export async function deliverSubmission(submissionId: string): Promise<{ ok: boo
 
   try {
     let result: DeliveryResult;
-    if (helpdesk.type === "freshdesk") {
+    const delivery = config.delivery;
+    if (typeof delivery === "object" && delivery?.type === "klaviyo") {
+      result = await deliverViaKlaviyo(input, delivery);
+    } else if (helpdesk.type === "freshdesk") {
       result = await deliverViaFreshdesk(input, helpdesk);
     } else if (helpdesk.type === "email") {
       result = await deliverViaEmail(input, helpdesk.to);

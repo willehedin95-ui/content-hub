@@ -118,8 +118,21 @@ export interface FormTheme {
  *  får tre ärenden per deltagare. William fick exakt det mailet vid sitt första
  *  riktiga test 2026-09-15.
  *
- *  När Klaviyo-adaptern finns blir det här fältet `"klaviyo"`. */
-export type FormDelivery = "helpdesk" | "none";
+ *  `{ type: "klaviyo" }`: inskickningen postas som ett event till Klaviyo, som
+ *  äger mailen. `brand` väljer konto (Envana och SwedishBalance har var sitt),
+ *  `metric` är metricens namn i Klaviyo och blir flödets trigger.
+ *  `seriesField` pekar ut fältet som säger vilket tillfälle i en serie det är
+ *  (progressbild: "steg"); finns det med skickar adaptern även kundens
+ *  tidigare bilder, så mailet kan visa serien och de tomma rutorna. */
+export type FormDelivery =
+  | "helpdesk"
+  | "none"
+  | {
+      type: "klaviyo";
+      brand: "envana" | "swedishbalance";
+      metric: string;
+      seriesField?: string;
+    };
 
 export interface FormConfig {
   title?: string;

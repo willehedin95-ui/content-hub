@@ -34,9 +34,11 @@ const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 const samtycke: FormConfig = {
   submitLabel: "Skicka in",
   ticket: { kindLabel: "Samtycke bilder", priority: 1 },
-  // Inget helpdesk-ärende, samma skäl som progressbild. Samtyckesnivån ska
-  // läsas ur form_submissions och filtreras på, inte hanteras av en agent.
-  delivery: "none",
+  // Klaviyo skickar presentkortet. Inget helpdesk-ärende, samma skäl som
+  // progressbild. Samtyckesnivån går med i eventet så flödet kan villkora på
+  // den: `samtycke` true/false och `fornamn` ifyllt eller tomt avgör om det
+  // blir ett eller två presentkort.
+  delivery: { type: "klaviyo", brand: "envana", metric: "Samtycke bilder besvarat" },
   // Samma app-läge som progressbildsformuläret. Sidorna ligger i samma resa
   // och nås av samma kund - ett byte till vitt webbformulär i sista steget
   // hade läst som en annan avsändare precis när vi ber om rättigheterna.
