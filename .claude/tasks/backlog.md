@@ -1,23 +1,53 @@
 ## Progressbildsflodet (Envana/Hydro13)
 
-Formularen ar byggda och verifierade pa branchen `progressbilder` (2026-09-15, opushad).
+ALLT AR I PRODUKTION (commit `12efe5b0`, 2026-09-15). Sidan
+**shopenvana.com/pages/resa ar publicerad** men inget lankar dit an.
 Spec: SharedVault `envana/envana-progressbilder-flode-spec.md`.
 
-- [ ] **Klaviyo-adapter i `src/lib/form-delivery.ts`** - BLOCKERAR hela flodet. Utan den
-      kan ingen av mailen triggas. Filen sager sjalv hur: ny adapter + peka om
-      `workspaces.settings.forms_helpdesk`.
-- [ ] **Beslut: vilken butik?** Envana pa Loop (8 aktiva prenumeranter) eller
-      SwedishBalance pa Appstle (393). Blockerar belongslogiken.
+### Blockerar allt annat
+
+- [ ] **BILDUPPLADDNINGSSKARMEN - vantar pa Williams besked.** Omgjord tre ganger.
+      Fraga FORE nasta andring. Forslag hos honom: LooksMax-anatomin med
+      exempelbild i mitten, en rad om ljus, tva knappar ("Ta en selfie" /
+      "Valj fran galleriet"). Matning med skarmbilder:
+      SharedVault `envana/envana-bilduppladdning-matning.md`.
+- [ ] **Flodena i Klaviyo.** Mallarna ar uppladdade (QYB7uH kvittens, TjqMgr
+      paminnelse, SGpJDN slutmail) men inget flode ar byggt. Ett befintligt flode
+      gar INTE att andra via API, bara slas pa/av - copyn maste vara klar innan
+      flodet skapas. Kvittensen ska villkoras bort nar `event.steg == '3'`,
+      annars gar den ut samtidigt som slutmailet och sager samma sak.
+
+### Beslut som saknas
+
+- [ ] **Vilken butik?** Envana pa Loop (8 aktiva) eller SwedishBalance pa Appstle
+      (393). Blockerar belongslogiken.
+- [ ] **Presentkort eller Loop-rabatt?** Tryckt copy sager presentkort och binder
+      oss; resonemanget sa rabatt i forsta hand.
 - [ ] **Byt Loop-token i `.env.local`** - den nuvarande ar bunden till nedlagda
       `get-renew.myshopify.com`.
-- [ ] **Beslut: presentkort eller Loop-rabatt?** Tryckt copy sager presentkort och
-      binder oss; resonemanget sa rabatt i forsta hand.
-- [ ] **Sidan `shopenvana.com/pages/resa`** med embed-koden. QR-koden ska leda dit.
-- [ ] **Kortet till tryck** - QR pa framsidan, exempelbilder pa baksidan.
-- [ ] **Uppdatera integritetspolicyn + App Privacy** innan nagon bild samlas in i skarpt
-      lage. Samtycket maste ga att aterkalla, alltsa maste vi kunna hitta och radera en
-      specifik kunds bilder.
-- [ ] Pusha `progressbilder` nar William vill ha en Vercel-preview att testa i telefonen.
+
+### Kvar att bygga
+
+- [ ] **Kortet till tryck** - QR pa framsidan mot shopenvana.com/pages/resa UTAN
+      parametrar, exempelbilder pa baksidan.
+- [ ] **Uppdatera integritetspolicyn + App Privacy** innan nagon bild samlas in
+      skarpt. Samtycket maste ga att aterkalla, alltsa maste vi kunna hitta och
+      radera en specifik kunds bilder.
+- [ ] **Byt ut exempelbilden mot en akta serie** sa fort flodet levererat en. Den
+      som ligger dar nu ar appens egen before/after - riktig, men inte en av vara
+      egna kunder.
+- [ ] **En vy dar kunden ser sin egen serie** mellan bilderna. Lovi och Shopify
+      har bada det (se `envana-selfieguider-matning.md`). Inte byggt.
+- [ ] **SMS dag 3** till den som skannat men aldrig laddat upp. Ligger i specen.
+
+### Klart 2026-09-15
+
+- [x] Klaviyo-adapter - eventet bar hela bildserien, det som gor Zooki-mailen mojliga
+- [x] Signerad kundlank - dag 30 gick fran fyra skarmar till en
+- [x] Sidan shopenvana.com/pages/resa, fullskarm utan butikens header/footer
+- [x] Bildnormalisering (HEIC + blandad orientering)
+- [x] CORS-buggen som gjorde att formularen inte laddade for var tionde kund
+- [x] Tva gates: `scripts/regress-forms.ts` och `scripts/mobile-sweep.ts`
 
 # Backlog
 
