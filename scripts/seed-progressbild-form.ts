@@ -35,7 +35,10 @@ import type { FormConfig } from "../src/types/forms";
 const HYDRO13_WORKSPACE_ID = "6a18a542-4e8a-4d51-bc56-afd49fd1d9b7";
 
 const progressbild: FormConfig = {
-  submitLabel: "Ladda upp bilden",
+  // Rakningen i knappen, inte bara pa skarmen. Uppmatt monster: Thea kor
+  // "Take front photo (1/4)" och "(2/4)" - hon ser var i serien hon ar i
+  // samma ogonblick som hon trycker.
+  submitLabel: "Ladda upp bild {{steg}} av 3",
   ticket: { kindLabel: "Progressbild", priority: 1 },
   // Klaviyo äger mailen. INGEN helpdesk: en progressbild är inte en
   // supportfråga, och med helpdesk fick kunden ett "vi återkommer inom 24
@@ -166,7 +169,7 @@ const progressbild: FormConfig = {
     {
       kind: "info",
       key: "guide_knapp",
-      html: `<button type="button" class="chf-guide-btn" data-chf-guide="{{hub}}/images/progressbild/exempel-ratt-fel.jpg" data-chf-guide-title="Så ska bilden se ut" data-chf-guide-text="Rakt framifrån, hela ansiktet i bild, i dagsljus eller en väl upplyst lampa. Tre av fyra misslyckade bilder är för mörka."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Se exempel på en bra bild</button>`,
+      html: `<button type="button" class="chf-guide-btn" data-chf-guide="{{hub}}/images/progressbild/exempel-ratt-fel.jpg" data-chf-guide-title="Så ska bilden se ut" data-chf-guide-text="Ljuset är det som avgör. Stå vänd mot ett fönster eller en stark lampa, rakt framifrån, utan glasögon eller mössa. Inga filter."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Se exempel på en bra bild</button>`,
     },
     {
       kind: "file",

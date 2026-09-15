@@ -452,6 +452,15 @@
     });
   }
 
+  /** `{{key}}` -> faltets varde, som ren text. For etiketter och knappar, dar
+   *  vardet aldrig ska tolkas som HTML. */
+  function fillPlaceholders(text) {
+    return String(text).replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, function (_m, key) {
+      var v = state.values[key];
+      return v === undefined || v === null ? "" : String(v);
+    });
+  }
+
   function isEmail(s) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
   }
@@ -783,7 +792,13 @@
         hp.appendChild(hpLabel);
         stepEl.appendChild(hp);
 
-        var submit = elText("button", "chf-submit", cfg.submitLabel || "Skicka in");
+        // Knappetiketten far bara stegets nummer: "Ladda upp bild {{steg}} av 3".
+        // Thea-monstret ur matningen - rakningen ligger i knappen hon faktiskt
+        // trycker pa, inte nagon annanstans pa skarmen.
+        //
+        // Ren textersattning, inte interpolate(): etiketten ar TEXT och satts
+        // med textContent, sa den ska varken escapas eller tolkas som HTML.
+        var submit = elText("button", "chf-submit", fillPlaceholders(cfg.submitLabel || "Skicka in"));
         submit.type = "submit";
         stepEl.appendChild(submit);
         addBackButton(stepEl, stepIdx);
