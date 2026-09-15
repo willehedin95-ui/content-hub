@@ -282,37 +282,62 @@ const progressbild: FormConfig = {
       key: "samtycke_rubrik",
       showWhen: { field: "steg", in: ["3"] },
       html: `<h2 class="chf-slide-title chf-mid">Vill du dubbla det?</h2>
-<p class="chf-slide-sub chf-mid">Vi letar efter äkta före och efter från riktiga kunder. Säger du ja till att vi får visa dina bilder skickar vi <strong>200 kr till</strong>. Säger du nej händer ingenting, och de första 200 kronorna är kvar.</p>`,
+<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort-400.jpg" alt="Presentkort pa 400 kronor" width="1143" height="752" loading="eager"></div></figure>
+<p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Låt oss visa dina bilder så skickar vi 400 kr i stället för 200.</p>`,
     },
+    // Valet ar TVA KNAPPAR, inte en kryssruta. William: "spelen gor det
+    // LOCKANDE att klicka pa 2x reward". En kryssruta ar en blankett man
+    // bockar i, en knapp ar nagot man vill trycka pa - och ett aktivt klick pa
+    // en knapp som sager vad den betyder ar dessutom ett STARKARE samtycke an
+    // en ikryssad ruta.
     {
-      kind: "checkbox",
+      kind: "choice",
       key: "samtycke",
       showWhen: { field: "steg", in: ["3"] },
-      text: "Ja, Envana får visa mina bilder i annonser, på sajten och i mejl. Du kan ändra dig när som helst och då tar vi bort dem.",
+      options: [
+        {
+          value: "ja",
+          label: "Ja, dubbla till 400 kr",
+          sub: "Envana får visa mina bilder",
+          style: "primary",
+        },
+        { value: "nej", label: "Nej tack, behåll 200 kr", style: "quiet" },
+      ],
+    },
+    {
+      kind: "info",
+      key: "samtycke_villkor",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi visar dem i annonser, på sajten och i mejl. Du kan ändra dig när som helst, mejla oss så tar vi bort dem.</p>`,
+    },
+    { kind: "pagebreak", key: "till_namn", label: "Fortsätt" },
+
+    // Namnet och orden kommer EFTER jaet. Pa valskarmen ska det bara finnas
+    // ett val.
+    {
+      kind: "info",
+      key: "namn_rubrik",
+      showWhen: { field: "samtycke", in: ["ja"] },
+      html: `<h2 class="chf-slide-title chf-mid">Får vi skriva ditt förnamn?</h2>
+<p class="chf-slide-sub chf-mid">Lämnar du det tomt visas bilderna helt anonymt.</p>`,
     },
     {
       kind: "text",
       key: "fornamn",
-      label: "Ditt förnamn",
-      showWhen: { field: "samtycke", notEmpty: true },
+      showWhen: { field: "samtycke", in: ["ja"] },
       placeholder: "t.ex. Anna",
-      help: "Lämnar du det tomt visas bilderna helt anonymt.",
     },
     {
       kind: "textarea",
       key: "bildtext",
       label: "Vill du säga något om din resa?",
-      showWhen: { field: "samtycke", notEmpty: true },
+      showWhen: { field: "samtycke", in: ["ja"] },
       placeholder: "Dina egna ord säger mer än något vi kan skriva.",
     },
-
   ],
   endings: {
-    // --- Slide 4 ---
     // Varianter per steg. Samma text vid alla tre var direkt felaktig vid den
     // sista bilden: "vi hör av oss om 30 dagar" när serien just tagit slut.
-    // Varje variant säger dessutom var i serien hon är - en påbörjad serie med
-    // ett hål kvar är det som får henne tillbaka, starkare än belöningen.
     success: {
       title: "Klart!",
       html: `<p>Din bild är sparad.</p>`,

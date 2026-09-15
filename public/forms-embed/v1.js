@@ -526,6 +526,19 @@
     "cursor:pointer;box-shadow:0 8px 24px rgba(240,87,61,.22)}" +
     ".chf-app .chf-dela:active{transform:scale(.98)}" +
     ".chf-app .chf-dela svg{width:20px;height:20px}" +
+    // Valknappar. Den primara ar stor och fylld, den tysta ar en textrad -
+    // samma viktning som mobilspelens "Double Reward" mot "Free".
+    ".chf-app .chf-choices{display:flex;flex-direction:column;gap:10px;margin:auto 0 0}" +
+    ".chf-app .chf-choice{display:flex;flex-direction:column;align-items:center;gap:3px;" +
+    "width:100%;border:0;border-radius:14px;padding:17px 20px;font:inherit;cursor:pointer;" +
+    "transition:transform .15s}" +
+    ".chf-app .chf-choice:active{transform:scale(.98)}" +
+    ".chf-app .chf-choice b{font-size:18px;font-weight:800;letter-spacing:.2px}" +
+    ".chf-app .chf-choice span{font-size:13.5px;font-weight:500;opacity:.85}" +
+    ".chf-app .chf-choice-primary{background:var(--chf-brand);color:#fff;min-height:64px;" +
+    "box-shadow:0 10px 28px rgba(240,87,61,.28)}" +
+    ".chf-app .chf-choice-quiet{background:none;color:var(--chf-muted);min-height:48px;padding:12px}" +
+    ".chf-app .chf-choice-quiet b{font-size:16px;font-weight:600}" +
     "@keyframes chf-pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}" +
     "@media (prefers-reduced-motion:reduce){.chf-app .chf-endmark{animation:none}}" +
     ".chf-app .chf-toperror{border-radius:12px}";
@@ -1014,6 +1027,14 @@
         });
       }
 
+      // Ett steg med valknappar har redan sin handling. En CTA under dem hade
+      // varit en tredje vag ur skarmen, och den vagen finns inte.
+      var harVal = step.fields.some(function (f) { return f.kind === "choice"; });
+      if (harVal) {
+        stepEl.__carousel = wireCarousel(stepEl);
+        form.appendChild(stepEl);
+        return;
+      }
       if (stepIdx < steps.length - 1) {
         // Mellansteg: Fortsätt-knapp som validerar stegets synliga fält
         var cont = elText("button", "chf-submit", step.continueLabel || "Fortsätt");
@@ -1145,6 +1166,25 @@
       if (f.text) ctext.appendChild(elText("div", null, f.text));
       clab.appendChild(ctext);
       return clab;
+    }
+    if (f.kind === "choice") {
+      var cwrap = elText("div", "chf-choices");
+      (f.options || []).forEach(function (o) {
+        var knapp = elText("button", "chf-choice chf-choice-" + (o.style || "primary"));
+        knapp.type = "button";
+        knapp.appendChild(elText("b", null, o.label));
+        if (o.sub) knapp.appendChild(elText("span", null, o.sub));
+        knapp.addEventListener("click", function () {
+          setValue(f.key, o.value);
+          // Knappen ar stegets handling: satt vardet och ga vidare direkt.
+          var steg = cwrap.closest("[data-step]");
+          var idx = steg ? parseInt(steg.getAttribute("data-step"), 10) : state.currentStep;
+          var nasta = nextVisibleStep(idx + 1, 1);
+          if (nasta !== null && nasta !== undefined) showStep(nasta);
+        });
+        cwrap.appendChild(knapp);
+      });
+      return cwrap;
     }
     if (f.kind === "file") {
       // asCta: stegets egen CTA oppnar valjaren. Da ska filfaltet inte rita
@@ -1354,7 +1394,26 @@
         if (w.style.display === "none") continue;
         var f = findField(w.getAttribute("data-key"));
         if (!f || !f.required) continue;
-        if (f.kind === "file") {
+        if (f.kind === "choice") {
+      var cwrap = elText("div", "chf-choices");
+      (f.options || []).forEach(function (o) {
+        var knapp = elText("button", "chf-choice chf-choice-" + (o.style || "primary"));
+        knapp.type = "button";
+        knapp.appendChild(elText("b", null, o.label));
+        if (o.sub) knapp.appendChild(elText("span", null, o.sub));
+        knapp.addEventListener("click", function () {
+          setValue(f.key, o.value);
+          // Knappen ar stegets handling: satt vardet och ga vidare direkt.
+          var steg = cwrap.closest("[data-step]");
+          var idx = steg ? parseInt(steg.getAttribute("data-step"), 10) : state.currentStep;
+          var nasta = nextVisibleStep(idx + 1, 1);
+          if (nasta !== null && nasta !== undefined) showStep(nasta);
+        });
+        cwrap.appendChild(knapp);
+      });
+      return cwrap;
+    }
+    if (f.kind === "file") {
           var lista = state.files[f.key] || [];
           if (!lista.length) klar = false;
         } else {

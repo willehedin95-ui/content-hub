@@ -73,6 +73,16 @@ export type FormField =
   // ligger på (?steg=2). Låter ETT formulär bära flera varianter i stället för
   // en kopia per variant. `fromParam` = parameterns namn, `fallback` = värdet
   // när parametern saknas.
+  // Val som KNAPPAR, inte som en lista man far bocka i. Varje knapp satter
+  // faltets varde och gar vidare direkt. Monstret ar mobilspelens
+  // "Free / Double Reward": ett val mellan tva knappar dar den ena ar den
+  // lockande, inte en blankett med en kryssruta i.
+  //
+  // Steget ritar INGEN egen CTA - knapparna ar stegets handling.
+  | ({
+      kind: "choice";
+      options: { value: string; label: string; sub?: string; style?: "primary" | "quiet" }[];
+    } & FormFieldBase)
   | ({ kind: "hidden" } & FormFieldBase)
   // Page break: splits the form into steps. `label` = the continue-button
   // text for the step BEFORE the break (e.g. "Fortsätt"). Used for the
