@@ -41,15 +41,6 @@ const progressbild: FormConfig = {
     // Bärs av länken: ?steg=1|2|3. Utan parameter antas första bilden.
     { kind: "hidden", key: "steg", label: "Steg", fromParam: "steg", fallback: "1" },
 
-    // --- Slide 1: intro ---
-    {
-      kind: "info",
-      key: "slide1",
-      html: `<h2 style="margin:0 0 10px;font-size:20px;line-height:1.3">Följ din resa i 60 dagar. Få ett presentkort på 200 kr.</h2>
-<p style="margin:0">Ladda upp din första bild idag och följ hur din hud förändras över tid.</p>`,
-    },
-    { kind: "pagebreak", key: "till_epost", label: "Kom igång" },
-
     // --- Slide 2: e-post ---
     // ETT fält. Två fält med samma key men olika showWhen gick inte: embedens
     // villkorsuppdatering slår upp wrappen med querySelector('[data-key=...]'),
@@ -68,38 +59,52 @@ const progressbild: FormConfig = {
     { kind: "pagebreak", key: "till_bild", label: "Fortsätt" },
 
     // --- Slide 3: bilden ---
+    // Rubriken forst, sedan uppladdningszonen, sedan instruktionerna. Tidigare
+    // lag 108 ord text ovanfor rutan: 625 av 812 px pa en telefon, sa det hon
+    // kom for hamnade vid fold-kanten.
     {
       kind: "info",
-      key: "slide3",
+      key: "rubrik_1",
       showWhen: { field: "steg", in: ["1"] },
-      html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din första bild</h2>
-<p>Du väljer själv vad du vill följa. Du kan ta en bild på hela ansiktet eller fokusera på ett område där du särskilt vill se förändring, till exempel runt ögonen, munnen eller på halsen.</p>
-<p>Det viktigaste är att bilden är tydlig och tagen i bra ljus. Försök gärna att ta dina kommande bilder på samma plats, i samma ljus och från samma vinkel. Då blir det mycket lättare att jämföra din utveckling över tid.</p>
-<p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
+      html: `<h2>Dags att ta din första bild</h2>`,
     },
     {
       kind: "info",
-      key: "slide3_b",
+      key: "rubrik_2",
       showWhen: { field: "steg", in: ["2"] },
-      html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din 30-dagarsbild</h2>
-<p>Ta den på samma plats, i samma ljus och från samma vinkel som din första bild. Då blir jämförelsen rättvis.</p>
-<p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
+      html: `<h2>Dags att ta din 30-dagarsbild</h2>`,
     },
     {
       kind: "info",
-      key: "slide3_c",
+      key: "rubrik_3",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<h2 style="margin:0 0 10px;font-size:18px;line-height:1.3">Dags att ta din sista bild</h2>
-<p>Det här är bild tre av tre. Ta den på samma plats, i samma ljus och från samma vinkel som de förra, så ser du hela din 60-dagarsresa sida vid sida.</p>
-<p style="margin-bottom:0"><strong>Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</strong></p>`,
+      html: `<h2>Dags att ta din sista bild</h2><p style="margin:0">Bild tre av tre.</p>`,
     },
     {
       kind: "file",
       key: "bild",
-      label: "Välj en bild eller dra den hit",
+      label: "Din bild",
       required: true,
       accept: "image/*",
       maxFiles: 1,
+      placeholder: "Välj en bild",
+    },
+    // Integritetsloftet star kvar direkt under rutan - det ar det som far
+    // henne att vaga ladda upp, och far inte hamna bakom en utfallning.
+    {
+      kind: "info",
+      key: "integritet",
+      // Normal vikt, inte fet. I fetstil tog den sex rader och mer visuell
+      // tyngd an bade uppladdningszonen och knappen, alltsa tvartemot
+      // hierarkin pa skarmen. Den ska inge trygghet, inte konkurrera.
+      html: `<p style="margin:0;font-size:.92em;color:#444">Dina bilder är privata och används bara för att hjälpa dig följa din resa. Vi använder aldrig dina bilder i marknadsföring eller annan kommunikation utan ditt tydliga godkännande.</p>`,
+    },
+    {
+      kind: "info",
+      key: "tips",
+      html: `<details style="margin:0"><summary style="cursor:pointer;font-weight:600">Så tar du en bra bild</summary>
+<p style="margin:10px 0 0">Du väljer själv vad du vill följa. Du kan ta en bild på hela ansiktet eller fokusera på ett område där du särskilt vill se förändring, till exempel runt ögonen, munnen eller på halsen.</p>
+<p style="margin:10px 0 0">Det viktigaste är att bilden är tydlig och tagen i bra ljus. Försök gärna att ta dina kommande bilder på samma plats, i samma ljus och från samma vinkel. Då blir det mycket lättare att jämföra din utveckling över tid.</p></details>`,
     },
   ],
   endings: {
@@ -107,9 +112,12 @@ const progressbild: FormConfig = {
     success: {
       title: "Klart!",
       // Specen skriver "Din första bild" - den beskriver första uppladdningen.
-      // Samma ending visas vid alla tre, och en ending kan inte villkoras, så
-      // ordet "första" är borttaget. Resten är ordagrant.
-      html: `<p>Din bild är på väg till din inkorg.</p><p style="opacity:.75">Det kan ta några minuter.</p>`,
+      // Samma ending visas vid alla tre och kan inte villkoras, så ordet
+      // "första" är struket. Sista raden är tillagd: hon ska veta vad som
+      // händer härnäst, inte bara att något hände.
+      html: `<p>Din bild är på väg till din inkorg.</p>
+<p style="opacity:.75">Det kan ta några minuter.</p>
+<p style="margin-top:14px">Vi hör av oss när det är dags för nästa bild om 30 dagar. Ta Envana varje dag tills dess, det är det som avgör hur mycket du ser.</p>`,
     },
   },
 };

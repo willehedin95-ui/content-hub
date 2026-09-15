@@ -69,11 +69,35 @@
     ".chf-check{display:flex;align-items:flex-start;gap:10px;cursor:pointer}" +
     ".chf-check input{margin-top:4px}" +
     ".chf-check-title{font-weight:700}" +
-    ".chf-info{background:#eef2f8;border:1px solid #d5deeb;border-radius:10px;padding:14px 16px;margin:0 0 18px}" +
+    // Instruktionerna ar sidans innehall, inte en notis. Blatonad ruta med ram
+    // last som "varning/systemmeddelande" och gjorde texten latt att hoppa over.
+    ".chf-info{margin:0 0 18px}" +
+    ".chf-info h2{font-size:1.25em;font-weight:700;margin:0 0 8px;line-height:1.3}" +
     ".chf-info p{margin:0 0 8px}" +
     ".chf-info p:last-child{margin-bottom:0}" +
     ".chf-info a{color:#1d4ed8;text-decoration:underline}" +
-    ".chf-file{border:1px dashed #bbb;border-radius:10px;padding:16px;background:#fafafa}" +
+    // Uppladdningszonen: hela rutan ar tryckyta. Den nakna <input type=file>
+    // renderas som webblasarens "Valj fil"-knapp pa 22px, vilket ar halva
+    // minsta tryckyta och ser ut som ett systemfel pa den viktigaste
+    // interaktionen i formularet.
+    ".chf-file{position:relative;border:1.5px dashed #bbb;border-radius:12px;background:#fafafa;" +
+    "min-height:132px;display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+    "gap:6px;padding:20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}" +
+    ".chf-file:hover,.chf-file.chf-file-over{border-color:#111;background:#f3f4f6}" +
+    ".chf-file input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}" +
+    ".chf-file-icon{width:34px;height:34px;opacity:.45}" +
+    ".chf-file-main{font-weight:600}" +
+    ".chf-file-sub{font-size:.86em;color:#555}" +
+    ".chf-file-preview{display:flex;align-items:center;gap:12px;text-align:left;width:100%}" +
+    ".chf-file-preview img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:none}" +
+    ".chf-file-name{font-size:.9em;word-break:break-word;flex:1}" +
+    ".chf-file-change{font-size:.86em;text-decoration:underline;color:#555}" +
+    // Stegindikator: ett flerstegsformular ska visa var man ar.
+    ".chf-steps{font-size:.85em;color:#555;margin:0 0 14px;font-weight:600}" +
+    // Tillbaka: sekundar, alltid minst 44px hog trots att den ar textlank.
+    ".chf-back{display:block;width:100%;margin-top:10px;padding:12px;background:none;border:0;" +
+    "font:inherit;color:#555;text-decoration:underline;cursor:pointer;min-height:44px}" +
+    ".chf-optional{font-weight:400;color:#555}" +
     ".chf-error{color:#b91c1c;font-size:.9em;margin-top:5px;display:none}" +
     ".chf-field.chf-invalid .chf-error{display:block}" +
     ".chf-field.chf-invalid .chf-input,.chf-field.chf-invalid .chf-textarea,.chf-field.chf-invalid .chf-select{border-color:#b91c1c}" +
@@ -175,12 +199,33 @@
     return steps;
   }
 
+  /** Tillbaka pa alla steg utom det forsta. Utan den ar ett felskrivet svar i
+   *  ett tidigare steg en atervandsgrand: enda utvagen ar att ladda om och
+   *  borja fran borjan. */
+  function addBackButton(stepEl, stepIdx) {
+    if (stepIdx === 0) return;
+    var back = elText("button", "chf-back", "Tillbaka");
+    back.type = "button";
+    back.addEventListener("click", function () { showStep(stepIdx - 1); });
+    stepEl.appendChild(back);
+  }
+
+  /** "Steg 2 av 3" - ett flerstegsformular ska visa var man ar och hur mycket
+   *  som aterstar. Utan den vet hon inte om det ar ett steg kvar eller fem. */
+  function updateStepIndicator(idx, total) {
+    var el = container.querySelector(".chf-steps");
+    if (!el) return;
+    if (total < 2) { el.style.display = "none"; return; }
+    el.textContent = "Steg " + (idx + 1) + " av " + total;
+  }
+
   function showStep(idx) {
     state.currentStep = idx;
     var stepEls = container.querySelectorAll("[data-step]");
     for (var i = 0; i < stepEls.length; i++) {
       stepEls[i].style.display = String(idx) === stepEls[i].getAttribute("data-step") ? "" : "none";
     }
+    updateStepIndicator(idx, stepEls.length);
     container.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -190,6 +235,8 @@
 
     if (cfg.title) container.appendChild(elText("h2", "chf-title", cfg.title));
     if (cfg.intro) container.appendChild(elHtml("div", "chf-intro", cfg.intro));
+
+    container.appendChild(elText("div", "chf-steps", ""));
 
     var form = elText("form", "chf-form");
     form.setAttribute("novalidate", "novalidate");
@@ -213,7 +260,9 @@
           wrap = elText("div", "chf-field");
           if (f.label && f.kind !== "checkbox") {
             var lab = elText("label", "chf-label", f.label);
-            if (f.required) lab.appendChild(elText("span", "chf-req", "*"));
+            // Markera det VALFRIA, inte det obligatoriska. Nar nastan alla
+            // falt kravs blir asterisker bara rott brus som signalerar krav.
+            if (!f.required) lab.appendChild(elText("span", "chf-optional", " (valfritt)"));
             lab.setAttribute("for", "chf-" + f.key);
             wrap.appendChild(lab);
           }
@@ -244,6 +293,7 @@
           showStep(stepIdx + 1);
         });
         stepEl.appendChild(cont);
+        addBackButton(stepEl, stepIdx);
       } else {
         // Sista steget: honeypot + submit
         var hp = elText("div", "chf-hp");
@@ -260,6 +310,7 @@
         var submit = elText("button", "chf-submit", cfg.submitLabel || "Skicka in");
         submit.type = "submit";
         stepEl.appendChild(submit);
+        addBackButton(stepEl, stepIdx);
 
         form.addEventListener("submit", function (ev) {
           ev.preventDefault();
@@ -271,6 +322,9 @@
     });
 
     container.appendChild(form);
+    // Indikatorn maste sattas aven for forsta steget - showStep() kors bara
+    // nar man byter steg, sa utan detta var den tom tills forsta klicket.
+    updateStepIndicator(0, steps.length);
     syncSubmitVisibility();
   }
 
@@ -340,11 +394,86 @@
       finp.id = id;
       finp.accept = f.accept || "image/*,.pdf";
       if ((f.maxFiles || 1) > 1) finp.multiple = true;
-      finp.addEventListener("change", function () {
-        var list = Array.prototype.slice.call(finp.files || []).slice(0, f.maxFiles || 3);
+
+      // Tomt lage: ikon + uppmaning. Hela rutan ar tryckyta via den
+      // genomskinliga inputen som ligger over den (se .chf-file i CSS).
+      var idle = elText("div", "chf-file-idle");
+      var svgNS = "http://www.w3.org/2000/svg";
+      var svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("class", "chf-file-icon");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "1.6");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      [
+        "M3 7.5A1.5 1.5 0 0 1 4.5 6h2.6l1.2-1.8A1.5 1.5 0 0 1 9.55 3.5h4.9a1.5 1.5 0 0 1 1.25.7L16.9 6h2.6A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z",
+        "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
+      ].forEach(function (d) {
+        var path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", d);
+        svg.appendChild(path);
+      });
+      idle.appendChild(svg);
+      idle.appendChild(elText("div", "chf-file-main", f.placeholder || "Välj en bild"));
+      idle.appendChild(elText("div", "chf-file-sub", "Tryck här för att ta en ny bild eller välja en du redan har"));
+
+      // Valt lage: miniatyr sa hon ser VILKEN bild hon valde, inte bara
+      // filnamnet. Hon har ofta tre snarlika selfies i rullen.
+      var chosen = elText("div", "chf-file-preview");
+      chosen.style.display = "none";
+
+      function render(list) {
+        if (!list.length) {
+          idle.style.display = "";
+          chosen.style.display = "none";
+          return;
+        }
+        idle.style.display = "none";
+        chosen.replaceChildren();
+        var file = list[0];
+        if (/^image\//.test(file.type)) {
+          var img = document.createElement("img");
+          img.alt = "";
+          img.src = URL.createObjectURL(file);
+          img.addEventListener("load", function () { URL.revokeObjectURL(img.src); });
+          chosen.appendChild(img);
+        }
+        var namn = list.length > 1 ? list.length + " filer valda" : file.name;
+        var meta = elText("div", "chf-file-name");
+        meta.appendChild(elText("div", null, namn));
+        meta.appendChild(elText("div", "chf-file-change", "Tryck för att byta"));
+        chosen.appendChild(meta);
+        chosen.style.display = "flex";
+      }
+
+      function take(files) {
+        var list = Array.prototype.slice.call(files || []).slice(0, f.maxFiles || 3);
         state.files[f.key] = list;
         setValue(f.key, list.map(function (x) { return x.name; }).join(", "));
+        render(list);
+      }
+
+      finp.addEventListener("change", function () { take(finp.files); });
+
+      // Drag and drop pa desktop - labeln lovar det, sa den ska funka.
+      ["dragenter", "dragover"].forEach(function (ev) {
+        fwrap.addEventListener(ev, function (e) {
+          e.preventDefault();
+          fwrap.classList.add("chf-file-over");
+        });
       });
+      ["dragleave", "drop"].forEach(function (ev) {
+        fwrap.addEventListener(ev, function (e) {
+          e.preventDefault();
+          fwrap.classList.remove("chf-file-over");
+          if (ev === "drop" && e.dataTransfer && e.dataTransfer.files) take(e.dataTransfer.files);
+        });
+      });
+
+      fwrap.appendChild(idle);
+      fwrap.appendChild(chosen);
       fwrap.appendChild(finp);
       return fwrap;
     }
