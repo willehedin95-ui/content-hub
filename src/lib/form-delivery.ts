@@ -11,6 +11,7 @@
 
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { trackKlaviyoEvent, type KlaviyoBrand } from "@/lib/klaviyo-events";
+import { tokenForEmail } from "@/lib/forms-token";
 import { sendTelegramNotification, escapeHtml as tgEscape } from "@/lib/telegram";
 import {
   buildTicketSubject,
@@ -260,6 +261,18 @@ async function deliverViaKlaviyo(
   }
   const own = (submission.files ?? [])[0];
   if (own?.url) properties.bild_url = own.url;
+
+  // Kundens signerade token foljer med varje event. Klaviyo kan inte rakna
+  // HMAC sjalvt, sa den maste komma harifran; darefter sparas den pa profilen
+  // och kan anvandas i lankarna i ALLA mail. Det ar den som later formularet
+  // veta vem hon ar utan att hon skriver sin adress igen.
+  try {
+    properties.token = tokenForEmail(email);
+  } catch (e) {
+    // Saknad hemlighet ska inte stoppa leveransen - mailet ar viktigare an
+    // att lanken kan hoppa over ett steg.
+    console.error("[form-delivery] kunde inte signera kundtoken:", e);
+  }
 
   if (cfg.seriesField) {
     const series = await fetchImageSeries(form.id, email, cfg.seriesField);

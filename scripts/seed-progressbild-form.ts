@@ -63,56 +63,39 @@ const progressbild: FormConfig = {
   fields: [
     // Bars av lanken: ?steg=1|2|3. Utan parameter antas forsta bilden.
     { kind: "hidden", key: "steg", label: "Steg", fromParam: "steg", fallback: "1" },
+    // Fylls av tokenuppslaget (?t=) i embedden, inte av kunden. Tomt = vi vet
+    // inte vem hon ar, och da maste hon skriva sin adress.
+    { kind: "hidden", key: "kund", label: "Kund" },
+    { kind: "hidden", key: "forra_bild_url", label: "Förra bilden" },
+    { kind: "hidden", key: "dagar_sedan_start", label: "Dagar sedan start" },
 
-    // Tre korta steg med app-onboarding-anatomi: bildblock overst, tat
-    // textklump under, en sak per skarm. Monstret och proportionerna ar tagna
-    // fran Ember/Weightless-onboardingen (SlideMetrics.artHeight = 40% av
-    // skarmhojden) dar de redan ar provade. Ingen skarm ska krava scroll.
-
-    // --- Steg 1: syftet, i BILD ---
-    // Den forsta skarmen ska visa vad hon far ut av det har, inte beskriva
-    // det. Ett formular som oppnar med text lases som en blankett; en
-    // before/after plus presentkortet gor lofte och belöning synliga innan
-    // hon lagt en sekund pa nagot.
-    //
-    // OBS: exempelbilden ar GENERERAD och far darfor aldrig presenteras som
-    // en kund. Bildtexten sager "Exempelbild" rakt ut. Byt mot en akta serie
-    // sa fort flodet levererat en - det ar hela poangen med flodet.
+    // ---------------------------------------------------------------- STEG 1
+    // Syftet. Kanner vi henne visar vi HENNES bild, annars exempelbilden.
     {
       kind: "info",
-      key: "syfte_1",
-      showWhen: { field: "steg", in: ["1"] },
+      key: "syfte_ny",
+      showWhen: { field: "kund", isEmpty: true },
       html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Om 60 dagar är det din egen serie du ser här.</figcaption></figure>
 <h2 class="chf-slide-title">Så här ser 60 dagar ut</h2>
 <p class="chf-slide-sub">Tre bilder: en idag, en om 30 dagar och en om 60. Sedan ser du din egen skillnad sida vid sida.</p>`,
     },
     {
       kind: "info",
-      key: "syfte_2",
-      showWhen: { field: "steg", in: ["2"] },
-      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Din egen jämförelse växer fram bild för bild.</figcaption></figure>
-<h2 class="chf-slide-title">Dags för bild två</h2>
-<p class="chf-slide-sub">Trettio dagar sedan startbilden. Den här bilden är den som gör jämförelsen möjlig.</p>`,
-    },
-    {
-      kind: "info",
-      key: "syfte_3",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Efter den här bilden får du se hela din egen serie.</figcaption></figure>
-<h2 class="chf-slide-title">Sista bilden</h2>
-<p class="chf-slide-sub">Sextio dagar. Efter den här får du se alla tre bredvid varandra.</p>`,
-    },
-    {
-      kind: "info",
       key: "belon_intro",
+      showWhen: { field: "kund", isEmpty: true },
       html: `<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort pa 200 kronor"><defs><linearGradient id="chfg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>200 kr när alla tre är inne</b>Presentkortet kommer när du laddat upp bild tre. Bilderna är dina, vi visar dem aldrig för någon utan att fråga dig först.</div></div>`,
     },
     { kind: "pagebreak", key: "till_epost", label: "Jag börjar" },
 
-    // --- Steg 2: e-post ---
+    // ---------------------------------------------------------------- STEG 2
+    // E-post BARA nar vi inte redan vet vem hon ar. Kommer hon fran ett mail
+    // bar lanken en signerad token, och da ar hela det har steget ett klick
+    // som inte gor nagot. Hela steget forsvinner - embedden hoppar over steg
+    // vars falt ar bortvillkorade.
     {
       kind: "info",
       key: "art_epost",
+      showWhen: { field: "kund", isEmpty: true },
       html: `<div class="chf-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5z"/><path d="M3.4 7.2 12 13l8.6-5.8"/></svg></div><h2 class="chf-slide-title">Vi börjar med din e-post</h2>
 <p class="chf-slide-sub">Vi kopplar dina bilder till dig och påminner när det är dags för nästa.</p>`,
     },
@@ -122,20 +105,26 @@ const progressbild: FormConfig = {
       required: true,
       role: "email",
       fromParam: "e",
+      showWhen: { field: "kund", isEmpty: true },
       placeholder: "din@epost.se",
     },
     { kind: "pagebreak", key: "till_tips", label: "Fortsätt" },
 
-    // --- Steg 3: sa blir bilden bra. Rutnatet ar stegets bildblock. ---
+    // ---------------------------------------------------------------- STEG 3
+    // Fototipsen BARA vid forsta bilden. Vid bild tva och tre har hon redan
+    // last dem, och da ar ratt instruktion "gor som forra gangen" - den star
+    // bredvid uppladdningen i stallet, med hennes egen bild intill.
     {
       kind: "info",
       key: "tips_rubrik",
+      showWhen: { field: "steg", in: ["1"] },
       html: `<h2 class="chf-slide-title">Så blir bilden bra</h2>
 <p class="chf-slide-sub">En vanlig selfie på hela ansiktet, inte en närbild. Följ tipsen så blir jämförelsen tydlig vid dag 30 och 60.</p>`,
     },
     {
       kind: "info",
       key: "tips",
+      showWhen: { field: "steg", in: ["1"] },
       html: `<div class="chf-tips">
 <div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg><b>Naturligt ljus</b><span>Stå nära ett fönster</span></div>
 <div class="chf-tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg><b>Samma plats</b><span>Helst samma rum varje gång</span></div>
@@ -146,7 +135,7 @@ const progressbild: FormConfig = {
     },
     { kind: "pagebreak", key: "till_bild", label: "Jag är redo" },
 
-    // --- Steg 4: ta bilden. Uppladdningszonen ar stegets bildblock. ---
+    // ---------------------------------------------------------------- STEG 4
     {
       kind: "info",
       key: "rubrik_1",
@@ -157,15 +146,27 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "rubrik_2",
       showWhen: { field: "steg", in: ["2"] },
-      html: `<h2 class="chf-slide-title">Dags att ta din 30-dagarsbild</h2>
-<p class="chf-slide-sub">Samma plats, samma ljus, samma vinkel som första bilden.</p>`,
+      html: `<h2 class="chf-slide-title">Dags för bild två</h2>`,
     },
     {
       kind: "info",
       key: "rubrik_3",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<h2 class="chf-slide-title">Dags att ta din sista bild</h2>
-<p class="chf-slide-sub">Bild tre av tre. Sedan ser du hela din resa.</p>`,
+      html: `<h2 class="chf-slide-title">Sista bilden</h2>`,
+    },
+    // Hennes EGEN forra bild, direkt ovanfor uppladdningen. Det har ar den
+    // basta vinkelguidning vi kan ge utan kamera i webblasaren: hon ser hur
+    // bilden togs i stallet for att lasa om hur den borde tas.
+    {
+      kind: "info",
+      key: "forra_bilden",
+      showWhen: { field: "forra_bild_url", notEmpty: true },
+      html: `<div class="chf-forra"><img src="{{forra_bild_url}}" alt="Din förra bild"><div class="chf-forra-txt"><b>Så här tog du den förra</b>Samma plats, samma ljus, håll telefonen lika högt.</div></div>`,
+    },
+    {
+      kind: "info",
+      key: "guide_knapp",
+      html: `<button type="button" class="chf-guide-btn" data-chf-guide="{{hub}}/images/progressbild/exempel-ratt-fel.jpg" data-chf-guide-title="Så ska bilden se ut" data-chf-guide-text="Rakt framifrån, hela ansiktet i bild, i dagsljus eller en väl upplyst lampa. Tre av fyra misslyckade bilder är för mörka."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>Se exempel på en bra bild</button>`,
     },
     {
       kind: "file",
@@ -175,17 +176,26 @@ const progressbild: FormConfig = {
       maxFiles: 1,
       placeholder: "Välj en bild",
     },
+    // Hennes egna ord. Ger HENNE nagot att titta efter och OSS en citatbank
+    // som ar sann - hennes formuleringar blir battre annonscopy an vara.
+    // Valfri med flit: ett obligatoriskt fritextfalt hade kostat uppladdningar.
     {
-      kind: "info",
-      key: "belon_paminnelse",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<div class="chf-reward"><svg viewBox="0 0 170 106" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Presentkort pa 200 kronor"><defs><linearGradient id="chfg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect x="1" y="1" width="168" height="104" rx="13" fill="#f0573d"/><rect x="1" y="1" width="168" height="104" rx="13" fill="url(#chfg2)"/><g fill="#ffffff" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"><text x="15" y="27" font-size="7.5" font-weight="700" letter-spacing="1.7" opacity=".9">PRESENTKORT</text><text x="15" y="66" font-size="30" font-weight="800" letter-spacing="-.5">200 kr</text><text x="15" y="88" font-size="8" font-weight="700" letter-spacing="2.6" opacity=".92">ENVANA</text></g><circle cx="146" cy="30" r="13" fill="#ffffff" opacity=".16"/><circle cx="152" cy="46" r="7" fill="#ffffff" opacity=".12"/></svg><div class="chf-reward-txt"><b>Sista bilden</b>När den här är uppe skickar vi ditt presentkort på 200 kr.</div></div>`,
+      kind: "textarea",
+      key: "forvantan",
+      showWhen: { field: "steg", in: ["1"] },
+      label: "Vad hoppas du på?",
+      placeholder: "Skriv en mening om vad du vill se förändras.",
+    },
+    {
+      kind: "textarea",
+      key: "markt",
+      showWhen: { field: "steg", in: ["2", "3"] },
+      label: "Har du märkt något?",
+      placeholder: "Naglar, hår, hud, energi. Vad som helst du lagt märke till.",
     },
     {
       kind: "info",
       key: "integritet",
-      // Ingen hardkodad gra: temats muted-variabel, annars driver raden ifran
-      // resten av paletten sa fort ett formular byter farger.
       html: `<p style="margin:0;text-align:center;font-size:14px;color:var(--chf-muted,#666)">Bilderna är dina. Vi använder dem aldrig någon annanstans utan att fråga dig först.</p>`,
     },
   ],

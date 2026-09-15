@@ -17,7 +17,14 @@ export type FormFieldRole =
 /** Show a field only when another field's value is in the list (`in`) or has
  *  any non-empty value (`notEmpty`) - the latter powers "visa kontaktfälten
  *  först när ett ämne är valt" (Fillout-paritet). */
-export type FormCondition = { field: string; in?: string[]; notEmpty?: boolean };
+/** `isEmpty` behovs for "visa det har BARA om vi inte redan vet det": e-post-
+ *  steget i progressbild doljs nar tokenuppslaget redan gett oss adressen. */
+export type FormCondition = {
+  field: string;
+  in?: string[];
+  notEmpty?: boolean;
+  isEmpty?: boolean;
+};
 
 /** Avslutningsskärmen. `variants` väljs före basen: första variant vars
  *  `showWhen` stämmer vinner, annars används `title`/`html`.

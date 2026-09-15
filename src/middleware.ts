@@ -75,6 +75,9 @@ export async function middleware(request: NextRequest) {
     "/api/forms/config",
     "/api/forms/submit",
     "/api/forms/upload",
+    // Serieuppslaget. Skyddas av en signerad token, inte av inloggning - det
+    // ar kunden sjalv som ska na sina egna bilder fran formularet.
+    "/api/forms/series",
   ];
   const path = request.nextUrl.pathname;
   if (

@@ -56,9 +56,13 @@ const samtycke: FormConfig = {
     // fraga ett erbjudande ovanpa nagot hon redan fatt, inte ett pris hon
     // maste betala med sina bilder for att fa. Det ar ocksa det som gor
     // samtycket giltigt: hon kan saga nej utan att forlora nagot.
+    // Fylls av tokenuppslaget. Tomt = hon kom inte fran mailet och har alltsa
+    // inte just last sammanfattningen.
+    { kind: "hidden", key: "kund", label: "Kund" },
     {
       kind: "info",
       key: "klart",
+      showWhen: { field: "kund", isEmpty: true },
       html: `<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/exempel-c.jpg" alt="Tva selfies av samma person med 60 dagars mellanrum" width="1100" height="614" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 1</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div><figcaption>Exempelbild. Din egen serie ligger i mejlet vi just skickat.</figcaption></figure>
 <h2 class="chf-slide-title">Tre bilder, 60 dagar. Du är klar.</h2>
 <p class="chf-slide-sub">Ditt presentkort på 200 kr är ditt, oavsett vad du svarar på nästa fråga.</p>
@@ -106,6 +110,7 @@ const samtycke: FormConfig = {
       required: true,
       role: "email",
       fromParam: "e",
+      showWhen: { field: "kund", isEmpty: true },
     },
     {
       kind: "info",

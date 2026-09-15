@@ -49,6 +49,7 @@
     submitting: false,
     currentStep: 0, // pagebreak-delade formulär (t.ex. tvåstegs ångerrätt)
     app: false, // config.theme.mode === "app": fullskärms onboarding-skal
+    customer: null, // uppslag pa ?t= - hennes adress och tidigare bilder
   };
 
   // ------------------------------------------------------------------ styles
@@ -268,6 +269,34 @@
     ".chf-app .chf-shot-tag{position:absolute;bottom:10px;font-size:12px;font-weight:700;letter-spacing:.4px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:4px 10px;backdrop-filter:blur(2px)}" +
     ".chf-app .chf-shot-tag--a{left:10px}" +
     ".chf-app .chf-shot-tag--b{right:10px}" +
+    // "Sa har tog du den forra gangen": hennes egen bild bredvid
+    // uppladdningen. Mailet kunde redan visa den, men det ar HAR hon star med
+    // telefonen och ska traffa samma vinkel igen.
+    ".chf-app .chf-forra{display:flex;gap:14px;align-items:center;background:var(--chf-surface);" +
+    "border:1px solid rgba(50,13,1,.08);border-radius:16px;padding:12px;margin:0 0 14px}" +
+    ".chf-app .chf-forra img{width:82px;height:auto;border-radius:11px;flex:none;display:block}" +
+    ".chf-app .chf-forra-txt{font-size:14px;line-height:1.5;color:var(--chf-muted);text-align:left}" +
+    ".chf-app .chf-forra-txt b{display:block;color:var(--chf-text);font-size:15px;margin-bottom:2px}" +
+    // "Se exempel" som en KNAPP i stallet for ett eget steg. Monstret ar
+    // Stakes photo guide (Mobbin): en lank oppnar ett rutnat med ETT ratt och
+    // TRE vanliga fel. Text beskriver ett fel, en bild visar det - och hon kan
+    // jamfora sin egen bild mot rutan i stallet for att tolka en mening.
+    ".chf-app .chf-guide-btn{display:inline-flex;align-items:center;gap:7px;margin:0 auto 14px;" +
+    "background:none;border:0;padding:11px 8px;font:inherit;font-size:15px;font-weight:600;" +
+    "color:var(--chf-brand);cursor:pointer;min-height:44px}" +
+    ".chf-app .chf-guide-btn svg{width:18px;height:18px}" +
+    ".chf-modal{position:fixed;inset:0;z-index:2147483000;background:rgba(20,6,2,.72);" +
+    "display:flex;align-items:center;justify-content:center;padding:18px;" +
+    "animation:chf-fade .18s ease-out both}" +
+    "@keyframes chf-fade{from{opacity:0}to{opacity:1}}" +
+    ".chf-modal-box{background:var(--chf-surface,#fff);border-radius:18px;padding:16px;" +
+    "max-width:520px;width:100%;max-height:92vh;overflow:auto;-webkit-overflow-scrolling:touch}" +
+    ".chf-modal-box h3{font-size:19px;font-weight:700;margin:2px 0 4px;color:var(--chf-text,#111)}" +
+    ".chf-modal-box p{font-size:14px;line-height:1.55;color:var(--chf-muted,#555);margin:0 0 12px}" +
+    ".chf-modal-box img{display:block;width:100%;height:auto;border-radius:12px}" +
+    ".chf-modal-close{display:block;width:100%;margin-top:14px;min-height:48px;border:0;" +
+    "border-radius:12px;background:var(--chf-brand,#111);color:#fff;font:inherit;font-size:16px;" +
+    "font-weight:700;cursor:pointer}" +
     ".chf-app .chf-shot figcaption{display:flex;gap:6px;margin-top:8px;font-size:13px;" +
     "color:var(--chf-muted);text-align:center;justify-content:center}" +
     ".chf-app .chf-shot figcaption b{color:var(--chf-text)}" +
@@ -404,6 +433,12 @@
       // absolut: embedden kors pa Shopifys sida, dar en relativ sokvag letar
       // hos Shopify och ger 404.
       if (key === "hub") return HUB;
+      // Bild-URL:er kommer fran vart eget serieuppslag, inte fran kunden, och
+      // ska in i ett src-attribut - escapeHtml hade gjort &amp; av en query.
+      if (key === "forra_bild_url") {
+        var u = state.values.forra_bild_url;
+        return u ? String(u).replace(/"/g, "%22") : "";
+      }
       var v = state.values[key];
       if (v === undefined || v === null) return "";
       var f = findField(key);
@@ -424,6 +459,9 @@
     if (!cond) return true;
     var v = state.values[cond.field];
     var empty = v === undefined || v === null || v === "" || v === false;
+    // isEmpty ar motsatsen till notEmpty och behovs for "visa det har BARA om
+    // vi inte redan vet det" - e-postfaltet nar lanken bar en token.
+    if (cond.isEmpty) return empty;
     if (cond.notEmpty) return !empty;
     if (cond.in) return !empty && cond.in.indexOf(v) !== -1;
     return true;
@@ -463,6 +501,16 @@
    *  som aterstar. Utan den vet hon inte om det ar ett steg kvar eller fem. */
   function updateStepIndicator(idx, total) {
     if (state.app) {
+      // Rakna bara steg som faktiskt visas. En kund som hoppar over
+      // e-poststeget ska se "tre streck", inte fyra dar ett aldrig fylls.
+      var els = container.querySelectorAll("[data-step]");
+      var synliga = 0, position = 0;
+      for (var si = 0; si < els.length; si++) {
+        if (!stepHasContent(els[si])) continue;
+        synliga++;
+        if (si <= idx) position = synliga;
+      }
+      if (synliga > 0) { total = synliga; idx = Math.max(0, position - 1); }
       var track = container.querySelector(".chf-track");
       var fill = container.querySelector(".chf-fill");
       var hback = container.querySelector(".chf-headback");
@@ -486,7 +534,36 @@
     if (fill) fill.style.width = Math.round(((idx + 1) / total) * 100) + "%";
   }
 
+  /** Har steget nagot att visa? Ett steg vars enda falt ar bortvillkorade ska
+   *  inte kosta ett klick. Utan det fick en kund som kom via en tokenlank anda
+   *  klicka sig forbi en tom e-postskarm. */
+  function stepHasContent(el) {
+    var barn = el.children;
+    for (var i = 0; i < barn.length; i++) {
+      var b = barn[i];
+      if (b.classList.contains("chf-submit") || b.classList.contains("chf-back") ||
+          b.classList.contains("chf-hp")) continue;
+      if (b.style.display === "none") continue;
+      return true;
+    }
+    return false;
+  }
+
+  /** Nasta steg i riktningen `dir` som faktiskt har innehall. */
+  function nextVisibleStep(from, dir) {
+    var els = container.querySelectorAll("[data-step]");
+    var i = from;
+    while (i >= 0 && i < els.length) {
+      if (stepHasContent(els[i])) return i;
+      i += dir;
+    }
+    return from;
+  }
+
   function showStep(idx) {
+    // Riktningen avgor vilket hall vi letar efter nasta icke-tomma steg: bakat
+    // nar hon tryckt tillbaka, annars framat.
+    idx = nextVisibleStep(idx, idx >= state.currentStep ? 1 : -1);
     state.currentStep = idx;
     var stepEls = container.querySelectorAll("[data-step]");
     for (var i = 0; i < stepEls.length; i++) {
@@ -558,6 +635,62 @@
     }
     return body;
   }
+
+  /** Oppnar ett overlagg med en bild. Utlosas av valfritt element med
+   *  data-chf-guide i formularets egen HTML, sa en guide kan laggas dar den
+   *  behovs utan att kosta ett steg.
+   *
+   *  Ligger pa document.body och inte i containern: embedden kan sitta i en
+   *  smal kolumn med overflow, och da hade overlagget klippts av sin egen
+   *  foralder. */
+  function openGuide(src, rubrik, text) {
+    var back = elText("div", "chf-modal");
+    var box = elText("div", "chf-modal-box");
+    if (rubrik) box.appendChild(elText("h3", null, rubrik));
+    if (text) box.appendChild(elText("p", null, text));
+    var img = document.createElement("img");
+    img.src = src;
+    img.alt = rubrik || "Exempel";
+    box.appendChild(img);
+    var stang = elText("button", "chf-modal-close", "Stäng");
+    stang.type = "button";
+    box.appendChild(stang);
+    back.appendChild(box);
+
+    function close() {
+      if (back.parentNode) back.parentNode.removeChild(back);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = tidigareOverflow;
+    }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    stang.addEventListener("click", close);
+    back.addEventListener("click", function (e) { if (e.target === back) close(); });
+    document.addEventListener("keydown", onKey);
+
+    // Temats variabler bor pa .chf-root. Overlagget ligger pa body och arver
+    // dem darfor inte - Stang-knappen blev svart i stallet for brandfargad.
+    // Kopiera over dem i stallet for att hardkoda en farg har.
+    ["--chf-brand", "--chf-bg", "--chf-surface", "--chf-text", "--chf-muted"].forEach(function (v) {
+      var varde = container.style.getPropertyValue(v);
+      if (varde) back.style.setProperty(v, varde);
+    });
+
+    var tidigareOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.appendChild(back);
+    stang.focus();
+  }
+
+  container.addEventListener("click", function (e) {
+    var trigger = e.target.closest && e.target.closest("[data-chf-guide]");
+    if (!trigger) return;
+    e.preventDefault();
+    openGuide(
+      trigger.getAttribute("data-chf-guide"),
+      trigger.getAttribute("data-chf-guide-title") || "",
+      trigger.getAttribute("data-chf-guide-text") || ""
+    );
+  });
 
   function render() {
     container.innerHTML = "";
@@ -665,10 +798,18 @@
     });
 
     mount.appendChild(form);
-    // Indikatorn maste sattas aven for forsta steget - showStep() kors bara
-    // nar man byter steg, sa utan detta var den tom tills forsta klicket.
-    updateStepIndicator(0, steps.length);
     syncSubmitVisibility();
+    // Hoppa fram till forsta steget som faktiskt HAR innehall. render() visade
+    // alltid steg 0, och for en kund som kom via tokenlank var steg 0
+    // bortvillkorat - hon motte en tom skarm med bara en knapp pa.
+    var forsta = nextVisibleStep(0, 1);
+    if (forsta !== 0) {
+      showStep(forsta);
+    } else {
+      // Indikatorn maste sattas aven nar vi inte byter steg - showStep() kors
+      // bara vid stegbyte, sa utan detta var den tom tills forsta klicket.
+      updateStepIndicator(0, steps.length);
+    }
   }
 
   function buildInput(f) {
@@ -783,10 +924,14 @@
           img.addEventListener("load", function () { URL.revokeObjectURL(img.src); });
           chosen.appendChild(img);
         }
-        var namn = list.length > 1 ? list.length + " filer valda" : file.name;
         var meta = elText("div", "chf-file-name");
-        meta.appendChild(elText("div", null, namn));
-        meta.appendChild(elText("div", "chf-file-change", "Tryck för att byta"));
+        // "Ser den bra ut?" i stallet for filnamnet. Monstret ar Turos
+        // Use/Retake (Mobbin): efter tagningen far hon FRAGAN, inte en
+        // bekraftelse pa vad filen heter. Filnamnet sager henne ingenting -
+        // hon har tre snarlika selfies i rullen och behover se VILKEN hon
+        // valde och fa en chans att ta om.
+        meta.appendChild(elText("div", "chf-file-main", "Ser den bra ut?"));
+        meta.appendChild(elText("div", "chf-file-change", "Tryck på bilden för att byta"));
 
         // Angra. Hela rutan ar en tryckyta som oppnar filvaljaren igen, sa
         // "byt bild" gick redan. Det som INTE gick var att backa ur helt -
@@ -794,9 +939,9 @@
         // finns inget "ingen bild" att valja i en filvaljare. Knappen maste
         // ligga OVANPA filinputen (som tacker hela rutan) och stoppa klicket
         // fran att bubbla, annars oppnas valjaren i stallet for att rensa.
-        var clear = elText("button", "chf-file-clear", "Ta bort");
+        var clear = elText("button", "chf-file-clear", "Ta om");
         clear.type = "button";
-        clear.setAttribute("aria-label", "Ta bort vald bild");
+        clear.setAttribute("aria-label", "Ta om bilden");
         clear.addEventListener("click", function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -1119,6 +1264,42 @@
     container.setAttribute("aria-busy", "true");
   }
 
+  /** Slar upp kunden pa `?t=` och lagger hennes serie i state, sa formularet
+   *  vet vem hon ar innan forsta render.
+   *
+   *  Satter tre sorters varden som villkor och mallar kan anvanda:
+   *    kund            - adressen, tom nar vi inte vet
+   *    forra_bild_url  - senaste uppladdade bilden, for "gor som forra gangen"
+   *    antal_bilder    - hur langt hon kommit
+   *    dagar_sedan_start - faktiska dagar, sa etiketter slutar pasta "dag 30"
+   *
+   *  Misslyckas uppslaget gar formularet vidare som om ingen token fanns. Det
+   *  ar hela poangen med att den ar en genvag och inte en inloggning: ett
+   *  trasigt uppslag ska kosta ett extra steg, aldrig blockera uppladdningen.
+   */
+  function lookupCustomer() {
+    var t = null;
+    try { t = new URLSearchParams(window.location.search).get("t"); } catch (e) {}
+    if (!t) return Promise.resolve();
+    return fetch(HUB + "/api/forms/series?t=" + encodeURIComponent(t) +
+                 "&workspace=" + encodeURIComponent(WORKSPACE) +
+                 "&slug=" + encodeURIComponent(FORM_SLUG) +
+                 "&market=" + encodeURIComponent(MARKET))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.known) return;
+        state.customer = d;
+        state.values.kund = d.email;
+        state.values.email = d.email;
+        if (d.latestUrl) state.values.forra_bild_url = d.latestUrl;
+        state.values.antal_bilder = String(d.count || 0);
+        if (d.daysSinceFirst !== null && d.daysSinceFirst !== undefined) {
+          state.values.dagar_sedan_start = String(d.daysSinceFirst);
+        }
+      })
+      .catch(function () {});
+  }
+
   renderSkeleton();
   fetch(HUB + "/api/forms/config?workspace=" + encodeURIComponent(WORKSPACE) + "&slug=" + encodeURIComponent(FORM_SLUG) + "&market=" + encodeURIComponent(MARKET))
     .then(function (r) {
@@ -1128,6 +1309,11 @@
     .then(function (data) {
       state.config = data.form.config;
       applyParamDefaults();
+      // Tokenuppslaget EFTER param-defaults: vet vi vem hon ar ska det sla
+      // over ett e-postfalt som forifyllts fran en aldre `?e=`-lank.
+      return lookupCustomer();
+    })
+    .then(function () {
       container.removeAttribute("aria-busy");
       render();
     })

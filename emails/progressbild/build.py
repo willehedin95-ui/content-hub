@@ -14,6 +14,23 @@ OUT = sys.argv[1]
 MODE = sys.argv[2]  # "klaviyo" | "preview"
 
 BRAND, BG, SURFACE, HEAD, MUTED = "#f0573d", "#fefaf8", "#ffffff", "#320d01", "#7e6458"
+
+# Dit knapparna gar. Formularet ligger pa hubben tills Shopify-sidan
+# /pages/resa finns; byt BARA den har raden nar den gor det.
+#
+# `t` ar kundens signerade token, som eventet bar med sig. Den ar det som later
+# formularet veta vem hon ar: hoppa over e-poststeget och visa hennes FORRA
+# bild bredvid uppladdningen. Utan den blir dag 30 en upprepning av dag 0.
+FORM_BAS = "https://content-hub-nine-theta.vercel.app/f/hydro13/progressbild"
+SAMTYCKE_BAS = "https://content-hub-nine-theta.vercel.app/f/hydro13/samtycke"
+
+def lank(bas, steg=None):
+    if MODE == "preview":
+        return "#forhandsvisning"
+    q = "?t={{ event.token|urlencode }}"
+    if steg:
+        q += "&steg=" + steg
+    return bas + q
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 
 def img(slot, alt):
@@ -119,11 +136,13 @@ P = 'style="font:400 16px %s;line-height:1.62;color:%s;margin:0 0 16px;"' % (FON
 # serien ritas efter antal_bilder. Det ar de TOMMA rutorna som gor jobbet.
 if OUT.endswith("kvittens"):
     if MODE == "klaviyo":
-        rubrik = ("{% if event.steg == '3' %}Din resa är klar{% elif event.steg == '2' %}"
-                  "Halvvägs, en bild kvar{% else %}Första bilden är sparad{% endif %}")
-        text = ("{% if event.steg == '3' %}Tre bilder, 60 dagar. Nedan ser du hela din serie, "
-                "och ditt presentkort är på väg."
-                "{% elif event.steg == '2' %}Trettio dagar sedan startbilden. Nästa bild är den "
+        # INGEN steg 3-variant. Vid sista bilden gar SLUTMAILET ut, och de sa
+        # ordagrant samma sak: hela serien plus presentkortet pa vag. Tva mail
+        # i inkorgen samtidigt med samma besked. Flodet i Klaviyo ska villkora
+        # bort kvittensen nar event.steg == '3'.
+        rubrik = ("{% if event.steg == '2' %}Halvvägs, en bild kvar"
+                  "{% else %}Första bilden är sparad{% endif %}")
+        text = ("{% if event.steg == '2' %}Trettio dagar sedan startbilden. Nästa bild är den "
                 "sista, och det är mellan nu och då som förändringen brukar vara som störst."
                 "{% else %}Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter "
                 "naglarna och håret först - de svarar tidigare än huden.{% endif %}")
@@ -176,7 +195,7 @@ elif OUT.endswith("paminnelse"):
       '<div style="height:22px;"></div>%s'
       '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:18px 0 0;text-align:center;">'
       'Tar 30 sekunder. Presentkortet på 200 kr kommer när alla tre är inne.</p>'
-      % (H, rubrik, P, forra, FONT, MUTED, button("Ta bilden"), FONT, MUTED))
+      % (H, rubrik, P, forra, FONT, MUTED, button("Ta bilden", lank(FORM_BAS, "{% if event.antal_bilder == 2 %}3{% else %}2{% endif %}")), FONT, MUTED))
     html = shell("Det är dags för nästa progressbild.", body)
 
 # ---------------------------------------------------------------- 3. SLUTMAIL
@@ -201,7 +220,7 @@ else:
       '<p %s>Vi letar efter äkta före och efter från riktiga kunder. Säger du ja skickar vi '
       '<strong style="color:%s;">200 kr till</strong>. Säger du nej händer ingenting, och '
       'bilderna förblir dina.</p>%s</td></tr></table>'
-      % (H, P, series(3), gift(), FONT, MUTED, FONT, HEAD, P, HEAD, button("Svara på frågan")))
+      % (H, P, series(3), gift(), FONT, MUTED, FONT, HEAD, P, HEAD, button("Svara på frågan", lank(SAMTYCKE_BAS))))
     html = shell("Hela din 60-dagarsserie, och dina 200 kr.", body)
 
 io.open(OUT + "." + MODE + ".html", "w", encoding="utf-8").write(html)
