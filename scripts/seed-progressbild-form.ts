@@ -96,7 +96,7 @@ const progressbild: FormConfig = {
       showWhen: { field: "kund", isEmpty: true },
       html: `<div class="chf-carousel">
 <div class="chf-panel">
-<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/app-beforeafter.jpg" alt="Samma kind pa dag 0 och dag 60" width="618" height="618" loading="eager"></div></figure>
+<figure class="chf-shot"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/intro-beforeafter.jpg" alt="Samma ansikte pa dag 0 och dag 60" width="720" height="720" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">DAG 0</span><span class="chf-shot-tag chf-shot-tag--b">DAG 60</span></div></figure>
 <h2 class="chf-slide-title">Se skillnaden</h2>
 <p class="chf-slide-sub">Spegeln visar ingenting från en dag till nästa. Två bilder bredvid varandra gör det.</p>
 </div>

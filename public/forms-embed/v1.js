@@ -280,7 +280,7 @@
     ".chf-app .chf-shot img{display:block;width:100%;height:auto;border-radius:16px}" +
     // Dag-etiketter direkt pa bilden. Utan dem ar det tva ansikten bredvid
     // varandra och betraktaren far sjalv gissa vilket som ar fore.
-    ".chf-app .chf-shot-tag{position:absolute;bottom:10px;font-size:12px;font-weight:700;letter-spacing:.4px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:4px 10px;backdrop-filter:blur(2px)}" +
+    ".chf-app .chf-shot-tag{position:absolute;bottom:10px;font-size:12px;font-weight:700;line-height:1.25;letter-spacing:.4px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:4px 10px;backdrop-filter:blur(2px)}" +
     ".chf-app .chf-shot-tag--a{left:10px}" +
     ".chf-app .chf-shot-tag--b{right:10px}" +
     // "Sa har tog du den forra gangen": hennes egen bild bredvid
@@ -483,7 +483,6 @@
     ".chf-app .chf-lead{font-size:17px;line-height:1.55;color:var(--chf-text);margin:2px 0 16px}" +
     ".chf-app .chf-lead b{font-weight:700}" +
     ".chf-app .chf-bigshot{margin:0 0 16px;position:relative;font-size:0}" +
-    ".chf-app .chf-bigshot .chf-shot-tag{font-size:12px;line-height:1.25}" +
     ".chf-app .chf-bigshot img{display:block;width:100%;height:auto;max-height:41vh;" +
     "object-fit:cover;border-radius:18px}" +
     ".chf-app .chf-privacy{margin:0;text-align:center;font-size:14px;color:var(--chf-muted)}" +
