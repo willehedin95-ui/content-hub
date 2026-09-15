@@ -51,28 +51,19 @@ const progressbild: FormConfig = {
     { kind: "pagebreak", key: "till_epost", label: "Kom igång" },
 
     // --- Slide 2: e-post ---
-    // Frågan står som label och förklaringen som help, så de renderas i den
-    // ordning specen visar dem (fråga, förklaring, fält). Tre varianter:
-    // specens text gäller första bilden, de andra två följer samma ton.
+    // ETT fält. Två fält med samma key men olika showWhen gick inte: embedens
+    // villkorsuppdatering slår upp wrappen med querySelector('[data-key=...]'),
+    // som bara hittar den första, så det andra fältet doldes aldrig och båda
+    // syntes samtidigt. Labeln är därför formulerad så den håller för alla tre
+    // bilderna. Förklaringen under är specens, ordagrant.
     {
       kind: "email",
       key: "email",
-      label: "Innan du laddar upp din första bild behöver vi din e-postadress.",
+      label: "Din e-postadress",
       required: true,
       role: "email",
       fromParam: "e",
-      showWhen: { field: "steg", in: ["1"] },
       help: "Vi använder den för att koppla dina bilder till dig och påminna dig när det är dags att ta nästa bild.",
-    },
-    {
-      kind: "email",
-      key: "email",
-      label: "Bekräfta din e-postadress.",
-      required: true,
-      role: "email",
-      fromParam: "e",
-      showWhen: { field: "steg", in: ["2", "3"] },
-      help: "Samma adress som förra gången, så hamnar bilden i din serie.",
     },
     { kind: "pagebreak", key: "till_bild", label: "Fortsätt" },
 
