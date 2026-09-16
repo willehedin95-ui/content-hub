@@ -90,41 +90,26 @@ export async function POST(req: NextRequest) {
   // rakt av gor det inte, och da ligger bilden ner.
   if (mime.startsWith("image/")) {
     try {
-      // Utsnittet raknas ur BILDENS EGEN storlek, inte mot ett fast mal.
-      // Forsta forsoket var resize(1400, 1750, { fit: "cover",
-      // withoutEnlargement: true }) och den gjorde INGENTING pa en bild mindre
-      // an 1400x1750: withoutEnlargement hindrar forstoring, och da hoppar
-      // sharp over hela cover-beskarningen. Uppmatt - 550x614 in gav 550x614 ut.
+      // INGEN beskarning. Bilden sparas i sin egen proportion, bara roterad
+      // efter EXIF och nedskalad till MAX_WIDTH.
       //
-      // Nu tas i stallet det storsta 4:5-utsnitt som RYMS i bilden, sa inget
-      // nagonsin skalas upp och en liggande bild beskars i sidled.
+      // Forut togs det storsta 4:5-utsnittet med position "attention", och den
+      // koden bar sin egen doom i en kommentar: attention kan valja OLIKA
+      // utsnitt i tva bilder. Da visar jamforelsen en skillnad som inte finns i
+      // verkligheten, vilket ar precis det flodet ska bevisa motsatsen till.
+      // Dessutom instruerar vi numera att hon far fota vilket omrade hon vill
+      // (hals, kring ogonen, hela ansiktet) - och de motiven har inte 4:5.
+      //
+      // Rutorna i serien beskar fortfarande VISUELLT via CSS object-fit, sa
+      // jamforelsen ser lika prydlig ut. Skillnaden ar att originalet finns
+      // kvar, sa ett utsnitt gar att gora om senare. En bortklippt haka gar
+      // inte att fa tillbaka.
       const rotated = sharp(buffer, { failOn: "none" }).rotate();
       const meta = await rotated.metadata();
       const w = meta.width ?? 0;
-      const h = meta.height ?? 0;
-      if (!w || !h) throw new Error("kunde inte lasa bildens matt");
-      const RATIO = 4 / 5;
-      let cw = w;
-      let ch = h;
-      if (w / h > RATIO) cw = Math.round(h * RATIO);  // for bred: klipp sidorna
-      else ch = Math.round(w / RATIO);                // for hog: klipp topp/botten
-      // position "attention" och INTE en centrerad beskarning. Uppmatt pa en
-      // liggande selfie dar ansiktet satt till hoger: centrerat utsnitt
-      // halverade ansiktet, attention ramade in det. Folk haller inte telefonen
-      // mitt framfor sig.
-      //
-      // Risken med attention ar att den kan valja olika utsnitt mellan tva
-      // bilder och darmed gora jamforelsen skev. Den risken ar mindre an
-      // alternativet: ar bilderna tagna likadant, som vi instruerar, hittar den
-      // samma sak bada gangerna - och ar de INTE det, raddar den bilden i
-      // stallet for att leverera ett konsekvent utsnitt av en axel.
-      const outW = Math.min(cw, MAX_WIDTH);
+      if (!w) throw new Error("kunde inte lasa bildens matt");
       buffer = await rotated
-        .resize(outW, Math.round(outW / RATIO), {
-          fit: "cover",
-          position: sharp.strategy.attention,
-          withoutEnlargement: false,
-        })
+        .resize({ width: Math.min(w, MAX_WIDTH), withoutEnlargement: true })
         .jpeg({ quality: 88, mozjpeg: true })
         .toBuffer();
       outMime = "image/jpeg";

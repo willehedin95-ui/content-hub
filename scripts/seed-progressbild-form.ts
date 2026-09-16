@@ -152,12 +152,22 @@ const progressbild: FormConfig = {
     // "Rakt framifran" ar ocksa borta som krav. Vinkeln valjer hon sjalv, det
     // som spelar roll ar att den ar densamma nasta gang - vilket ar precis vad
     // hennes egen forra bild pa dag 30 och 60 visar.
+    //
+    // OMRADET valjer hon ocksa sjalv (William 2026-09-16, efter Zooki). Detta
+    // ERSATTER beslutet fran 09-15 om att det alltid skulle vara hela ansiktet.
+    // Skalet da var att olika kunder har komplex for olika stallen och att en
+    // helbild later jamforelsen visa vad som faktiskt hant; Zookis losning ar
+    // battre eftersom den gor samma poang utan att bestamma at henne.
+    //
+    // Exempelbilden ar borta har. Med "valj omrade sjalv" i texten skulle en
+    // enda ansiktsbild saga emot instruktionen - den hade last som facit for
+    // ett av flera giltiga val. Vi har inga bilder pa hals eller ogonparti att
+    // stalla bredvid, sa ingen bild alls ar arligare an fel bild.
     {
       kind: "info",
       key: "foto_lead_1",
       showWhen: { field: "steg", in: ["1"] },
-      html: `<p class="chf-lead chf-hide-on-photo">Vi börjar med en bild på <b>hela ansiktet</b>. Se till att den inte är <b>suddig</b> och att <b>ljuset är bra</b>.</p>
-<div class="chf-bigshot chf-hide-on-photo"><img src="{{hub}}/images/progressbild/exempel-bra.jpg" alt="Exempel på hur bilden ska se ut" width="491" height="613" loading="eager"><span class="chf-shot-tag chf-shot-tag--a">EXEMPEL</span></div>`,
+      html: `<p class="chf-lead chf-hide-on-photo"><b>Vilket område du vill följa väljer du själv.</b> Vissa tar en selfie på hela ansiktet, andra en närbild på stället de tänker mest på, som kring ögonen, läpparna eller halsen. Det viktigaste är att bilden är <b>skarp</b> och att <b>ljuset är bra</b>.</p>`,
     },
     // Dag 30 och 60: ledtexten och bilden ar SKILDA block med olika villkor.
     // Villkoren ar ett falt vardera (in / notEmpty), sa de gar inte att slaa
@@ -248,40 +258,49 @@ const progressbild: FormConfig = {
     // (renew-quiz-blueprint punkt 138, corpus @DTC_Quizbuilder).
     //
     // Kurvan ar KVALITATIV: ingen y-skala, inga procenttal, inga lovade
-    // effektsiffror. Det enda kallbelagda ar NAR saker brukar synas - Kim et
-    // al. 2018, Nutrients (DOI 10.3390/nu10070826), grad A2 i
-    // renew-study-registry: hudfukt vid vecka 6, rynkor och elasticitet forst
-    // vid vecka 12. Studien ar pa LMWCP och far INTE framstallas som var egen
-    // produkts resultat, darfor "i studier" och aldrig "Envana ger dig".
+    // effektsiffror.
+    //
+    // Hallpunkterna ar ENVANAS EGNA, fran "Har ar vad du kan forvanta dig"
+    // (dag 1 / 15 / 30 / 60 / 90 / 180): lyster och fukt runt dag 30, spanst
+    // och elasticitet runt dag 60, fina linjer runt dag 90. Forsta versionen
+    // sa i stallet "vecka 6" och "vecka 12" efter Kim et al. 2018, och var
+    // darmed genomgaende MER pessimistisk an vad varumarket sjalvt lovar pa
+    // sajten. En kund som last bada hade hittat motsagelsen. William 09-16:
+    // "maste kolla var timeline sa vi ar konsekvent". Axeln ar darfor dagar,
+    // samma enhet som resten av flodet raknar i.
     {
       kind: "info",
       key: "kurva_rubrik_ja",
       showWhen: { field: "markt", in: ["tydligt", "lite"] },
       html: `<h2 class="chf-slide-title chf-mid">Du märker det redan</h2>
-<p class="chf-slide-sub chf-mid">Det är tidigare än många. I studier syns fukt tidigast runt vecka 6, och spänst och fina linjer först vid vecka 12, så du är inte framme vid den punkten än.</p>`,
+<p class="chf-slide-sub chf-mid">Lyster och fukt brukar komma först, runt dag 30. Spänst och elasticitet runt dag 60, och fina linjer först runt dag 90, så du har mer kvar av resan än du tror.</p>`,
     },
     {
       kind: "info",
       key: "kurva_rubrik_nej",
       showWhen: { field: "markt", in: ["inte_an", "osaker"] },
       html: `<h2 class="chf-slide-title chf-mid">Det är helt normalt</h2>
-<p class="chf-slide-sub chf-mid">De flesta ser ingenting i spegeln så här tidigt. I studier syns fukt tidigast runt vecka 6, och spänst och fina linjer först vid vecka 12. Bilderna finns just för att fånga det ögat missar.</p>`,
+<p class="chf-slide-sub chf-mid">Lyster och fukt brukar komma först, runt dag 30. Spänst och elasticitet runt dag 60, och fina linjer först runt dag 90. Bilderna finns för att fånga det ögat missar på vägen.</p>`,
     },
     {
       kind: "info",
       key: "kurva_steg2",
       showWhen: { field: "steg", in: ["2"] },
       html: `<div class="chf-kurva">
-<svg viewBox="0 0 320 160" role="img" aria-label="Tidslinje over tolv veckor">
+<svg viewBox="0 0 320 170" role="img" aria-label="Tidslinje over nittio dagar">
 <line class="chf-kurva-rut" x1="16" y1="140" x2="304" y2="140"/>
 <path class="chf-kurva-yta" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26 L304,140 L16,140 Z"/>
 <path class="chf-kurva-linje" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26"/>
 <g class="chf-kurva-du">
-<text class="chf-kurva-etikett" x="119" y="105" text-anchor="middle">DU ÄR HÄR</text>
-<circle class="chf-kurva-ring" cx="119" cy="123" r="7"/>
+<text class="chf-kurva-etikett" x="112" y="106" text-anchor="middle">DU ÄR HÄR</text>
+<circle class="chf-kurva-ring" cx="112" cy="124" r="7"/>
 </g>
+<text class="chf-kurva-axel-txt" x="16" y="160" text-anchor="start">DAG 0</text>
+<text class="chf-kurva-axel-txt" x="112" y="160" text-anchor="middle">30</text>
+<text class="chf-kurva-axel-txt" x="208" y="160" text-anchor="middle">60</text>
+<text class="chf-kurva-axel-txt" x="304" y="160" text-anchor="end">90</text>
 </svg>
-<div class="chf-kurva-axel"><span>VECKA 0</span><span>6</span><span>12</span></div>
+</div>
 </div>`,
     },
     {
@@ -289,16 +308,20 @@ const progressbild: FormConfig = {
       key: "kurva_steg3",
       showWhen: { field: "steg", in: ["3"] },
       html: `<div class="chf-kurva">
-<svg viewBox="0 0 320 160" role="img" aria-label="Tidslinje over tolv veckor">
+<svg viewBox="0 0 320 170" role="img" aria-label="Tidslinje over nittio dagar">
 <line class="chf-kurva-rut" x1="16" y1="140" x2="304" y2="140"/>
 <path class="chf-kurva-yta" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26 L304,140 L16,140 Z"/>
 <path class="chf-kurva-linje" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26"/>
 <g class="chf-kurva-du">
-<text class="chf-kurva-etikett" x="208" y="70" text-anchor="end">DU ÄR HÄR</text>
-<circle class="chf-kurva-ring" cx="222" cy="85" r="7"/>
+<text class="chf-kurva-etikett" x="194" y="78" text-anchor="end">DU ÄR HÄR</text>
+<circle class="chf-kurva-ring" cx="208" cy="93" r="7"/>
 </g>
+<text class="chf-kurva-axel-txt" x="16" y="160" text-anchor="start">DAG 0</text>
+<text class="chf-kurva-axel-txt" x="112" y="160" text-anchor="middle">30</text>
+<text class="chf-kurva-axel-txt" x="208" y="160" text-anchor="middle">60</text>
+<text class="chf-kurva-axel-txt" x="304" y="160" text-anchor="end">90</text>
 </svg>
-<div class="chf-kurva-axel"><span>VECKA 0</span><span>6</span><span>12</span></div>
+</div>
 </div>`,
     },
 

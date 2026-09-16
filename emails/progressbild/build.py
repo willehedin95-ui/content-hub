@@ -34,7 +34,9 @@ def lank(bas, steg=None):
     if steg:
         q += "&steg=" + steg
     return bas + q
-FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+FONT = "'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+# Rubrikfonten har bara vikt 400 och 500, sa H-stilen nedan far 500 och inte 700.
+FONT_H = "'Bagoss Standard',Georgia,'Times New Roman',serif"
 
 def img(slot, alt):
     """slot 1/2/3. I Klaviyo-lage en variabel, i preview en riktig fil."""
@@ -192,7 +194,17 @@ def shell(preheader, body):
     return """<!doctype html>
 <html lang="sv"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="x-apple-disable-message-reformatting"></head>
+<meta name="x-apple-disable-message-reformatting">
+<style>
+/* Envanas typsnitt dar klienten klarar webfonts (Apple Mail, iOS Mail).
+   Gmail och Outlook struntar i @font-face, och DARFOR ar fallbacken en riktig
+   systemstack och inte en notlosning - texten far aldrig hanga pa att fonten
+   laddar. Wordmarken ar en BILD av samma skal. */
+@font-face{font-family:'Bagoss Standard';font-style:normal;font-weight:400;font-display:swap;
+  src:url(https://shopenvana.com/cdn/shop/t/3/assets/envana-font-bagossstandard-400.woff2) format('woff2')}
+@font-face{font-family:'Hanken Grotesk';font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(https://shopenvana.com/cdn/shop/t/3/assets/envana-font-hankengrotesk-variable.woff2) format('woff2')}
+</style></head>
 <body style="margin:0;padding:0;background:%(bg)s;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">%(pre)s</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" style="background:%(bg)s;">
@@ -204,20 +216,39 @@ def shell(preheader, body):
 </table></td></tr></table></body></html>""" % dict(bg=BG, pre=preheader, font=FONT, head=HEAD, surface=SURFACE,
                                                   body=body, muted=MUTED, footer=envana_footer(), wordmark=wordmark())
 
-H = 'style="font:700 24px %s;line-height:1.3;color:%s;margin:0 0 10px;"' % (FONT, HEAD)
+H = ('style="font:500 25px %s;line-height:1.28;letter-spacing:-.02em;color:%s;'
+     'margin:0 0 10px;"' % (FONT_H, HEAD))
 P = 'style="font:400 16px %s;line-height:1.62;color:%s;margin:0 0 16px;"' % (FONT, MUTED)
 
-# Kvittensmailen dag 1 och dag 30 ar BORTTAGNA (William 2026-09-16). De sa
-# ordagrant samma sak som formularets sista skarm, som hon just last: samma
-# rubrik, samma serie, samma besked om nasta bild. Ett mail vars enda jobb ar
-# att upprepa skarmen kunden nyss lamnade ar ett mail for mycket. Kvar i
-# kedjan: paminnelse dag 30, paminnelse dag 60, slutmail dag 60.
+# ---------------------------------------------------------------- 1. KVITTENS
+# Togs bort tidigare samma dag for att den upprepade formularets sista skarm.
+# Tillbaka 2026-09-16 med ett ANNAT jobb: den ar hennes ARKIV. Det finns ingen
+# progressida byggd, sa mailet ar enda stallet dar hon kan se sina bilder nar
+# hon sjalv vill - skarmen forsvinner nar hon stanger fliken.
+#
+# Darfor leder mailet med sparandet i stallet for med bekraftelsen. Det ar den
+# raden som skiljer det fran skarmen hon nyss last.
+if OUT.endswith("kvittens"):
+    if MODE == "klaviyo":
+        rubrik = ("{% if event.steg == '2' %}Halvvägs, en bild kvar"
+                  "{% else %}Din första bild är sparad{% endif %}")
+        serie = serie_villkorad()
+    else:
+        rubrik = "Halvvägs, en bild kvar" if VARIANT == "2" else "Din första bild är sparad"
+        serie = series(2 if VARIANT == "2" else 1)
+    body = ('<h1 %s>%s</h1>'
+            '<p %s>Spara det här mejlet. Dina bilder ligger kvar här, så du kan '
+            'öppna dem och se din resa när du vill.</p>%s'
+            '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:20px 0 0;text-align:center;">'
+            'Rutorna fylls i takt med att du laddar upp.</p>'
+            % (H, rubrik, P, serie, FONT, MUTED))
+    html = shell("Dina bilder finns sparade här.", body)
 
 # ------------------------------------------------------------- 2. PAMINNELSE
 # Hennes FORRA bild visas stort. Det ar den enda vinkelguidning hon far, och
 # den ar battre an en textrad: hon ser hur bilden togs i stallet for att lasa
 # om det.
-if OUT.endswith("paminnelse"):
+elif OUT.endswith("paminnelse"):
     if MODE == "klaviyo":
         rubrik = ("{% if event.antal_bilder == 2 %}Dags för din sista bild"
                   "{% else %}Dags för bild två{% endif %}")

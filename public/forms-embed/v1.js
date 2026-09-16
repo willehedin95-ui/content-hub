@@ -54,7 +54,21 @@
 
   // ------------------------------------------------------------------ styles
   var CSS =
-    ".chf-root{font-family:inherit;max-width:640px;margin:0 auto;padding:0 20px;box-sizing:border-box;color:#1a1a1a;line-height:1.55}" +
+    // Butikens egna typsnitt, samma filer som resten av shopenvana.com
+    // serverar. Sidan /pages/resa kor en egen layout utan temats CSS, sa utan
+    // det har faller formularet tillbaka pa systemfonten och ser ut som en
+    // blankett i stallet for som Envana.
+    //
+    // Bagoss finns BARA i 400 och 500 - darfor 400 pa rubriker, precis som
+    // butiken sjalv gor (.ehow__step-title), inte 700 som en fetare font hade
+    // talat. Hanken Grotesk ar variabel och bar brodtexten.
+    "@font-face{font-family:\'Bagoss Standard\';font-style:normal;font-weight:400;" +
+    "font-display:swap;src:url(https://shopenvana.com/cdn/shop/t/3/assets/envana-font-bagossstandard-400.woff2) format(\'woff2\')}" +
+    "@font-face{font-family:\'Bagoss Standard\';font-style:normal;font-weight:500;" +
+    "font-display:swap;src:url(https://shopenvana.com/cdn/shop/t/3/assets/envana-font-bagossstandard-500.woff2) format(\'woff2\')}" +
+    "@font-face{font-family:\'Hanken Grotesk\';font-style:normal;font-weight:100 900;" +
+    "font-display:swap;src:url(https://shopenvana.com/cdn/shop/t/3/assets/envana-font-hankengrotesk-variable.woff2) format(\'woff2\')}" +
+    ".chf-root{font-family:\'Hanken Grotesk\',-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;padding:0 20px;box-sizing:border-box;color:#1a1a1a;line-height:1.55}" +
     ".chf-title{font-size:1.75em;font-weight:700;margin:0 0 14px}" +
     ".chf-intro{margin:0 0 20px}" +
     ".chf-intro p{margin:0 0 10px}" +
@@ -127,7 +141,7 @@
     ".chf-error{color:#b91c1c;font-size:.9em;margin-top:5px;display:none}" +
     ".chf-field.chf-invalid .chf-error{display:block}" +
     ".chf-field.chf-invalid .chf-input,.chf-field.chf-invalid .chf-textarea,.chf-field.chf-invalid .chf-select{border-color:#b91c1c}" +
-    ".chf-submit{display:block;width:100%;padding:14px 18px;background:#111;color:#fff;border:0;border-radius:10px;font:inherit;font-weight:700;font-size:1.05em;cursor:pointer}" +
+    ".chf-submit{display:block;width:100%;padding:14px 18px;background:#111;color:#fff;border:0;border-radius:10px;font:inherit;font-weight:500;font-size:1.05em;cursor:pointer;font-family:'Bagoss Standard',Georgia,serif;letter-spacing:-.02em;}" +
     ".chf-submit:disabled{opacity:.6;cursor:default}" +
     ".chf-toperror{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:12px 14px;margin-bottom:16px;display:none}" +
     ".chf-ending{text-align:left;padding:8px 0}" +
@@ -233,14 +247,14 @@
     ".chf-app.chf-kb .chf-step>.chf-submit{margin-top:16px}" +
     ".chf-app.chf-kb .chf-art{display:none}" +
 
-    ".chf-app .chf-slide-title{font-size:22px;font-weight:700;line-height:1.35;" +
+    ".chf-app .chf-slide-title{font-size:22px;font-weight:400;line-height:1.35;font-family:'Bagoss Standard',Georgia,serif;letter-spacing:-.02em;" +
     "color:var(--chf-text);margin:0 0 6px}" +
     ".chf-app .chf-slide-sub{font-size:16px;line-height:1.6;color:var(--chf-muted);margin:0 0 20px}" +
     // Karusellens typografi ar Weightless egna, uppmatt i IntroCarousel:
     // rubriken 29 bold pa EN rad som KRYMPER i stallet for att brytas (den
     // langsta panelrubriken ar en rad), brodtexten 16 SEMIBOLD och centrerad,
     // 10 px mellan dem. Mina 22/regular last som ett formular.
-    ".chf-app .chf-panel .chf-slide-title{font-size:29px;font-weight:700;line-height:1.18;" +
+    ".chf-app .chf-panel .chf-slide-title{font-size:29px;font-weight:400;line-height:1.18;font-family:'Bagoss Standard',Georgia,serif;letter-spacing:-.02em;" +
     "letter-spacing:-.4px;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:clip}" +
     ".chf-app .chf-panel .chf-slide-sub{font-size:16px;font-weight:600;line-height:1.5;margin:0}" +
     // Krymp rubriken pa smal skarm i stallet for att bryta den. CSS har inget
@@ -250,7 +264,7 @@
     "@media (max-width:344px){.chf-app .chf-panel .chf-slide-title{font-size:22px}}" +
     // Luften ner mot chromet. Weightless: padding-bottom 96.
     ".chf-app .chf-panel>*:last-child{margin-bottom:0}" +
-    ".chf-app .chf-title{font-size:22px;font-weight:700;line-height:1.35;text-align:center;margin:0 0 6px}" +
+    ".chf-app .chf-title{font-size:22px;font-weight:400;line-height:1.35;text-align:center;margin:0 0 6px;font-family:'Bagoss Standard',Georgia,serif;letter-spacing:-.02em;}" +
     ".chf-app .chf-info{font-size:16px;line-height:1.6;color:var(--chf-muted)}" +
     ".chf-app .chf-info h2{color:var(--chf-text)}" +
     // Bildblocket ar 40% av skarmhojden med golv 210 och tak 330 - talen ar
@@ -478,7 +492,7 @@
     ".chf-app .chf-file-cta .chf-file-preview{gap:0}" +
     ".chf-app .chf-file-cta .chf-file-title{font-size:19px;font-weight:700;" +
     "color:var(--chf-text);text-align:center;margin:2px 0 14px}" +
-    ".chf-app .chf-file-cta .chf-file-preview img{max-height:41vh;object-fit:cover;" +
+    ".chf-app .chf-file-cta .chf-file-preview img{max-height:41vh;object-fit:contain;" +
     "border-radius:18px;margin:0 0 16px;background:none}" +
     ".chf-app .chf-file-cta .chf-file-clear{margin:0 auto 16px}" +
     // Nar bilden ar vald ar det bilden som ar skarmen. Instruktionen och
@@ -526,8 +540,10 @@
     ".chf-app .chf-kurva-ring{fill:#fff;stroke:var(--chf-brand);stroke-width:3.5}" +
     ".chf-app .chf-kurva-etikett{font:700 11px inherit;fill:var(--chf-brand);letter-spacing:.4px}" +
     ".chf-app .chf-kurva-rut{stroke:rgba(50,13,1,.09);stroke-width:1}" +
-    ".chf-app .chf-kurva-axel{display:flex;justify-content:space-between;margin:2px 2px 0;" +
-    "font-size:11.5px;font-weight:600;letter-spacing:.3px;color:var(--chf-muted)}" +
+    // Axeln ar SVG-text vid exakta x-lagen, sa "30" star ovanfor dag 30 pa
+    // kurvan. En flexrad med space-between la den i mitten av bredden.
+    ".chf-app .chf-kurva-axel-txt{font-size:11.5px;font-weight:600;letter-spacing:.3px;" +
+    "fill:var(--chf-muted)}" +
     "@media (prefers-reduced-motion:reduce){" +
     ".chf-app .chf-kurva-linje{animation:none;stroke-dashoffset:0}" +
     ".chf-app .chf-kurva-yta{animation:none;opacity:.09}" +
