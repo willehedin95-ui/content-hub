@@ -717,13 +717,25 @@
       if (stepHasContent(els[i])) return i;
       i += dir;
     }
-    return from;
+    return null;
+  }
+
+  /** Skickar in formularet direkt. Behovs nar alla steg efter det aktuella ar
+   *  bortvillkorade: da ar det har sista skarmen, och knappen ska skicka in i
+   *  stallet for att leda till en tom vy. */
+  function skickaInDirekt() {
+    var f = container.querySelector(".chf-form");
+    if (!f) return;
+    var sb = f.querySelector("button.chf-submit[type=submit]");
+    var te = f.querySelector(".chf-toperror");
+    if (sb && te) onSubmit(f, sb, te);
   }
 
   function showStep(idx) {
     // Riktningen avgor vilket hall vi letar efter nasta icke-tomma steg: bakat
     // nar hon tryckt tillbaka, annars framat.
-    idx = nextVisibleStep(idx, idx >= state.currentStep ? 1 : -1);
+    var hittad = nextVisibleStep(idx, idx >= state.currentStep ? 1 : -1);
+    idx = hittad === null ? idx : hittad;
     state.currentStep = idx;
     var stepEls = container.querySelectorAll("[data-step]");
     for (var i = 0; i < stepEls.length; i++) {
@@ -1052,7 +1064,9 @@
             if (firstInvalid) firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
             return;
           }
-          showStep(stepIdx + 1);
+          var nasta = nextVisibleStep(stepIdx + 1, 1);
+          if (nasta === null) { skickaInDirekt(); return; }
+          showStep(nasta);
         });
         stepEl.appendChild(cont);
         addBackButton(stepEl, stepIdx);
@@ -1101,6 +1115,7 @@
     // alltid steg 0, och for en kund som kom via tokenlank var steg 0
     // bortvillkorat - hon motte en tom skarm med bara en knapp pa.
     var forsta = nextVisibleStep(0, 1);
+    if (forsta === null) forsta = 0;
     if (forsta !== 0) {
       showStep(forsta);
     } else {
@@ -1182,7 +1197,7 @@
           var steg = cwrap.closest("[data-step]");
           var idx = steg ? parseInt(steg.getAttribute("data-step"), 10) : state.currentStep;
           var nasta = nextVisibleStep(idx + 1, 1);
-          if (nasta !== null && nasta !== undefined) showStep(nasta);
+          if (nasta === null) skickaInDirekt(); else showStep(nasta);
         });
         cwrap.appendChild(knapp);
       });
@@ -1396,26 +1411,7 @@
         if (w.style.display === "none") continue;
         var f = findField(w.getAttribute("data-key"));
         if (!f || !f.required) continue;
-        if (f.kind === "choice") {
-      var cwrap = elText("div", "chf-choices");
-      (f.options || []).forEach(function (o) {
-        var knapp = elText("button", "chf-choice chf-choice-" + (o.style || "primary"));
-        knapp.type = "button";
-        knapp.appendChild(elText("b", null, o.label));
-        if (o.sub) knapp.appendChild(elText("span", null, o.sub));
-        knapp.addEventListener("click", function () {
-          setValue(f.key, o.value);
-          // Knappen ar stegets handling: satt vardet och ga vidare direkt.
-          var steg = cwrap.closest("[data-step]");
-          var idx = steg ? parseInt(steg.getAttribute("data-step"), 10) : state.currentStep;
-          var nasta = nextVisibleStep(idx + 1, 1);
-          if (nasta !== null && nasta !== undefined) showStep(nasta);
-        });
-        cwrap.appendChild(knapp);
-      });
-      return cwrap;
-    }
-    if (f.kind === "file") {
+        if (f.kind === "file") {
           var lista = state.files[f.key] || [];
           if (!lista.length) klar = false;
         } else {
