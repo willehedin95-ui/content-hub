@@ -1,3 +1,122 @@
+# Session: 2026-09-11 till 16 - recensionsmejl som triggar pa att kunden hamtat ut paketet hos ombudet
+
+## AKUT for denna session
+
+**Bada floden ar LIVE i Klaviyo.** SwedishBalance `VRLL4F` och Envana `VZ2gAW`.
+Forsta riktiga utskicket gar **16 sep kl 10** till ca 11 kunder som hamtade ut sitt
+paket 15 sep. Efter det lopande, ett dygn efter varje uthamtning.
+
+**Cronen `/api/cron/pickup-tracker` kor i produktion varje timme sedan 14 sep.**
+Den ar pushad. `1290f5a2` (kollagenflaggan) ar **INTE pushad** - den ligger som commit
+och biter forst nar nagon saljer en artikel med TEMP-nummer, vilket ingen gor idag.
+
+**30-dagarsflodet `WZS9Bi` har fatt ett trigger-filter** som stoppar kollagen (William
+satte det sjalv i UI:t). Rakat bort det -> kollagenkunder far bada mejlen.
+
+## What was done
+
+**Fragan William stallde:** gar det att fa Trustpilot-recensioner tidigare an de 30
+dagar det tar innan nagon kan saga nagot om kollagenet, genom att i stallet fraga om
+leveransen precis efter att paketet hamtats ut?
+
+**Svep av inkorgarna** (Williams hotmail 35 120 mejl, Rasmus gmail 18 400, plus
+foretagsinkorgarna). 20 mejl lasta i sin helhet. Kort: ja, det gors. AG1 fragar
+uttryckligen om "onlinebestallning och leveransupplevelse" dagen efter ankomst och
+namner inte produkten. Kaffekapslen delar upp det i tva mejl, leveransenkat dag 15 och
+produktrecension dag 18, reproducerbart pa tva ordrar tva ar isar. Trustpilots egen
+inbjudan (Wellvita, Bring, Zooki, Tyngre) ar medvetet luddig: "skriva ett omdome om din
+upplevelse".
+
+**Det som inte gick att bygga pa.** Bring rapporterar ingen leveransstatus till Shopify:
+711 av 711 kollagen-fulfillments har `shipment_status = null` och noll fulfillment-events.
+Shelfless vet det inte heller - deras status slutar pa DISPATCHED och deras `deliveryDate`
+ar identisk med `shippedDate` pa sekunden. Klaviyos metric "Delivered Shipment" finns men
+alla 699 events sedan arsskiftet kommer fran YunExpress (kuddarna fran Kina), noll fran
+Bring.
+
+**En fast fordrojning duger inte som ersattning.** Matt pa 150 paket: efter 5 dygn har
+65% hamtat ut, efter 7 dygn 81%, mot ett tak pa 89% eftersom 11% aldrig hamtar. En proxy
+pa 5 dagar hade fragat en tredjedel innan de rort paketet.
+
+**Losningen.** `/api/cron/pickup-tracker` laser DISPATCHED-leveranser fran Shelfless,
+slar upp varje kolli mot Brings tracking-API och skickar `Package Picked Up` till ratt
+Klaviyo-konto nar statusen gar till DELIVERED. Ombudets namn foljer med som property.
+Kod: `src/lib/bring.ts`, `src/lib/klaviyo-events.ts`, `fetchDispatchedDeliveries` i
+`src/lib/shelfless.ts`, tabellen `parcel_tracking` i Supabase.
+
+**Mejlet** ar det gamla 30-dagarsmejlet omskrivet: fragar om bestallning och leverans i
+stallet for produkten, och alla fem stjarnbetygen gar till Trustpilot (Fillout-gaten for
+laga betyg borttagen). Egen version per butik med ratt logga, ratt Trustpilot-profil och
+respektive kontos footer.
+
+**Verifierat, inte antaget.** E2E-test i bada kontona med tillfalligt flode som bara
+slappte in Williams egen adress: event in, mejl i inkorgen efter 27 respektive 18
+sekunder. Testfloden raderade efterat. Filtret pa 30-dagarsflodet simulerat mot 1000
+riktiga ordrar: 239 stoppas (alla kollagen), 761 slapps igenom (inga kollagen), noll
+lackage, noll blandordrar.
+
+## Decisions made
+
+- **Klaviyo skickar, inte Trustpilot.** Trustpilots egna inbjudningar kan bara fordrojas
+  fran KOPET, aldrig fran uthamtningen, vilket ar hela poangen. Kollat i deras UI: bade
+  snabb och anpassad installation raknar fran kopet.
+- **kl 10 dagen efter uthamtning.** William bekraftade 16 sep. Jag mMatte oppningsgrad per
+  sandtimme och trodde en stund att kl 19 var battre (48% mot 32%), men uppdelningen per
+  flode visade att kl 9-10 domineras av rabatt- och winback-utskick medan kl 19 ar
+  nudge-mejl. Aplen och paron. Enda jamforbara datapunkten ar ert eget Trustpilot-mejl,
+  som gar kl 9 och ligger pa 47%. Alltsa formiddag, inte kvall.
+- **Ingen belonings-morot.** Av alla recensionsmejl i inkorgarna forekom belonig BARA i
+  dem som ledde till egna enkater eller produktrecensioner, aldrig i nagot som ledde till
+  Trustpilot. SwedishBalance har dessutom haft ett brand misuse-arende hos Trustpilot
+  (ticket #32056759, feb 2025).
+- **Enkel footer pa SwedishBalance.** Den riktiga SB-footern har kudde-USP:er, Klarna-rad
+  och kudde-navigering, allt irrelevant nar mejlet per definition bara gar till
+  kollagenkoparer. Envana behaller sin, dess USP:er (1-3 dagars leverans, tillverkad i
+  Sverige, 60 dagar pengarna tillbaka) galler kollagenet ocksa.
+- **Inget eget paminnelsemejl om ohamtade paket.** Matt pa 45 paket: Bring skickar redan
+  notis vid ankomst plus paminnelser dag 3 och dag 6, i upp till tre kanaler. 98% far
+  e-post, 93% SMS. Ett eget mejl hade blivit det tionde meddelandet om samma paket.
+  (Detta motsager Rasmus uppgift att Bring bara skickar SMS.)
+
+## Current state
+
+Fungerar och ar i drift. `parcel_tracking` 16 sep 07:33: 314 uthamtade, 45 i transit,
+31 hos ombud, 13 returnerade. Av de 314 ar 292 markerade som backlog och skickades
+aldrig - spar mot att hela historiken mejlas ut nar bevakningen startar (36-timmarsgrans
+i `MAX_EVENT_AGE_HOURS`). 22 riktiga event har gatt in, 11 av dem efter att flodet slogs
+pa.
+
+## Blockers / Open questions
+
+- **`1290f5a2` ar inte pushad.** Utan den missas artiklar som heter kollagen i NAMNET men
+  inte i artikelnumret (`TEMP<siffror>`, t.ex. "Hydro 13 - Travel Edition"). Ingen kund
+  drabbad: 2000 genomgangna leveranser anvander uteslutande COLLAGEN-MARINE-artiklarna
+  och TEMP-artiklarna har noll i lager. William: "det ar bara testprodukter".
+- **Envana har inga leveranser i Shelfless an.** EN1007 och EN1008 ar betalda men har
+  varken fulfillment i Shopify eller nagon rad i lagret. Flodet star redo men far inga
+  event forran det borjar rulla. Vard att kolla om kopplingen Envana -> Shelfless ar
+  pasatt.
+- **Klaviyos API kan inte andra ett befintligt flode.** Varje copyandring kravde att
+  flodet raderades och byggdes om. Se memory `klaviyo-api-limits`.
+
+## Next up
+
+1. **Kolla utfallet idag efter kl 10.** Ca 11 kunder far det forsta riktiga mejlet.
+   Jamfor oppnings- och klickfrekvens mot 30-dagarsflodet (som fallit fran 11,5% klick
+   sep 2025 till 5,0% aug 2026).
+2. Pusha `1290f5a2` nar nagot annat anda ska upp.
+3. Envana: kolla varfor ordrarna inte nar Shelfless.
+4. Overvag om 30-dagarsmejlet ska skrivas om for kuddarna - det fragar om produkten pa
+   dag 30 och har tappat halva klickfrekvensen pa ett ar.
+
+
+---
+
+# PARALLELLT SPAR (annan session, progressbildsflodet)
+Nedan ar den foregaende LATEST. Bada sparren ar aktuella.
+
+---
+
 # Session: 2026-09-15 kvall till 16 natt - progressbildsflodet fick en svans, ett delningskort och tre buggar som lag live
 
 ## AKUT for denna session
