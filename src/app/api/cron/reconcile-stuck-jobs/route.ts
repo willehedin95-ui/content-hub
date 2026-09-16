@@ -359,7 +359,32 @@ export async function GET(req: NextRequest) {
 
       const chainProblems = await checkFormChain();
       summary.formChainProblems = chainProblems.length;
+      const chainDetail = chainProblems.map((x) => `${x.label}: ${x.detail}`).join(" | ").slice(0, 500);
+
       if (chainProblems.length > 0) {
+        // Only alert on a SUSTAINED break. A single failing pass is usually a
+        // transient hiccup at the storefront edge - the first version alerted
+        // immediately and cried wolf on one Shopify 503, which is exactly how a
+        // monitor stops being trusted. The first bad pass writes a probe row and
+        // stays quiet; an alert needs the previous pass to have failed too.
+        const probeCutoff = new Date(Date.now() - 70 * 60 * 1000).toISOString();
+        const { data: priorProbe } = await db
+          .from("cron_runs")
+          .select("id")
+          .eq("cron_name", "forms-health:probe")
+          .gte("started_at", probeCutoff)
+          .limit(1)
+          .maybeSingle();
+
+        // Always leave a trace, alert or not, so a break can be diagnosed after
+        // the fact without redeploying to add logging.
+        await db.from("cron_runs").insert({
+          cron_name: "forms-health:probe",
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          result_summary: chainDetail,
+        });
+
         const dedupeCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const { data: recent } = await db
           .from("cron_runs")
@@ -368,17 +393,18 @@ export async function GET(req: NextRequest) {
           .gte("started_at", dedupeCutoff)
           .limit(1)
           .maybeSingle();
-        if (!recent) {
+        if (priorProbe && !recent) {
           await db.from("cron_runs").insert({
             cron_name: "forms-health:chain",
             status: "completed",
             completed_at: new Date().toISOString(),
-            result_summary: chainProblems.map((x) => `${x.label}: ${x.detail}`).join(" | ").slice(0, 500),
+            result_summary: chainDetail,
           });
           if (chatId) {
             await sendTelegramNotification(
               chatId,
               `🚨 <b>Formulär når inte kunderna</b>\n\n` +
+                `Ihållande i minst två kontroller (~30-60 min).\n\n` +
                 chainProblems.map((x) => `<b>${escapeHtml(x.label)}</b>: ${escapeHtml(x.detail)}`).join("\n") +
                 `\n\nInga ärenden kan komma in från de sidorna förrän detta är löst.`,
               { critical: true }

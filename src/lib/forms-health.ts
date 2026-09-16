@@ -63,10 +63,40 @@ export interface FormHealthProblem {
   detail: string;
 }
 
-async function fetchText(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: string }> {
-  const res = await fetch(url, { ...init, redirect: "follow" });
+// Shopify answers 403 to a request with no User-Agent at all, and a datacenter
+// IP with a bare default is exactly the shape edge protection throttles. Send an
+// honest identifying UA instead of pretending to be a browser.
+const UA = "ContentHubFormsHealth/1.0 (+monitoring; swedishbalance.se)";
+
+async function fetchOnce(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: string }> {
+  const res = await fetch(url, {
+    ...init,
+    redirect: "follow",
+    headers: { "User-Agent": UA, ...(init?.headers as Record<string, string> | undefined) },
+  });
   const body = await res.text();
   return { ok: res.ok, status: res.status, body };
+}
+
+/** Transient failures must not look like an outage. Retries both thrown errors
+ *  AND retryable statuses (5xx/429) - the first version only retried throws, so
+ *  a single Shopify 503 fired a critical alert. */
+async function fetchText(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: string }> {
+  let last: { ok: boolean; status: number; body: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    try {
+      const res = await fetchOnce(url, init);
+      last = res;
+      if (res.ok) return res;
+      const retryable = res.status >= 500 || res.status === 429;
+      if (!retryable) return res;
+    } catch {
+      last = null;
+    }
+  }
+  if (last) return last;
+  throw new Error("nätverksfel efter 3 försök");
 }
 
 /** One page: embed present with the right attributes, and config reachable
@@ -77,12 +107,8 @@ async function checkOnePage(p: (typeof WATCHED_FORM_PAGES)[number]): Promise<str
   let page: { ok: boolean; status: number; body: string };
   try {
     page = await fetchText(p.url);
-  } catch {
-    try {
-      page = await fetchText(p.url);
-    } catch (e) {
-      return `sidan gick inte att hämta (${e instanceof Error ? e.message : "okänt fel"})`;
-    }
+  } catch (e) {
+    return `sidan gick inte att hämta (${e instanceof Error ? e.message : "okänt fel"})`;
   }
   if (!page.ok) return `sidan svarade HTTP ${page.status}`;
 
@@ -110,12 +136,8 @@ async function checkOnePage(p: (typeof WATCHED_FORM_PAGES)[number]): Promise<str
   let cfg: { ok: boolean; status: number; body: string };
   try {
     cfg = await fetchText(cfgUrl, { headers: { Origin: origin } });
-  } catch {
-    try {
-      cfg = await fetchText(cfgUrl, { headers: { Origin: origin } });
-    } catch (e) {
-      return `config-anropet gick inte att göra (${e instanceof Error ? e.message : "okänt fel"})`;
-    }
+  } catch (e) {
+    return `config-anropet gick inte att göra (${e instanceof Error ? e.message : "okänt fel"})`;
   }
   if (!cfg.ok) return `config svarade HTTP ${cfg.status} - formuläret kan inte laddas`;
   try {
