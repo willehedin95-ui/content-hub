@@ -20,10 +20,13 @@ export type FormFieldRole =
 /** `isEmpty` behovs for "visa det har BARA om vi inte redan vet det": e-post-
  *  steget i progressbild doljs nar tokenuppslaget redan gett oss adressen. */
 export type FormCondition = {
-  field: string;
+  /** Utelamnas nar `all` anvands - da bar delvillkoren varsitt falt. */
+  field?: string;
   in?: string[];
   notEmpty?: boolean;
   isEmpty?: boolean;
+  /** Alla delvillkor maste halla. For falt som beror pa mer an ett svar. */
+  all?: FormCondition[];
 };
 
 /** Avslutningsskärmen. `variants` väljs före basen: första variant vars

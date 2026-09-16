@@ -661,6 +661,10 @@
   }
   function conditionMet(cond) {
     if (!cond) return true;
+    // all: [...] = alla delvillkor maste halla. Behovs nar ett falt beror pa
+    // BADE vilket steg hon ar pa och vad hon svarat - tidslinjens rubrik ska
+    // inte kunna dyka upp vid dag 1 bara for att markt-faltet finns i DOM.
+    if (cond.all) return cond.all.every(conditionMet);
     var v = state.values[cond.field];
     var empty = v === undefined || v === null || v === "" || v === false;
     // isEmpty ar motsatsen till notEmpty och behovs for "visa det har BARA om

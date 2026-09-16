@@ -276,14 +276,16 @@ const progressbild: FormConfig = {
     {
       kind: "info",
       key: "kurva_rubrik_ja",
-      showWhen: { field: "markt", in: ["tydligt", "lite"] },
+      showWhen: { all: [{ field: "steg", in: ["2", "3"] },
+                        { field: "markt", in: ["tydligt", "lite"] }] },
       html: `<h2 class="chf-slide-title chf-mid">Du märker det redan</h2>
 <p class="chf-slide-sub chf-mid">Lyster och fukt brukar komma först, runt dag 30. Spänst och elasticitet runt dag 60, och fina linjer först runt dag 90, så du har mer kvar av resan än du tror.</p>`,
     },
     {
       kind: "info",
       key: "kurva_rubrik_nej",
-      showWhen: { field: "markt", in: ["inte_an", "osaker"] },
+      showWhen: { all: [{ field: "steg", in: ["2", "3"] },
+                        { field: "markt", in: ["inte_an", "osaker"] }] },
       html: `<h2 class="chf-slide-title chf-mid">Det är helt normalt</h2>
 <p class="chf-slide-sub chf-mid">Lyster och fukt brukar komma först, runt dag 30. Spänst och elasticitet runt dag 60, och fina linjer först runt dag 90. Bilderna finns för att fånga det ögat missar på vägen.</p>`,
     },

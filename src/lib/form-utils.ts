@@ -192,7 +192,10 @@ function conditionMet(
   cond: NonNullable<FormField["showWhen"]>,
   valueOf: (key: string) => string
 ): boolean {
-  const current = valueOf(cond.field);
+  // all: [...] maste ligga FORE falt-uppslaget - ett kombinerat villkor har
+  // inget eget `field`. Speglar samma gren i v1.js.
+  if (cond.all) return cond.all.every((c) => conditionMet(c, valueOf));
+  const current = valueOf(cond.field ?? "");
   const empty = !current || current === "(tomt svar)";
   // isEmpty fanns bara i klienten. Utan den har blev e-postfältet - som är
   // villkorat på `kund` och därför INTE skickas med när kunden kommer via en
