@@ -1,30 +1,46 @@
 ## Progressbildsflodet (Envana/Hydro13)
 
-ALLT AR I PRODUKTION (commit `12efe5b0`, 2026-09-15). Sidan
+ALLT AR PUSHAT OCH LIVE (commit `d5795957`, 2026-09-16). Sidan
 **shopenvana.com/pages/resa ar publicerad** men inget lankar dit an.
 Spec: SharedVault `envana/envana-progressbilder-flode-spec.md`.
+Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
 ### Blockerar allt annat
 
-- [ ] **BILDUPPLADDNINGSSKARMEN - vantar pa Williams besked.** Omgjord tre ganger.
-      Fraga FORE nasta andring. Forslag hos honom: LooksMax-anatomin med
-      exempelbild i mitten, en rad om ljus, tva knappar ("Ta en selfie" /
-      "Valj fran galleriet"). Matning med skarmbilder:
-      SharedVault `envana/envana-bilduppladdning-matning.md`.
+- [ ] **Utbetalningen finns inte.** Tre ytor lovar presentkortet: belonings-
+      skarmen, samtyckesskarmen och slutmailet. Ingen kod skapar eller skickar
+      nagot. Researchen ar KLAR, se specen i SharedVault. Riktning: prenumerant
+      far Loop-avdrag utan kod (`POST /2026-04/subscription/{id}/discount` med
+      `FIXED_AMOUNT` + `orderLimit: 1`), engangskopare far en unik rabattkod
+      (appen har redan `write_discounts`). Uppslaget vem som ar vad gors i Loop,
+      inte i Shopify - var Shopify-app saknar prenumerationsbehorigheten.
+      **Blockerad pa:** ny Loop-token, se nedan.
+- [ ] **Ny Loop-token for Envana.** Den i `.env.local` svarar `401 Invalid store`,
+      den ar kvar fran nedlagda get-renew. Hamtas i Envanas Loop-admin under
+      Settings, Manage API tokens. (William tittar pa den 16 sep.)
 - [ ] **Flodena i Klaviyo.** Mallarna ar uppladdade (QYB7uH kvittens, TjqMgr
-      paminnelse, SGpJDN slutmail) men inget flode ar byggt. Ett befintligt flode
-      gar INTE att andra via API, bara slas pa/av - copyn maste vara klar innan
+      paminnelse, SGpJDN slutmail) men inget flode ar byggt. **Utan dem far en
+      riktig kund aldrig lanken till dag 30 och fastnar efter bild ett.** Ett
+      befintligt flode gar INTE att andra via API - copyn maste vara klar innan
       flodet skapas. Kvittensen ska villkoras bort nar `event.steg == '3'`,
       annars gar den ut samtidigt som slutmailet och sager samma sak.
 
 ### Beslut som saknas
 
 - [ ] **Vilken butik?** Envana pa Loop (8 aktiva) eller SwedishBalance pa Appstle
-      (393). Blockerar belongslogiken.
-- [ ] **Presentkort eller Loop-rabatt?** Tryckt copy sager presentkort och binder
-      oss; resonemanget sa rabatt i forsta hand.
-- [ ] **Byt Loop-token i `.env.local`** - den nuvarande ar bunden till nedlagda
-      `get-renew.myshopify.com`.
+      (393).
+- [ ] **Tryckt copy maste matcha utbetalningen.** Sager kortet "presentkort" men en
+      prenumerant far ett avdrag stammer det inte. "200 kr tillbaka nar du
+      dokumenterat din 60-dagarsresa" tacker bada.
+
+### Stada bort nar Rasmus testat klart
+
+- [ ] Tva syntetiska rader i PRODUKTIONSDATABASEN pa `verifiering@exempel.se`
+      (is_test=false med flit, annars syns de inte i serieuppslaget).
+- [ ] `public/images/progressbild/forra-bild.jpg` - committad enbart for dem.
+      Raderna forst, sedan bilden.
+- [ ] Gamla halvfardiga Figma-filen i "Mitt designteam"
+      (`JcDIHWFmfnRIyxNoyUn1DX`). Gar inte att radera via API, William far gora det.
 
 ### Kvar att bygga
 
