@@ -164,9 +164,15 @@ const progressbild: FormConfig = {
     // texten sager - att valet ar hennes - vilket en ensam ansiktsbild inte
     // kunde, den hade last som facit for ett av flera giltiga val.
     //
-    // Alla fyra ar utsnitt ur SAMMA ansikte, och det ar avsiktligt. Fyra olika
-    // personer hade lasts som fyra kunder i stallet for fyra val. Byggt i kod
-    // ur exempel-bra.jpg, se collage.mjs - utsnitten ar uppmatta, inte gissade.
+    // Fyra OLIKA personer, med spridning i alder och hudton, ur Envanas egna
+    // fore/efter-bilder (envana-before-after-1x1). Bara HALVA kallbilden
+    // anvands: tva halvor bredvid varandra hade last som ett resultat i
+    // stallet for som ett exempel pa utsnitt.
+    //
+    // Omradena ar de vi faktiskt har bilder pa - hela ansiktet, kring ogonen,
+    // pannan, halsen - och etiketten foljer vad rutan visar. Utsnitten satts
+    // manuellt i hojdled: sharps "attention" letar kontrast, inte kroppsdelar,
+    // och lade ogoncropen pa munnen och panncropen i haret.
     {
       kind: "info",
       key: "foto_lead_1",
