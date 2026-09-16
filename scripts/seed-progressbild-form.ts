@@ -236,6 +236,72 @@ const progressbild: FormConfig = {
         { value: "osaker", label: "Vet inte" },
       ],
     },
+    { kind: "pagebreak", key: "till_kurva", label: "Fortsätt" },
+
+    // ============================================ TIDSLINJEN, DAG 30 OCH 60 =
+    // William 2026-09-16: hennes svar pa "har du markt nagon skillnad" ska
+    // styra vad nasta skarm sager. Ett "inte an" far inte motas av en
+    // jamforelse som pastar nagot hon inte ser - det ska motas av att det ar
+    // NORMALT, och sedan kommer bilderna.
+    //
+    // Monstret ar Gruns/FP:s 12-veckors timeline-graf med "Du ar har"-markor
+    // (renew-quiz-blueprint punkt 138, corpus @DTC_Quizbuilder).
+    //
+    // Kurvan ar KVALITATIV: ingen y-skala, inga procenttal, inga lovade
+    // effektsiffror. Det enda kallbelagda ar NAR saker brukar synas - Kim et
+    // al. 2018, Nutrients (DOI 10.3390/nu10070826), grad A2 i
+    // renew-study-registry: hudfukt vid vecka 6, rynkor och elasticitet forst
+    // vid vecka 12. Studien ar pa LMWCP och far INTE framstallas som var egen
+    // produkts resultat, darfor "i studier" och aldrig "Envana ger dig".
+    {
+      kind: "info",
+      key: "kurva_rubrik_ja",
+      showWhen: { field: "markt", in: ["tydligt", "lite"] },
+      html: `<h2 class="chf-slide-title chf-mid">Du märker det redan</h2>
+<p class="chf-slide-sub chf-mid">Det är tidigare än många. I studier syns fukt tidigast runt vecka 6, och spänst och fina linjer först vid vecka 12, så du är inte framme vid den punkten än.</p>`,
+    },
+    {
+      kind: "info",
+      key: "kurva_rubrik_nej",
+      showWhen: { field: "markt", in: ["inte_an", "osaker"] },
+      html: `<h2 class="chf-slide-title chf-mid">Det är helt normalt</h2>
+<p class="chf-slide-sub chf-mid">De flesta ser ingenting i spegeln så här tidigt. I studier syns fukt tidigast runt vecka 6, och spänst och fina linjer först vid vecka 12. Bilderna finns just för att fånga det ögat missar.</p>`,
+    },
+    {
+      kind: "info",
+      key: "kurva_steg2",
+      showWhen: { field: "steg", in: ["2"] },
+      html: `<div class="chf-kurva">
+<svg viewBox="0 0 320 160" role="img" aria-label="Tidslinje over tolv veckor">
+<line class="chf-kurva-rut" x1="16" y1="140" x2="304" y2="140"/>
+<path class="chf-kurva-yta" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26 L304,140 L16,140 Z"/>
+<path class="chf-kurva-linje" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26"/>
+<g class="chf-kurva-du">
+<text class="chf-kurva-etikett" x="119" y="105" text-anchor="middle">DU ÄR HÄR</text>
+<circle class="chf-kurva-ring" cx="119" cy="123" r="7"/>
+</g>
+</svg>
+<div class="chf-kurva-axel"><span>VECKA 0</span><span>6</span><span>12</span></div>
+</div>`,
+    },
+    {
+      kind: "info",
+      key: "kurva_steg3",
+      showWhen: { field: "steg", in: ["3"] },
+      html: `<div class="chf-kurva">
+<svg viewBox="0 0 320 160" role="img" aria-label="Tidslinje over tolv veckor">
+<line class="chf-kurva-rut" x1="16" y1="140" x2="304" y2="140"/>
+<path class="chf-kurva-yta" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26 L304,140 L16,140 Z"/>
+<path class="chf-kurva-linje" d="M16,132 C70,130 120,126 162,113 C205,100 250,68 304,26"/>
+<g class="chf-kurva-du">
+<text class="chf-kurva-etikett" x="208" y="70" text-anchor="end">DU ÄR HÄR</text>
+<circle class="chf-kurva-ring" cx="222" cy="85" r="7"/>
+</g>
+</svg>
+<div class="chf-kurva-axel"><span>VECKA 0</span><span>6</span><span>12</span></div>
+</div>`,
+    },
+
     { kind: "pagebreak", key: "till_avslojande", label: "Fortsätt" },
 
     // ================================ SVANSEN, BARA VID SISTA BILDEN ========
@@ -259,8 +325,7 @@ const progressbild: FormConfig = {
 <div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{bild_1_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 1</div></div>
 <div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{bild_2_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 30</div></div>
 <div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{vald_bild_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 60</div></div>
-</div>
-<p class="chf-slide-sub chf-mid" style="margin:18px 0 0">Spegeln visade ingenting från en dag till nästa. Tre bilder bredvid varandra gör det.</p>`,
+</div>`,
     },
     { kind: "pagebreak", key: "till_belöning", label: "Fortsätt" },
 
@@ -272,7 +337,7 @@ const progressbild: FormConfig = {
       showWhen: { field: "steg", in: ["3"] },
       html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.webp" alt="Presentkort pa 200 kronor" width="900" height="608" loading="eager"></div></figure>
 <h2 class="chf-slide-title chf-mid">200 kr, som tack</h2>
-<p class="chf-slide-sub chf-mid">Presentkortet är ditt. Vi mejlar det till <strong>{{email}}</strong> så fort du är klar här.</p>`,
+<p class="chf-slide-sub chf-mid">Dina tre bilder är inne. Vi mejlar presentkortet till <strong>{{email}}</strong>.</p>`,
     },
     { kind: "pagebreak", key: "till_samtycke", label: "Fortsätt" },
 
@@ -281,7 +346,7 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "samtycke_rubrik",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<h2 class="chf-slide-title chf-mid">Vill du inspirera någon annan?</h2>
+      html: `<h2 class="chf-slide-title chf-mid">Vad sägs om 400 kr istället?</h2>
 <figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort-400.webp" alt="Presentkort pa 400 kronor" width="900" height="608" loading="eager"></div></figure>
 <p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Det är precis sådana bilder någon annan behöver se innan hon vågar börja. Får vi visa dina dubblar vi ditt presentkort.</p>`,
     },

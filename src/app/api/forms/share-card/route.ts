@@ -44,8 +44,6 @@ function etikettSvg(rubrik: string, v: string, hoger: string): Buffer {
   <text x="${MARGIN + CELL_W + GAP + CELL_W / 2}" y="${etikettY}" text-anchor="middle"
         font-family="${font}" font-size="34" font-weight="800"
         fill="${BRAND}" letter-spacing="2">${hoger}</text>
-  <text x="${B / 2}" y="${etikettY + 92}" text-anchor="middle" font-family="${font}"
-        font-size="33" font-weight="500" fill="${TEXT}" opacity="0.6">Samma plats, samma ljus, ingen retusch.</text>
   <text x="${B / 2}" y="${H - 96}" text-anchor="middle" font-family="${font}"
         font-size="30" font-weight="700" fill="${TEXT}" opacity="0.5"
         letter-spacing="7">ENVANA</text>

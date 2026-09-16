@@ -90,6 +90,19 @@ def par(fylld_slot, fylld_label, tom_label):
     return ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
             '<tr>' + row1 + '</tr><tr>' + row2 + '</tr></table>')
 
+def serie_villkorad():
+    """Tre rutor, var och en villkorad pa att BILDEN finns - aldrig pa ett antal.
+
+    antal_bilder sa 3 efter tva milstolpar nar en uppladdning gjorts om, och en
+    serie ritad efter ett ANTAL fyllde ruta 1 med tom URL nar kunden hoppat over
+    ett steg, alltsa en trasig bildikon i mailet. Bara klaviyo-lage."""
+    labels = ("DAG 1", "DAG 30", "DAG 60")
+    row1 = "".join("{%% if event.bild_%d_url %%}%s{%% else %%}%s{%% endif %%}"
+                   % (n, slot_cell(n, "", True), slot_cell(n, "", False)) for n in (1, 2, 3))
+    row2 = "".join(label_cell(labels[n - 1], True) for n in (1, 2, 3))
+    return ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
+            '<tr>' + row1 + '</tr><tr>' + row2 + '</tr></table>')
+
 def series(filled_count):
     labels = ("DAG 1", "DAG 30", "DAG 60")
     row1 = "".join(slot_cell(n, labels[n - 1], n <= filled_count) for n in (1, 2, 3))
@@ -109,21 +122,71 @@ def button(text, href="#"):
       % (BRAND, href, FONT, text)
     )
 
-def gift(amount="200 kr", sub="Presentkort"):
+def gift(belopp="200"):
     """Presentkortet som BILD. Beloppet och wordmarken ar satta i kod ovanpa ett
     genererat kortunderlag (Higgsfield), inte genererade - en bildmodell far
     inte "200 kr" ratt, och ett fel belopp ar ett loftesfel.
 
     Tabellvarianten som stod har forut ritade kortet med CSS, vilket Outlook
     och Gmail renderade som en platt fyrkant utan radie."""
-    src = "presentkort-mail.jpg" if MODE == "preview" else "{{ organization.url }}/images/progressbild/presentkort-mail.jpg"
+    fil = "presentkort-400-mail.jpg" if belopp == "400" else "presentkort-mail.jpg"
+    src = fil if MODE == "preview" else "{{ organization.url }}/images/progressbild/" + fil
     return (
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" align="center">'
       '<tr><td align="center">'
-      '<img src="%s" width="290" alt="Presentkort pa 200 kronor" '
+      '<img src="%s" width="290" alt="Presentkort pa %s kronor" '
       'style="display:block;width:100%%;max-width:290px;height:auto;border:0;">'
-      '</td></tr></table>' % src
+      '</td></tr></table>' % (src, belopp)
     )
+
+CDN = "https://d3k81ch9hvuctc.cloudfront.net/company/W9uZu4/images/"
+
+def footer_bild(fil, alt, href=None):
+    img = ('<img src="%s%s" alt="%s" width="600" style="display:block;width:100%%;'
+           'max-width:600px;height:auto;border:0;">' % (CDN, fil, alt))
+    if href:
+        return '<a href="%s" style="text-decoration:none;border:0;">%s</a>' % (href, img)
+    return img
+
+def envana_footer():
+    """Butikens riktiga footer, inte en egen tolkning av den.
+
+    Wordmarken, navigeringen och USP-raden ar BILDER i Envanas Klaviyo-konto,
+    och samma URL:er aterbrukas har sa footern blir identisk med den kunden
+    redan sett i uthamtningsmejlet. Tva fel fran originalet ar rattade: dar
+    bar wordmarken alt="renew" och lankade till nedlagda get-renew.com.
+    """
+    rader = "".join(
+        '<tr><td align="center" style="padding:0;">%s</td></tr>' % r for r in [
+            footer_bild("ac4b2c18-1389-4097-a9ce-9e5ffc909e89.jpeg", "Envana", "https://shopenvana.com/"),
+            footer_bild("85145ec1-4a15-46df-a07b-07e8b3399be6.jpeg", "Hem", "https://shopenvana.com/"),
+            footer_bild("7df44d92-7761-4782-8b21-2141680f14bc.jpeg", "Vanliga frågor", "https://shopenvana.com/pages/faq"),
+            footer_bild("07978449-c728-4570-bd1e-3b1b27bd448a.jpeg", "Kontakt", "https://shopenvana.com/pages/kontakt"),
+            footer_bild("84249a4f-b4e2-4ed2-9cb8-e71c1771bb90.jpeg",
+                        "1-3 dagars gratis leverans, tillverkad i Sverige, 60 dagar pengarna tillbaka garanti"),
+        ])
+    finstilt = (
+      '<tr><td align="center" style="padding:16px 18px 26px;">'
+      '<div style="font:400 12px %s;line-height:1.7;color:rgba(255,255,255,.72);">'
+      'Du får det här mejlet för att du dokumenterar din Envana-resa.<br>'
+      'Bilderna är dina. Vi visar dem aldrig för någon utan att fråga dig först.<br><br>'
+      'Upphovsrätt &copy; {%% current_year %%}, {{ organization.name }}<br>'
+      'Alla rättigheter förbehållna.<br>{{ organization.full_address }}<br><br>'
+      'Om du vill avsluta prenumerationen, klicka på '
+      '{%% unsubscribe \'Avsluta prenumeration\' %%}'
+      '</div></td></tr>' % FONT)
+    return (
+      '<tr><td align="center" style="padding:26px 0 0;">%s</td></tr>'
+      '<tr><td style="background:#330d02;padding:0;">'
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
+      '%s%s</table></td></tr>'
+      % (footer_bild("d6d7fc88-ee9b-43f4-b82e-e77f3543d923.png", ""), rader, finstilt))
+
+def wordmark():
+    fil = "envana-wordmark.png"
+    src = fil if MODE == "preview" else "{{ organization.url }}/images/progressbild/" + fil
+    return ('<img src="%s" alt="Envana" width="112" style="display:block;width:112px;'
+            'max-width:112px;height:auto;border:0;">' % src)
 
 def shell(preheader, body):
     return """<!doctype html>
@@ -135,79 +198,38 @@ def shell(preheader, body):
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" style="background:%(bg)s;">
 <tr><td align="center" style="padding:28px 12px 40px;">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%%;max-width:600px;">
-<tr><td align="center" style="padding:0 0 22px;">
-<div style="font:700 13px %(font)s;letter-spacing:3.4px;color:%(head)s;">ENVANA</div></td></tr>
+<tr><td align="center" style="padding:0 0 22px;">%(wordmark)s</td></tr>
 <tr><td style="background:%(surface)s;border-radius:18px;padding:30px 26px;">%(body)s</td></tr>
-<tr><td align="center" style="padding:22px 10px 0;">
-<div style="font:400 12px %(font)s;line-height:1.6;color:%(muted)s;">
-Du får det här mejlet för att du dokumenterar din Envana-resa.<br>
-Bilderna är dina. Vi visar dem aldrig för någon utan att fråga dig först.<br>
-<a href="{%% unsubscribe %%}" style="display:inline-block;padding:14px 10px;color:%(muted)s;">Avsluta påminnelserna</a>
-</div></td></tr>
-</table></td></tr></table></body></html>""" % dict(bg=BG, pre=preheader, font=FONT, head=HEAD,
-                                                  surface=SURFACE, body=body, muted=MUTED)
+%(footer)s
+</table></td></tr></table></body></html>""" % dict(bg=BG, pre=preheader, font=FONT, head=HEAD, surface=SURFACE,
+                                                  body=body, muted=MUTED, footer=envana_footer(), wordmark=wordmark())
 
 H = 'style="font:700 24px %s;line-height:1.3;color:%s;margin:0 0 10px;"' % (FONT, HEAD)
 P = 'style="font:400 16px %s;line-height:1.62;color:%s;margin:0 0 16px;"' % (FONT, MUTED)
 
-# ---------------------------------------------------------------- 1. KVITTENS
-# En mall for alla tre tillfallena. Rubrik och text villkoras pa event.steg,
-# serien ritas efter antal_bilder. Det ar de TOMMA rutorna som gor jobbet.
-if OUT.endswith("kvittens"):
-    if MODE == "klaviyo":
-        # INGEN steg 3-variant. Vid sista bilden gar SLUTMAILET ut, och de sa
-        # ordagrant samma sak: hela serien plus presentkortet pa vag. Tva mail
-        # i inkorgen samtidigt med samma besked. Flodet i Klaviyo ska villkora
-        # bort kvittensen nar event.steg == '3'.
-        rubrik = ("{% if event.steg == '2' %}Halvvägs, en bild kvar"
-                  "{% else %}Första bilden är sparad{% endif %}")
-        text = ("{% if event.steg == '2' %}Trettio dagar sedan startbilden. Nästa bild är den "
-                "sista, och det är mellan nu och då som förändringen brukar vara som störst."
-                "{% else %}Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter "
-                "naglarna och håret först - de svarar tidigare än huden.{% endif %}")
-        # Villkora pa att BILDEN finns, inte pa hur manga rader kunden har.
-        # antal_bilder sa 3 efter tva milstolpar nar en uppladdning gjorts om,
-        # och en serie ritad efter ett ANTAL fyllde ruta 1 med en tom URL nar
-        # kunden hoppat over ett steg - alltsa en trasig bildikon i mailet.
-        serie = ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>'
-                 + "".join(
-                     "{%% if event.bild_%d_url %%}%s{%% else %%}%s{%% endif %%}"
-                     % (n, slot_cell(n, "", True), slot_cell(n, "", False))
-                     for n in (1, 2, 3))
-                 + '</tr><tr>'
-                 + "".join(label_cell(("DAG 1", "DAG 30", "DAG 60")[n - 1], True) for n in (1, 2, 3))
-                 + '</tr></table>')
-    else:
-        if VARIANT == "2":
-            rubrik, text, serie = ("Halvvägs, en bild kvar",
-                "Trettio dagar sedan startbilden. Nästa bild är den sista, och det är mellan "
-                "nu och då som förändringen brukar vara som störst.", series(2))
-        else:
-            rubrik, text, serie = ("Första bilden är sparad",
-                "Vi hör av oss om 30 dagar när det är dags för nästa. Titta efter naglarna och "
-                "håret först - de svarar tidigare än huden.", series(1))
-    body = ('<h1 %s>%s</h1><p %s>%s</p>%s'
-            '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:20px 0 0;text-align:center;">'
-            'Rutorna fylls i takt med att du laddar upp.</p>' % (H, rubrik, P, text, serie, FONT, MUTED))
-    html = shell("Din bild är sparad.", body)
+# Kvittensmailen dag 1 och dag 30 ar BORTTAGNA (William 2026-09-16). De sa
+# ordagrant samma sak som formularets sista skarm, som hon just last: samma
+# rubrik, samma serie, samma besked om nasta bild. Ett mail vars enda jobb ar
+# att upprepa skarmen kunden nyss lamnade ar ett mail for mycket. Kvar i
+# kedjan: paminnelse dag 30, paminnelse dag 60, slutmail dag 60.
 
 # ------------------------------------------------------------- 2. PAMINNELSE
 # Hennes FORRA bild visas stort. Det ar den enda vinkelguidning hon far, och
 # den ar battre an en textrad: hon ser hur bilden togs i stallet for att lasa
 # om det.
-elif OUT.endswith("paminnelse"):
+if OUT.endswith("paminnelse"):
     if MODE == "klaviyo":
         rubrik = ("{% if event.antal_bilder == 2 %}Dags för din sista bild"
                   "{% else %}Dags för bild två{% endif %}")
         forra = cond("event.antal_bilder == 2",
-                     par(2, "DAG 30", "DAG 60"),
+                     serie_villkorad(),
                      par(1, "DAG 1", "DAG 30"))
     else:
         rubrik = "Dags för din sista bild" if VARIANT == "2" else "Dags för bild två"
-        forra = par(2, "DAG 30", "DAG 60") if VARIANT == "2" else par(1, "DAG 1", "DAG 30")
+        forra = series(2) if VARIANT == "2" else par(1, "DAG 1", "DAG 30")
     body = (
       '<h1 %s>%s</h1>'
-      '<p %s>Så här såg din förra bild ut. Ställ dig på samma plats, i samma ljus och håll '
+      '<p %s>Så här ser din resa ut hittills. Ställ dig på samma plats, i samma ljus och håll '
       'telefonen lika högt, så blir jämförelsen rättvis.</p>'
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
       '<tr><td align="center" style="padding:4px 0 8px;">%s'
@@ -219,29 +241,47 @@ elif OUT.endswith("paminnelse"):
     html = shell("Det är dags för nästa progressbild.", body)
 
 # ---------------------------------------------------------------- 3. SLUTMAIL
-# Hela serien, sedan pengarna, sedan fragan. Ordningen ar avsiktlig: fragan
-# stalls nar hon just sett sin egen forandring OCH blivit betald.
+# Mailet stallde forut samtyckesfragan en gang till och lankade till det gamla
+# samtyckesformularet - bada ersatta av svansen i formularet, dar hon redan
+# svarat. Nu ar mailet en KVITTENS pa det hon valde, med ratt belopp.
+#
+# Och ramen ar bytt: dag 60 ar inte ett avslut. Kim et al. 2018 (Nutrients,
+# DOI 10.3390/nu10070826, grad A2 i renew-study-registry) mater hudfukt vid
+# vecka 6 och rynkor/elasticitet forst vid vecka 12. Dag 60 ar vecka 8,5,
+# alltsa fore den andra matpunkten. Studien ar pa LMWCP och far inte
+# framstallas som var produkts resultat - darav "i studier".
 else:
+    if MODE == "klaviyo":
+        kort = cond("event.samtycke == 'ja'", gift("400"), gift("200"))
+        kvitto = cond("event.samtycke == 'ja'",
+            "Tack för att vi får visa dina bilder. Presentkortet på "
+            "<strong>400 kr</strong> mejlar vi till dig.",
+            "Presentkortet på <strong>200 kr</strong> mejlar vi till dig.")
+    else:
+        ja = VARIANT == "400"
+        kort = gift("400" if ja else "200")
+        kvitto = ("Tack för att vi får visa dina bilder. Presentkortet på "
+                  "<strong>400 kr</strong> mejlar vi till dig." if ja else
+                  "Presentkortet på <strong>200 kr</strong> mejlar vi till dig.")
     body = (
-      '<h1 %s>Tre bilder, 60 dagar</h1>'
-      '<p %s>Här är hela din resa. Bilderna är tagna av dig, på dig, med 30 dagars mellanrum.</p>'
+      '<h1 %s>Här är dina tre bilder</h1>'
+      '<p %s>Dag 1, dag 30 och dag 60, tagna av dig på dig.</p>'
       '%s'
-      '<div style="height:26px;"></div>'
-      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
-      '<tr><td align="center" style="border-top:1px solid #f1e5e0;padding:26px 0 0;">'
-      '%s'
-      '<p style="font:400 15px %s;line-height:1.6;color:%s;margin:16px 0 0;">'
-      'Ditt presentkort är på väg till den här inkorgen. Det är ditt, oavsett vad du svarar '
-      'på frågan nedan.</p></td></tr></table>'
       '<div style="height:26px;"></div>'
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
       '<tr><td style="border-top:1px solid #f1e5e0;padding:26px 0 0;">'
-      '<h2 style="font:700 20px %s;line-height:1.35;color:%s;margin:0 0 10px;">Får vi visa dina bilder?</h2>'
-      '<p %s>Vi letar efter äkta före och efter från riktiga kunder. Säger du ja skickar vi '
-      '<strong style="color:%s;">200 kr till</strong>. Säger du nej händer ingenting, och '
-      'bilderna förblir dina.</p>%s</td></tr></table>'
-      % (H, P, series(3), gift(), FONT, MUTED, FONT, HEAD, P, HEAD, button("Svara på frågan", lank(SAMTYCKE_BAS))))
-    html = shell("Hela din 60-dagarsserie, och dina 200 kr.", body)
+      '<h2 style="font:700 20px %s;line-height:1.35;color:%s;margin:0 0 10px;">'
+      'Sextio dagar är en början, inte ett slut</h2>'
+      '<p %s>I studier syns fukt tidigast runt vecka 6, och spänst och fina linjer '
+      'först vid vecka 12. Du är inte framme vid den punkten än, så fortsätt med din '
+      'dagliga shot.</p></td></tr></table>'
+      '<div style="height:26px;"></div>'
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%">'
+      '<tr><td align="center" style="border-top:1px solid #f1e5e0;padding:26px 0 0;">%s'
+      '<p style="font:400 15px %s;line-height:1.6;color:%s;margin:16px 0 0;">%s</p>'
+      '</td></tr></table>'
+      % (H, P, series(3), FONT, HEAD, P, kort, FONT, MUTED, kvitto))
+    html = shell("Dina tre bilder, och ditt presentkort.", body)
 
 io.open(OUT + "." + MODE + ".html", "w", encoding="utf-8").write(html)
 print("skrev", OUT + "." + MODE + ".html", len(html), "tecken")

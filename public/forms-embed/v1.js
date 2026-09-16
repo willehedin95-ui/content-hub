@@ -359,7 +359,7 @@
     // far inte "200 kr" och "ENVANA" ratt, och ett belopp som star fel i en
     // mockup ar ett loftesfel. Se feedback_generate_parts_compose_in_code.
     ".chf-app .chf-reward{display:flex;align-items:center;gap:14px;background:var(--chf-surface);" +
-    "border:1px solid rgba(50,13,1,.08);border-radius:16px;padding:14px;margin:0 0 14px}" +
+    "border:1px solid rgba(50,13,1,.08);border-radius:16px;padding:14px;margin:22px 0 14px}" +
     ".chf-app .chf-reward svg{width:96px;height:auto;flex:none}" +
     ".chf-app .chf-reward-txt{font-size:14px;line-height:1.5;color:var(--chf-muted);text-align:left}" +
     ".chf-app .chf-reward-txt b{display:block;color:var(--chf-text);font-size:15px;margin-bottom:2px}" +
@@ -504,6 +504,34 @@
     "justify-content:center;animation:chf-pop .32s cubic-bezier(.34,1.56,.64,1) both}" +
     ".chf-app .chf-endmark svg{width:34px;height:34px;color:var(--chf-brand)}" +
     ".chf-app .chf-slots{display:flex;gap:10px;margin:4px 0 22px}" +
+
+    // Tidslinjekurvan. Monstret ar Gruns/FP:s 12-veckors timeline-graf med
+    // "Du ar har"-markor (quiz-funnels, renew-quiz-blueprint punkt 138).
+    // Kurvan ar KVALITATIV med avsikt: ingen y-skala och inga effektsiffror,
+    // for det enda som ar kallbelagt ar NAR saker brukar synas (Kim et al.
+    // 2018, Nutrients - fukt vid vecka 6, rynkor och elasticitet vid 12),
+    // inte hur mycket. En y-axel med tal hade last som ett utlovat resultat.
+    ".chf-app .chf-kurva{background:var(--chf-surface);border:1px solid rgba(50,13,1,.08);" +
+    "border-radius:16px;padding:16px 14px 10px;margin:6px 0 4px}" +
+    ".chf-app .chf-kurva svg{display:block;width:100%;height:auto}" +
+    ".chf-app .chf-kurva-linje{fill:none;stroke:var(--chf-brand);stroke-width:3.5;" +
+    "stroke-linecap:round;stroke-dasharray:420;stroke-dashoffset:420;" +
+    "animation:chf-rita 1.5s cubic-bezier(.33,.9,.42,1) .15s forwards}" +
+    "@keyframes chf-rita{to{stroke-dashoffset:0}}" +
+    ".chf-app .chf-kurva-yta{fill:var(--chf-brand);opacity:0;animation:chf-tona .9s ease .85s forwards}" +
+    "@keyframes chf-tona{to{opacity:.09}}" +
+    ".chf-app .chf-kurva-du{opacity:0;animation:chf-pop .45s cubic-bezier(.34,1.56,.64,1) 1.15s forwards}" +
+    "@keyframes chf-pop{from{opacity:0;transform:translateY(6px) scale(.8)}" +
+    "to{opacity:1;transform:none}}" +
+    ".chf-app .chf-kurva-ring{fill:#fff;stroke:var(--chf-brand);stroke-width:3.5}" +
+    ".chf-app .chf-kurva-etikett{font:700 11px inherit;fill:var(--chf-brand);letter-spacing:.4px}" +
+    ".chf-app .chf-kurva-rut{stroke:rgba(50,13,1,.09);stroke-width:1}" +
+    ".chf-app .chf-kurva-axel{display:flex;justify-content:space-between;margin:2px 2px 0;" +
+    "font-size:11.5px;font-weight:600;letter-spacing:.3px;color:var(--chf-muted)}" +
+    "@media (prefers-reduced-motion:reduce){" +
+    ".chf-app .chf-kurva-linje{animation:none;stroke-dashoffset:0}" +
+    ".chf-app .chf-kurva-yta{animation:none;opacity:.09}" +
+    ".chf-app .chf-kurva-du{animation:none;opacity:1}}" +
     ".chf-app .chf-slot-cell{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px}" +
     ".chf-app .chf-slot-box{width:100%;aspect-ratio:4/5;border-radius:14px;display:flex;" +
     "align-items:center;justify-content:center;overflow:hidden;box-sizing:border-box;" +
@@ -986,6 +1014,22 @@
       if (stepIdx === 0) stepEl.classList.add("chf-in");
       if (stepIdx !== 0) stepEl.style.display = "none";
 
+      // Single select: klicket ar sjalva svaret och darmed ocksa stegets
+      // handling. En Fortsatt-knapp under alternativen blir en andra vag ur
+      // skarmen och ett extra tryck utan innehall. Multi select behaller sin
+      // CTA - dar ar ett klick inte ett avslut.
+      //
+      // Raknar SYNLIGA falt, eftersom ett steg kan bara flera radios som
+      // utesluter varandra pa showWhen (fragan skiljer sig mellan bild 1 och
+      // bild 2/3). Synligheten las vid bygget, vilket racker sa lange inget
+      // falt i SAMMA steg styr ett annat faltts showWhen.
+      var synliga = step.fields.filter(function (f) {
+        if (f.kind === "info" || f.kind === "hidden") return false;
+        return !f.showWhen || conditionMet(f.showWhen);
+      });
+      var autoRadio = synliga.length === 1 && synliga[0].kind === "radio" ? synliga[0] : null;
+      step.fields.forEach(function (f) { f.__auto = f === autoRadio; });
+
       step.fields.forEach(function (f) {
         var wrap;
         if (f.kind === "info") {
@@ -1043,7 +1087,7 @@
 
       // Ett steg med valknappar har redan sin handling. En CTA under dem hade
       // varit en tredje vag ur skarmen, och den vagen finns inte.
-      var harVal = step.fields.some(function (f) { return f.kind === "choice"; });
+      var harVal = !!autoRadio || step.fields.some(function (f) { return f.kind === "choice"; });
       if (harVal) {
         stepEl.__carousel = wireCarousel(stepEl);
         form.appendChild(stepEl);
@@ -1164,7 +1208,20 @@
         inp.type = "radio";
         inp.name = id;
         inp.value = o.value;
-        inp.addEventListener("change", function () { if (inp.checked) setValue(f.key, o.value); });
+        inp.addEventListener("change", function () {
+          if (!inp.checked) return;
+          setValue(f.key, o.value);
+          if (!f.__auto) return;
+          // Kort paus sa hon HINNER se att hennes val markerades. Utan den
+          // byts skarmen i samma ogonblick som fingret lyfts och valet
+          // bekraftas aldrig visuellt.
+          setTimeout(function () {
+            var steg = group.closest("[data-step]");
+            var idx = steg ? parseInt(steg.getAttribute("data-step"), 10) : state.currentStep;
+            var nasta = nextVisibleStep(idx + 1, 1);
+            if (nasta === null) skickaInDirekt(); else showStep(nasta);
+          }, 200);
+        });
         lab.appendChild(inp);
         lab.appendChild(elText("span", null, o.label));
         group.appendChild(lab);
