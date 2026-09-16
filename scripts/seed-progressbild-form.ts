@@ -159,15 +159,20 @@ const progressbild: FormConfig = {
     // helbild later jamforelsen visa vad som faktiskt hant; Zookis losning ar
     // battre eftersom den gor samma poang utan att bestamma at henne.
     //
-    // Exempelbilden ar borta har. Med "valj omrade sjalv" i texten skulle en
-    // enda ansiktsbild saga emot instruktionen - den hade last som facit for
-    // ett av flera giltiga val. Vi har inga bilder pa hals eller ogonparti att
-    // stalla bredvid, sa ingen bild alls ar arligare an fel bild.
+    // Exemplet ar ett 2x2-collage (William 2026-09-16) i stallet for en enda
+    // bild: hela ansiktet, kring ogonen, munnen, halsen. Fyra rutor sager det
+    // texten sager - att valet ar hennes - vilket en ensam ansiktsbild inte
+    // kunde, den hade last som facit for ett av flera giltiga val.
+    //
+    // Alla fyra ar utsnitt ur SAMMA ansikte, och det ar avsiktligt. Fyra olika
+    // personer hade lasts som fyra kunder i stallet for fyra val. Byggt i kod
+    // ur exempel-bra.jpg, se collage.mjs - utsnitten ar uppmatta, inte gissade.
     {
       kind: "info",
       key: "foto_lead_1",
       showWhen: { field: "steg", in: ["1"] },
-      html: `<p class="chf-lead chf-hide-on-photo"><b>Vilket område du vill följa väljer du själv.</b> Vissa tar en selfie på hela ansiktet, andra en närbild på stället de tänker mest på, som kring ögonen, läpparna eller halsen. Det viktigaste är att bilden är <b>skarp</b> och att <b>ljuset är bra</b>.</p>`,
+      html: `<p class="chf-lead chf-hide-on-photo"><b>Vilket område du vill följa väljer du själv.</b> Det viktigaste är att bilden är <b>skarp</b> och att <b>ljuset är bra</b>.</p>
+<figure class="chf-shot chf-hide-on-photo"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/omraden.jpg" alt="Fyra exempel: hela ansiktet, kring ogonen, munnen och halsen" width="654" height="722" loading="eager"></div></figure>`,
     },
     // Dag 30 och 60: ledtexten och bilden ar SKILDA block med olika villkor.
     // Villkoren ar ett falt vardera (in / notEmpty), sa de gar inte att slaa
