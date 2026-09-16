@@ -92,6 +92,30 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 - [x] KLART 08-19: kostnad per bygge mats (credits-kolumn i run-log)
 - [x] KLART 08-19: AKUT armhavningsvideon - avdaterad, ligger oschemalagd
 
+## Recensionsmejl vid uthamtning (SwedishBalance + Envana) - LIVE 2026-09-15
+
+Kollagenkunder far ett recensionsmejl ett dygn efter att de hamtat ut paketet hos
+ombudet, kl 10. Cronen `/api/cron/pickup-tracker` kor i produktion varje timme.
+Bada Klaviyo-floden ar live: SB `VRLL4F`, Envana `VZ2gAW`. 30-dagarsflodet `WZS9Bi`
+har trigger-filter som stoppar kollagen. Bakgrund och beslut: SharedVault
+`envana/envana-recensioner-uthamtning.md`, teknik i `CLAUDE.md`.
+
+- [ ] **Kolla utfallet 16 sep efter kl 10.** Ca 11 kunder far det forsta riktiga
+      mejlet. Jamfor oppning och klick mot 30-dagarsflodet, som fallit fran 11,5%
+      klick (sep 2025) till 5,0% (aug 2026). Det ar forst har vi vet om hela
+      grejen var vard nagot.
+- [ ] **Pusha `1290f5a2`** nar nagot annat anda ska upp. Kollagenflaggan matchade
+      bara pa artikelnummer och missade artiklar som heter kollagen i NAMNET
+      (`TEMP<siffror>`). Ingen kund drabbad - TEMP-artiklarna har noll i lager och
+      William kallar dem testprodukter.
+- [ ] **Envana-ordrar nar inte Shelfless.** EN1007 och EN1008 ar betalda men har
+      varken fulfillment i Shopify eller rad i lagret. Flodet star redo men far
+      inga event forran det borjar rulla. Kolla om kopplingen ar pasatt.
+- [ ] **30-dagarsmejlet for kuddarna** fragar om produkten pa dag 30 och har tappat
+      halva klickfrekvensen pa ett ar. Vard en omskrivning nu nar kollagenet lyfts ur.
+- [ ] Overvag att lyfta ur kollagen ur fler SB-floden som antar kudde (footern i
+      30-dagarsmejlet har kudde-USP:er, Klarna-rad och kudde-navigering).
+
 ## Izabella-studion (izabella-v2/studio) - efter 2026-08-27
 
 Handover: `izabella-v2/docs/STUDIO-HANDOVER.md`. Deploy `studio-81-20260827`.
