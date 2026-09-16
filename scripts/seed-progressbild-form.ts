@@ -441,15 +441,14 @@ const progressbild: FormConfig = {
           showWhen: { field: "steg", in: ["1"] },
           title: "Första bilden är inne",
           html: `<div class="chf-slots"><div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{uppladdad_url}}" alt="Din bild"></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 1</div></div><div class="chf-slot-cell"><div class="chf-slot-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div><div class="chf-slot-cap">DAG 30</div></div><div class="chf-slot-cell"><div class="chf-slot-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div><div class="chf-slot-cap">DAG 60</div></div></div>
-<p>Vi mejlar dig på <strong>{{email}}</strong> om 30 dagar, när det är dags för nästa bild.</p>
-<p style="margin-top:14px">Titta efter naglarna och håret under tiden. De svarar tidigare än huden, ofta innan du ser något i ansiktet.</p>`,
+<p>Vi mejlar dig på <strong>{{email}}</strong> om 30 dagar, när det är dags för nästa bild.</p>`,
         },
         {
           showWhen: { field: "steg", in: ["2"] },
           title: "Halvvägs",
           html: `<div class="chf-slots"><div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{forra_bild_url}}" alt=""></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 1</div></div><div class="chf-slot-cell"><div class="chf-slot-box chf-slot-fylld"><img src="{{uppladdad_url}}" alt="Din bild"></div><div class="chf-slot-cap chf-slot-cap-fylld">DAG 30</div></div><div class="chf-slot-cell"><div class="chf-slot-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div><div class="chf-slot-cap">DAG 60</div></div></div>
 <p>En bild kvar. Vi mejlar dig på <strong>{{email}}</strong> om 30 dagar.</p>
-<p style="margin-top:14px">Det är nu det börjar hända. Mellan dag 30 och dag 60 är förändringen som störst, och den sista bilden är den som visar den.</p>`,
+<p style="margin-top:14px">Spänst och elasticitet brukar visa sig runt dag 60. Den sista bilden är den som fångar det.</p>`,
         },
         {
           showWhen: { field: "steg", in: ["3"] },
