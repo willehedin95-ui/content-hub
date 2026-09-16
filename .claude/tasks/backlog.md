@@ -100,10 +100,14 @@ Bada Klaviyo-floden ar live: SB `VRLL4F`, Envana `VZ2gAW`. 30-dagarsflodet `WZS9
 har trigger-filter som stoppar kollagen. Bakgrund och beslut: SharedVault
 `envana/envana-recensioner-uthamtning.md`, teknik i `CLAUDE.md`.
 
-- [ ] **Kolla utfallet 16 sep efter kl 10.** Ca 11 kunder far det forsta riktiga
-      mejlet. Jamfor oppning och klick mot 30-dagarsflodet, som fallit fran 11,5%
-      klick (sep 2025) till 5,0% (aug 2026). Det ar forst har vi vet om hela
-      grejen var vard nagot.
+- [x] **Forsta utskicket matt 16 sep.** 7 mejl kl 10:01-10:05, 0 studsar, 0
+      overhoppade, 1 oppning + 1 klick efter fem timmar, 5 i kon. For litet for
+      slutsatser. (done 2026-09-16)
+- [ ] **Mat igen vid ~100 utskick** (nagra veckor med ~240 kollagenordrar/man).
+      Jamfor oppning och klick mot 30-dagarsflodet, som fallit fran 11,5% klick
+      (sep 2025) till 5,0% (aug 2026). Det ar forst da vi vet om det var vart nagot.
+      **Flodesstatistik lases i Klaviyos UI** - API:et visar bara utfallet, aldrig
+      `Waiting`-kon.
 - [ ] **Pusha `1290f5a2`** nar nagot annat anda ska upp. Kollagenflaggan matchade
       bara pa artikelnummer och missade artiklar som heter kollagen i NAMNET
       (`TEMP<siffror>`). Ingen kund drabbad - TEMP-artiklarna har noll i lager och
