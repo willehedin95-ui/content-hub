@@ -286,6 +286,25 @@ async function deliverViaKlaviyo(
     series.forEach((shot, i) => {
       properties[`serie_${i + 1}_url`] = shot.url;
     });
+
+    // Hela serien inne = belöningen ska ut. Den beviljas HÄR och inte i ett
+    // Klaviyo-flöde, för Klaviyo kan skicka mail men inte lägga ett avdrag i
+    // Loop. Resultatet följer med eventet så mailet kan säga rätt sak.
+    //
+    // Fel här får ALDRIG stoppa eventet: mailet är viktigare än avdraget, och
+    // ett misslyckat avdrag ligger kvar i `progressbild_beloningar` med
+    // typ=kraver-manuell och kan betalas ut för hand.
+    if (series.length >= 3) {
+      try {
+        const { beviljaBeloning } = await import("./progressbild-beloning");
+        const r = await beviljaBeloning(email);
+        properties.beloning_typ = r.typ;
+        if (r.typ === "loop-avdrag") properties.beloning_belopp = r.belopp;
+      } catch (e) {
+        console.error("[form-delivery] belöningen kunde inte beviljas:", e);
+        properties.beloning_typ = "kraver-manuell";
+      }
+    }
   }
 
   await trackKlaviyoEvent({
