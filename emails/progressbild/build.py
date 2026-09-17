@@ -282,18 +282,10 @@ elif OUT.endswith("paminnelse"):
 # alltsa fore den andra matpunkten. Studien ar pa LMWCP och far inte
 # framstallas som var produkts resultat - darav "i studier".
 else:
-    if MODE == "klaviyo":
-        kort = cond("event.samtycke == 'ja'", gift("400"), gift("200"))
-        kvitto = cond("event.samtycke == 'ja'",
-            "Tack för att vi får visa dina bilder. Presentkortet på "
-            "<strong>400 kr</strong> mejlar vi till dig.",
-            "Presentkortet på <strong>200 kr</strong> mejlar vi till dig.")
-    else:
-        ja = VARIANT == "400"
-        kort = gift("400" if ja else "200")
-        kvitto = ("Tack för att vi får visa dina bilder. Presentkortet på "
-                  "<strong>400 kr</strong> mejlar vi till dig." if ja else
-                  "Presentkortet på <strong>200 kr</strong> mejlar vi till dig.")
+    # Beloppet ar alltid 200. Samtyckesfragan med det dubblade presentkortet
+    # ar borttagen ur flodet 2026-09-17 - se noten i seed-progressbild-form.ts.
+    kort = gift("200")
+    kvitto = "Presentkortet på <strong>200 kr</strong> mejlar vi till dig."
     body = (
       '<h1 %s>Här är dina tre bilder</h1>'
       '<p %s>Dag 1, dag 30 och dag 60, tagna av dig på dig.</p>'

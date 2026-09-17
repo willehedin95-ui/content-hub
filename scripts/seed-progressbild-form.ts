@@ -365,8 +365,9 @@ const progressbild: FormConfig = {
     },
     { kind: "pagebreak", key: "till_belöning", label: "Fortsätt" },
 
-    // Skarm 2: pengarna. Ensam pa skarmen, och uttalat ovillkorade - det ar
-    // det som gor samtycket pa nasta skarm giltigt.
+    // Skarm 2: pengarna, och nu sista skarmen fore tacket. De ar uttalat
+    // ovillkorade - hon far dem for att hon dokumenterat sin resa, punkt.
+    // Ingen motprestation efterfragas har (se noten nedan om samtycket).
     {
       kind: "info",
       key: "belöning",
@@ -375,66 +376,23 @@ const progressbild: FormConfig = {
 <h2 class="chf-slide-title chf-mid">200 kr, som tack</h2>
 <p class="chf-slide-sub chf-mid">Dina tre bilder är inne. Vi mejlar presentkortet till <strong>{{email}}</strong>.</p>`,
     },
-    { kind: "pagebreak", key: "till_samtycke", label: "Fortsätt" },
 
-    // Skarm 3: fragan. Nej kostar ingenting och star lika tydligt som ja.
-    {
-      kind: "info",
-      key: "samtycke_rubrik",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<h2 class="chf-slide-title chf-mid">Vad sägs om 400 kr istället?</h2>
-<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort-400.webp" alt="Presentkort pa 400 kronor" width="900" height="608" loading="eager"></div></figure>
-<p class="chf-slide-sub chf-mid" style="margin:14px 0 0">Det är precis sådana bilder någon annan behöver se innan hon vågar börja. Får vi visa dina dubblar vi ditt presentkort.</p>`,
-    },
-    // Valet ar TVA KNAPPAR, inte en kryssruta. William: "spelen gor det
-    // LOCKANDE att klicka pa 2x reward". En kryssruta ar en blankett man
-    // bockar i, en knapp ar nagot man vill trycka pa - och ett aktivt klick pa
-    // en knapp som sager vad den betyder ar dessutom ett STARKARE samtycke an
-    // en ikryssad ruta.
-    {
-      kind: "info",
-      key: "samtycke_villkor",
-      showWhen: { field: "steg", in: ["3"] },
-      html: `<p class="chf-privacy" style="margin:14px 0 0">Vi kan komma att använda dem i vår marknadsföring. Du kan ändra dig när som helst genom att skicka ett mejl till oss.</p>`,
-    },
-        {
-      kind: "choice",
-      key: "samtycke",
-      showWhen: { field: "steg", in: ["3"] },
-      options: [
-        {
-          value: "ja",
-          label: "Ja, dubbla till 400 kr",
-          sub: "Envana får använda mina bilder",
-          style: "primary",
-        },
-        { value: "nej", label: "Nej tack, behåll 200 kr", style: "quiet" },
-      ],
-    },
-{ kind: "pagebreak", key: "till_namn", label: "Fortsätt" },
-
-    // Namnet och orden kommer EFTER jaet. Pa valskarmen ska det bara finnas
-    // ett val.
-    {
-      kind: "info",
-      key: "namn_rubrik",
-      showWhen: { field: "samtycke", in: ["ja"] },
-      html: `<h2 class="chf-slide-title chf-mid">Får vi skriva ditt förnamn?</h2>
-<p class="chf-slide-sub chf-mid">Lämnar du det tomt visas bilderna helt anonymt.</p>`,
-    },
-    {
-      kind: "text",
-      key: "fornamn",
-      showWhen: { field: "samtycke", in: ["ja"] },
-      placeholder: "t.ex. Anna",
-    },
-    {
-      kind: "textarea",
-      key: "bildtext",
-      label: "Vill du säga något om din resa?",
-      showWhen: { field: "samtycke", in: ["ja"] },
-      placeholder: "Dina egna ord säger mer än något vi kan skriva.",
-    },
+    // HAR LAG SAMTYCKET: en skarm som erbjod 400 kr i stallet for 200 om hon
+    // lat oss anvanda bilderna, plus fornamn och bildtext efter ett ja.
+    // Borttaget 2026-09-17 (William och Rasmus).
+    //
+    // Skalet ar inte att greppet var svagt - det ar att det var for starkt.
+    // Manga hade nappat pa pengarna oavsett vad de tyckte, och ett ja som
+    // kops ar inte ett ja som betyder nagot. Dessutom gar ekonomin isar: har
+    // hon kopt en flaska gar vi back pa 400 kr, pa tva ar det break even.
+    // Att vifta med stora belopp skaver ocksa mot att varumarket ska kannas
+    // premium snarare an automatiserat.
+    //
+    // I stallet: samla in bilderna forst, och nar en serie faktiskt visar
+    // nagot - hor grundaren av sig PERSONLIGT och fragar. Da ar det en tjanst
+    // mellan tva personer i stallet for en transaktion, och den som tillfragas
+    // blir utvald snarare an kopt. Skalet vi ger handlar om vad bilderna gor
+    // for nagon annan som tvekar, inte om vad de ger oss.
   ],
   endings: {
     // Varianter per steg. Samma text vid alla tre var direkt felaktig vid den
