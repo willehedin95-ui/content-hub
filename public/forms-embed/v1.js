@@ -235,7 +235,8 @@
     // Steget fyller resten av skarmen och CTA:n trycks till botten (margin-top
     // auto pa knappen). Det ar det som gor att ett kort steg ser fardigt ut i
     // stallet for att lamna en tom halva under sig.
-    ".chf-app .chf-step{flex:1;display:flex;flex-direction:column}" +
+    ".chf-app .chf-step{flex:1;display:flex;flex-direction:column;" +
+    "padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}" +
     ".chf-app .chf-step.chf-in{animation:chf-step-in .28s ease-out both}" +
     "@keyframes chf-step-in{from{opacity:0}to{opacity:1}}" +
     "@media (prefers-reduced-motion:reduce){.chf-app .chf-step.chf-in{animation:none}}" +
@@ -1439,7 +1440,11 @@
     var tpls = container.querySelectorAll('[data-tpl="1"]');
     for (var t = 0; t < tpls.length; t++) {
       var tf = findField(tpls[t].getAttribute("data-key"));
-      if (tf && tf.html) tpls[t].innerHTML = interpolate(tf.html);
+      if (!tf || !tf.html) continue;
+      var nyHtml = interpolate(tf.html);
+      // Jamfor INNAN skrivning. Utan den har raden byter varje klick ut
+      // markupen aven nar den ar identisk, och bilderna hamtas om fran natet.
+      if (tpls[t].innerHTML !== nyHtml) tpls[t].innerHTML = nyHtml;
     }
     syncSubmitVisibility();
   }

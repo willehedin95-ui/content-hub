@@ -38,6 +38,11 @@ FONT = "'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,A
 # Rubrikfonten har bara vikt 400 och 500, sa H-stilen nedan far 500 och inte 700.
 FONT_H = "'Bagoss Standard',Georgia,'Times New Roman',serif"
 
+# Bilder i mail maste ha ABSOLUT URL till Content Hub. {{ organization.url }}
+# pekar pa butiken (shopenvana.com) dar /images/progressbild/ inte finns - alla
+# sadana rutor blev trasiga bildikoner i inkorgen. Uppmatt: 404.
+HUB = "https://content-hub-nine-theta.vercel.app"
+
 def img(slot, alt):
     """slot 1/2/3. I Klaviyo-lage en variabel, i preview en riktig fil."""
     if MODE == "klaviyo":
@@ -70,7 +75,7 @@ def slot_cell(n, label, filled):
     # CSS-ram med fast hojd kan inte folja med nar bredden ar procentuell, och
     # i mail finns ingen aspect-ratio att lita pa - resultatet blev en bild pa
     # 116 px bredvid tomrutor pa 150 px. Som bild krymper allt identiskt.
-    src = "tom-ruta.png" if MODE == "preview" else "{{ organization.url }}/images/progressbild/tom-ruta.png"
+    src = "tom-ruta.png" if MODE == "preview" else "https://content-hub-nine-theta.vercel.app/images/progressbild/tom-ruta.png"
     return (
       '<td width="33%%" align="center" valign="bottom" style="padding:0 5px;">'
       '<img src="%s" alt="Tom ruta, vantar pa din bild" width="164" '
@@ -132,7 +137,7 @@ def gift(belopp="200"):
     Tabellvarianten som stod har forut ritade kortet med CSS, vilket Outlook
     och Gmail renderade som en platt fyrkant utan radie."""
     fil = "presentkort-400-mail.jpg" if belopp == "400" else "presentkort-mail.jpg"
-    src = fil if MODE == "preview" else "{{ organization.url }}/images/progressbild/" + fil
+    src = fil if MODE == "preview" else "https://content-hub-nine-theta.vercel.app/images/progressbild/" + fil
     return (
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" align="center">'
       '<tr><td align="center">'
@@ -186,7 +191,7 @@ def envana_footer():
 
 def wordmark():
     fil = "envana-wordmark.png"
-    src = fil if MODE == "preview" else "{{ organization.url }}/images/progressbild/" + fil
+    src = fil if MODE == "preview" else "https://content-hub-nine-theta.vercel.app/images/progressbild/" + fil
     return ('<img src="%s" alt="Envana" width="112" style="display:block;width:112px;'
             'max-width:112px;height:auto;border:0;">' % src)
 
