@@ -374,7 +374,7 @@ const progressbild: FormConfig = {
       showWhen: { field: "steg", in: ["3"] },
       html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.webp" alt="Presentkort pa 200 kronor" width="900" height="608" loading="eager"></div></figure>
 <h2 class="chf-slide-title chf-mid">200 kr, som tack</h2>
-<p class="chf-slide-sub chf-mid">Dina tre bilder är inne. Vi mejlar presentkortet till <strong>{{email}}</strong>.</p>`,
+<p class="chf-slide-sub chf-mid">Dina tre bilder är inne. Vi hör av oss på <strong>{{email}}</strong> med dina 200 kr.</p>`,
     },
 
     // HAR LAG SAMTYCKET: en skarm som erbjod 400 kr i stallet for 200 om hon

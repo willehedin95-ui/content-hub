@@ -284,8 +284,22 @@ elif OUT.endswith("paminnelse"):
 else:
     # Beloppet ar alltid 200. Samtyckesfragan med det dubblade presentkortet
     # ar borttagen ur flodet 2026-09-17 - se noten i seed-progressbild-form.ts.
+    #
+    # VAGEN skiljer sig at, och mailet maste saga ratt sak: prenumeranten far
+    # ett avdrag hon inte behover gora nagot for, engangskoparen far en kod hon
+    # maste anvanda. Samma text till bada hade varit fel for minst en av dem.
     kort = gift("200")
-    kvitto = "Presentkortet på <strong>200 kr</strong> mejlar vi till dig."
+    if MODE == "klaviyo":
+        kvitto = cond("event.beloning_typ == 'loop-avdrag'",
+            "Dina <strong>200 kr</strong> dras automatiskt på din nästa leverans. "
+            "Du behöver inte göra något.",
+            cond("event.beloning_typ == 'rabattkod'",
+                 "Använd koden <strong>{{ event.rabattkod }}</strong> i kassan, så får du "
+                 "<strong>200 kr</strong> på din nästa beställning.",
+                 "Vi hör av oss med dina <strong>200 kr</strong>."))
+    else:
+        kvitto = ("Dina <strong>200 kr</strong> dras automatiskt på din nästa leverans. "
+                  "Du behöver inte göra något.")
     body = (
       '<h1 %s>Här är dina tre bilder</h1>'
       '<p %s>Dag 1, dag 30 och dag 60, tagna av dig på dig.</p>'

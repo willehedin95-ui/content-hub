@@ -297,9 +297,13 @@ async function deliverViaKlaviyo(
     if (series.length >= 3) {
       try {
         const { beviljaBeloning } = await import("./progressbild-beloning");
-        const r = await beviljaBeloning(email);
+        const r = await beviljaBeloning(email, form.workspace_id);
         properties.beloning_typ = r.typ;
-        if (r.typ === "loop-avdrag") properties.beloning_belopp = r.belopp;
+        if (r.typ === "loop-avdrag" || r.typ === "rabattkod") {
+          properties.beloning_belopp = r.belopp;
+        }
+        // Koden maste med i eventet - mailet ar enda stallet hon far den.
+        if (r.typ === "rabattkod") properties.rabattkod = r.kod;
       } catch (e) {
         console.error("[form-delivery] belöningen kunde inte beviljas:", e);
         properties.beloning_typ = "kraver-manuell";

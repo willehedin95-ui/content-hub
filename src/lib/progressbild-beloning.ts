@@ -8,19 +8,20 @@
  *                    hos någon som just funderat på att avsluta.
  *   ENGÅNGSKÖPARE -> unik rabattkod i Shopify.
  *
- * STATUS 2026-09-17: bara prenumerantvägen är byggd. Engångsköparvägen är
- * blockerad på att Content Hub saknar Shopify-credentials för Envana
- * (`n5ftzr-mq.myshopify.com`). Den enda Shopify-app som är kopplad till
- * hydro13-workspacen pekar på NEDLAGDA get-renew.com och har dessutom bara
- * `read_discounts`, inte `write_discounts`. Uppmätt mot skarpt konto, inte
- * antaget - specen påstod att `write_discounts` redan fanns.
- *
- * Tills det är löst returnerar engångsköpare `kraverManuell`, och den flaggan
- * är till för att synas: kunden har fått ett löfte som ingen kod infriar.
+ * Rabattkod och inte presentkort, av två skäl: ett presentkort är en skuld i
+ * böckerna tills det löses in, och det kräver `write_gift_cards` som appen
+ * inte har. En kod är en regel i kassan. Priset för det är att mellanskillnaden
+ * brinner om ordern är mindre än 200 kr - acceptabelt när den minsta produkten
+ * kostar mer än så.
  */
 
 import { readSubscriptionsForCustomer, type LoopSubscription } from "./loop";
 import { createServerSupabase } from "./supabase-admin";
+import {
+  getShopifyCredsForWorkspace,
+  getAccessTokenForCreds,
+  searchCustomerByEmail,
+} from "./shopify";
 
 /** Loops admin-API. Rabattendpointen finns inte i 2023-10 som loop.ts läser mot. */
 const LOOP_BAS = "https://api.loopsubscriptions.com/admin/2026-04";
@@ -29,6 +30,7 @@ export const BELONING_SEK = 200;
 
 export type BeloningsResultat =
   | { typ: "loop-avdrag"; subscriptionId: number; belopp: number }
+  | { typ: "rabattkod"; kod: string; belopp: number }
   | { typ: "redan-beviljad"; tidigare: string }
   | { typ: "kraver-manuell"; skal: string };
 
@@ -66,13 +68,83 @@ function aktiv(s: LoopSubscription): boolean {
   return s.status === "ACTIVE";
 }
 
+/** Utan I, O, 0 och 1 - koden ska gå att läsa upp i telefon utan stavning. */
+const TECKEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function slumpkod(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return "TACK-" + [...bytes].map((b) => TECKEN[b % TECKEN.length]).join("");
+}
+
+/**
+ * Unik rabattkod på 200 kr, en användning.
+ *
+ * Binds till hennes kundpost när hon går att hitta på e-posten - då kan ingen
+ * annan lösa in den ens om koden läcker. Hittas hon inte (gästköp på en annan
+ * adress) faller vi tillbaka på `all: true`, och då är `usageLimit: 1` det enda
+ * som skyddar. Det är en medveten avvägning: en kod som kanske kan lösas in av
+ * fel person är bättre än ingen belöning alls.
+ */
+async function skapaRabattkod(email: string, workspaceId: string, belopp: number): Promise<string> {
+  const creds = await getShopifyCredsForWorkspace(workspaceId);
+  if (!creds) throw new Error("inga Shopify-credentials for workspace " + workspaceId);
+  const token = await getAccessTokenForCreds(creds);
+
+  let kundGid: string | null = null;
+  try {
+    const kund = await searchCustomerByEmail(email, creds);
+    if (kund?.id) kundGid = `gid://shopify/Customer/${kund.id}`;
+  } catch {
+    // Uppslaget är en bonus, inte ett krav.
+  }
+
+  const kod = slumpkod();
+  const mutation = `
+    mutation skapa($d: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $d) {
+        codeDiscountNode { id }
+        userErrors { field message }
+      }
+    }`;
+  const variables = {
+    d: {
+      title: `Progressbild ${belopp} kr - ${email}`,
+      code: kod,
+      startsAt: new Date().toISOString(),
+      customerSelection: kundGid ? { customers: { add: [kundGid] } } : { all: true },
+      customerGets: {
+        value: { discountAmount: { amount: String(belopp), appliesOnEachItem: false } },
+        items: { all: true },
+      },
+      appliesOncePerCustomer: true,
+      usageLimit: 1,
+    },
+  };
+  const res = await fetch(`${creds.storeUrl}/admin/api/2025-01/graphql.json`, {
+    method: "POST",
+    headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: mutation, variables }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const json = await res.json();
+  const fel = json?.data?.discountCodeBasicCreate?.userErrors ?? [];
+  if (fel.length) throw new Error(`Shopify: ${fel.map((f: { message: string }) => f.message).join("; ")}`);
+  if (!json?.data?.discountCodeBasicCreate?.codeDiscountNode?.id) {
+    throw new Error(`Shopify svarade utan rabattkod: ${JSON.stringify(json).slice(0, 200)}`);
+  }
+  return kod;
+}
+
 /**
  * Bevilja belöningen för en e-postadress. Idempotent: andra anropet för samma
  * adress returnerar `redan-beviljad` utan att röra Loop. Det är hela poängen
  * med att skriva till `progressbild_beloningar` FÖRE Loop-anropet - en kund som
  * laddar upp sista bilden två gånger ska inte få dubbelt avdrag.
  */
-export async function beviljaBeloning(email: string): Promise<BeloningsResultat> {
+export async function beviljaBeloning(
+  email: string,
+  workspaceId: string
+): Promise<BeloningsResultat> {
   const adress = email.trim().toLowerCase();
   const db = createServerSupabase();
 
@@ -89,19 +161,25 @@ export async function beviljaBeloning(email: string): Promise<BeloningsResultat>
   const aktivaBilar = prenumerationer.filter(aktiv);
 
   if (aktivaBilar.length === 0) {
-    // Ingen aktiv prenumeration. Rabattkoden går inte att skapa än (se noten
-    // överst), så raden skrivs ändå - den är kön över vad som ska betalas ut
-    // för hand, och utan den vet vi inte vilka som väntar.
+    // Engångsköpare: unik rabattkod. Raden skrivs FÖRE Shopify-anropet av
+    // samma skäl som Loop-grenen - den reserverar adressen.
     await db.from("progressbild_beloningar").insert({
       email: adress,
-      typ: "kraver-manuell",
+      typ: "rabattkod",
       belopp: BELONING_SEK,
-      detalj: "ingen aktiv prenumeration, Shopify-rabattkod ej byggd",
+      detalj: "ingen aktiv prenumeration, unik rabattkod",
     });
-    return {
-      typ: "kraver-manuell",
-      skal: "ingen aktiv prenumeration i Loop",
-    };
+    try {
+      const kod = await skapaRabattkod(adress, workspaceId, BELONING_SEK);
+      await db.from("progressbild_beloningar").update({ rabattkod: kod }).eq("email", adress);
+      return { typ: "rabattkod", kod, belopp: BELONING_SEK };
+    } catch (e) {
+      await db
+        .from("progressbild_beloningar")
+        .update({ typ: "kraver-manuell", detalj: `rabattkoden failade: ${String(e).slice(0, 180)}` })
+        .eq("email", adress);
+      throw e;
+    }
   }
 
   // Har hon flera aktiva tas den som laddas närmast i tiden - det är den hon
