@@ -20,6 +20,7 @@ import {
   findMissingRequired,
 } from "@/lib/form-utils";
 import { getFormsCORSHeaders, handleFormsOptions } from "../_cors";
+import { formMessages } from "@/lib/form-i18n";
 import type { FormRow, SubmissionAnswer, SubmissionFile } from "@/types/forms";
 
 export const maxDuration = 30;
@@ -79,7 +80,9 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as SubmitBody;
   } catch {
-    return NextResponse.json({ error: "Ogiltig förfrågan" }, { status: 400, headers: cors });
+    // Marknaden står i bodyn vi just misslyckades läsa - svenska får duga för
+    // en trasig request som ingen riktig kund kan skicka.
+    return NextResponse.json({ error: formMessages(null).invalidRequest }, { status: 400, headers: cors });
   }
 
   // Honeypot: pretend success so bots move on, insert nothing.
@@ -90,19 +93,20 @@ export async function POST(req: NextRequest) {
   const workspaceSlug = (body.workspace || "").trim().toLowerCase();
   const slug = (body.slug || "").trim().toLowerCase();
   const market = (body.market || "se").trim().toLowerCase();
+  const msg = formMessages(market);
   const clientSubmissionId = (body.clientSubmissionId || "").trim();
   const answers = Array.isArray(body.answers) ? body.answers : [];
   const files = Array.isArray(body.files) ? body.files.slice(0, 10) : [];
 
   if (!workspaceSlug || !slug || !clientSubmissionId || answers.length === 0) {
-    return NextResponse.json({ error: "Ofullständig förfrågan" }, { status: 400, headers: cors });
+    return NextResponse.json({ error: msg.incompleteRequest }, { status: 400, headers: cors });
   }
   if (clientSubmissionId.length > 100 || answers.length > 60) {
-    return NextResponse.json({ error: "Ogiltig förfrågan" }, { status: 400, headers: cors });
+    return NextResponse.json({ error: msg.invalidRequest }, { status: 400, headers: cors });
   }
 
   if (!(await verifyTurnstile(body.turnstileToken, req))) {
-    return NextResponse.json({ error: "Kunde inte verifiera att du är människa. Ladda om sidan och försök igen." }, { status: 403, headers: cors });
+    return NextResponse.json({ error: msg.botCheck }, { status: 403, headers: cors });
   }
 
   const supabase = createServerSupabase();
@@ -113,7 +117,7 @@ export async function POST(req: NextRequest) {
     .eq("slug", workspaceSlug)
     .single<{ id: string }>();
   if (!workspace) {
-    return NextResponse.json({ error: "Okänt formulär" }, { status: 404, headers: cors });
+    return NextResponse.json({ error: msg.unknownForm }, { status: 404, headers: cors });
   }
 
   const { data: form } = await supabase
@@ -125,7 +129,7 @@ export async function POST(req: NextRequest) {
     .eq("status", "published")
     .single<FormRow>();
   if (!form) {
-    return NextResponse.json({ error: "Okänt formulär" }, { status: 404, headers: cors });
+    return NextResponse.json({ error: msg.unknownForm }, { status: 404, headers: cors });
   }
 
   // Rate limit per IP-hash (stored in meta, never the raw IP)
@@ -136,21 +140,21 @@ export async function POST(req: NextRequest) {
     .eq("meta->>ip_hash", hash)
     .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
   if ((count ?? 0) >= RATE_LIMIT_PER_HOUR) {
-    return NextResponse.json({ error: "För många försök. Vänta en stund och försök igen." }, { status: 429, headers: cors });
+    return NextResponse.json({ error: msg.tooManyAttempts }, { status: 429, headers: cors });
   }
 
   // Server-side required check (client validates first; this catches tampering)
   const missing = findMissingRequired(form.config, answers);
   if (missing.length > 0) {
     return NextResponse.json(
-      { error: `Obligatoriska fält saknas: ${missing.join(", ")}` },
+      { error: msg.missingRequired(missing.join(", ")) },
       { status: 400, headers: cors }
     );
   }
 
   const email = extractEmail(form.config, answers);
   if (!email) {
-    return NextResponse.json({ error: "Ange en giltig e-postadress." }, { status: 400, headers: cors });
+    return NextResponse.json({ error: msg.badEmail }, { status: 400, headers: cors });
   }
 
   const gate = evaluateDateGate(form.config, answers);
@@ -190,7 +194,7 @@ export async function POST(req: NextRequest) {
   if (insErr) {
     console.error(`[forms/submit] Insert failed: ${insErr.message}`);
     return NextResponse.json(
-      { error: "Något gick fel. Försök igen om en stund." },
+      { error: msg.serverError },
       { status: 500, headers: cors }
     );
   }

@@ -38,6 +38,14 @@ export const WATCHED_FORM_PAGES: Array<{
   { url: "https://swedishbalance.se/da-dk/pages/returformular", workspace: "happysleep", form: "retur", market: "dk", label: "DK returformulär" },
   { url: "https://swedishbalance.se/da-dk/pages/kontakt", workspace: "happysleep", form: "kontakt", market: "dk", label: "DK kontakt" },
   { url: "https://swedishbalance.se/da-dk/pages/angra-kop", workspace: "happysleep", form: "angerratt", market: "dk", label: "DK ångerrätt" },
+  // Norska marknaden fick egna formulär 2026-09-21. Innan dess serverade
+  // /no-no de SVENSKA - och just det felet är vad kedjekollen letar efter, så
+  // utan de här raderna kunde det ha stått fel i månader utan att larma.
+  { url: "https://swedishbalance.se/no-no/pages/returformular", workspace: "happysleep", form: "retur", market: "no", label: "NO returskjema" },
+  { url: "https://swedishbalance.se/no-no/pages/kontakt", workspace: "happysleep", form: "kontakt", market: "no", label: "NO kontakt" },
+  { url: "https://swedishbalance.se/no-no/pages/angra-kop", workspace: "happysleep", form: "angerratt", market: "no", label: "NO angrerett" },
+  // Kollagengarantin flyttad hit från Fillout 2026-09-21.
+  { url: "https://swedishbalance.se/pages/hydro13-claim", workspace: "happysleep", form: "garanti", market: "se", label: "SE kollagengaranti" },
 ];
 
 /**
@@ -190,6 +198,13 @@ export async function checkFormSilence(): Promise<FormHealthProblem[]> {
 
   for (const [slug, { ids, oldest }] of bySlug) {
     const hours = FORM_SILENCE_HOURS[slug];
+    // Slug utan MÄTT tröskel bevakas inte för tystnad. Kollagengarantin kom
+    // hit från Fillout 2026-09-21 och har för lite volym för att en siffra
+    // ska gå att mäta fram - en gissad tröskel hade blivit ett larm som
+    // antingen tjuter i onödan eller aldrig går. Kedjekollen täcker sidan
+    // ändå. Utan den här raden blir `hours` undefined, jämförelsen NaN, och
+    // cutoff ett ogiltigt datum.
+    if (hours === undefined) continue;
     // A form that has not been live longer than its own threshold cannot be
     // judged silent yet - there simply has not been time to receive traffic.
     if (Date.now() - oldest < hours * 60 * 60 * 1000) continue;

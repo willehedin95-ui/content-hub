@@ -7,6 +7,7 @@ import { randomUUID } from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import sharp from "sharp";
 import { getFormsCORSHeaders, handleFormsOptions } from "../_cors";
+import { formMessages } from "@/lib/form-i18n";
 
 export const maxDuration = 60;
 
@@ -44,20 +45,22 @@ export async function POST(req: NextRequest) {
   try {
     formData = await req.formData();
   } catch {
-    return NextResponse.json({ error: "Ogiltig uppladdning" }, { status: 400, headers: cors });
+    return NextResponse.json({ error: formMessages(null).invalidUpload }, { status: 400, headers: cors });
   }
+
+  const msg = formMessages(String(formData.get("market") || ""));
 
   const file = formData.get("file");
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Ingen fil hittades" }, { status: 400, headers: cors });
+    return NextResponse.json({ error: msg.noFile }, { status: 400, headers: cors });
   }
   if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "Filen är för stor (max 25 MB)" }, { status: 400, headers: cors });
+    return NextResponse.json({ error: msg.fileTooBig }, { status: 400, headers: cors });
   }
   const mime = file.type.toLowerCase();
   if (!ALLOWED_MIME.has(mime)) {
     return NextResponse.json(
-      { error: "Filtypen stöds inte. Ladda upp en bild (JPG/PNG/WEBP/HEIC) eller PDF." },
+      { error: msg.badFileType },
       { status: 400, headers: cors }
     );
   }
@@ -128,7 +131,7 @@ export async function POST(req: NextRequest) {
   if (uploadErr) {
     console.error(`[forms/upload] Storage upload failed: ${uploadErr.message}`);
     return NextResponse.json(
-      { error: "Uppladdningen misslyckades. Försök igen." },
+      { error: msg.uploadFailed },
       { status: 500, headers: cors }
     );
   }

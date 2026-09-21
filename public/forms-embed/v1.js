@@ -52,6 +52,88 @@
     customer: null, // uppslag pa ?t= - hennes adress och tidigare bilder
   };
 
+  // ------------------------------------------------------------------- sprak
+  // Runtimens egna texter. Formularens INNEHALL kommer fran configen och ar
+  // redan pa ratt sprak, men det har lagret - knappar, felmeddelanden,
+  // stegraknaren, frivillig-markeringen - var hardkodat svenskt. En dansk kund
+  // pa ett danskt formular fick "Steg 1 av 2", "Tillbaka" och "Det har faltet
+  // ar obligatoriskt.". Uppmatt i produktion 2026-09-21.
+  //
+  // Orden ar hamtade ur butikens EGNA locale-filer (locales/da.json,
+  // locales/no.json i Palo Alto-temat) sa formularet later som resten av
+  // butiken: "Obligatorisk felt", "(valgfrit)" / "(valgfritt)", "Luk"/"Lukk",
+  // "trin"/"trinn", "Send inn".
+  var SPRAK = {
+    se: {
+      back: "Tillbaka",
+      step: function (i, n) { return "Steg " + i + " av " + n; },
+      close: "Stäng",
+      optional: " (valfritt)",
+      continue: "Fortsätt",
+      submit: "Skicka in",
+      honeypot: "Lämna fältet tomt",
+      choose: "Välj ett alternativ",
+      pickImage: "Välj en bild",
+      pickImageSub: "Tryck här för att ta en ny bild eller välja en du redan har",
+      looksGood: "Ser den bra ut?",
+      retake: "Ta om",
+      retakeAria: "Ta om bilden",
+      required: "Det här fältet är obligatoriskt.",
+      badEmail: "Ange en giltig e-postadress.",
+      sending: "Skickar...",
+      genericError: "Något gick fel. Försök igen.",
+      networkError: "Något gick fel. Kontrollera din uppkoppling och försök igen - dina svar finns kvar.",
+      loading: "Laddar formulär...",
+      loadError: "Formuläret kunde inte laddas just nu. Ladda om sidan eller försök igen om en stund.",
+    },
+    dk: {
+      back: "Tilbage",
+      step: function (i, n) { return "Trin " + i + " af " + n; },
+      close: "Luk",
+      optional: " (valgfrit)",
+      continue: "Fortsæt",
+      submit: "Send ind",
+      honeypot: "Lad feltet stå tomt",
+      choose: "Vælg et alternativ",
+      pickImage: "Vælg et billede",
+      pickImageSub: "Tryk her for at tage et nyt billede eller vælge et, du allerede har",
+      looksGood: "Ser det godt ud?",
+      retake: "Tag om",
+      retakeAria: "Tag billedet om",
+      required: "Dette felt er obligatorisk.",
+      badEmail: "Indtast venligst en gyldig e-mailadresse.",
+      sending: "Sender...",
+      genericError: "Noget gik galt. Prøv igen.",
+      networkError: "Noget gik galt. Tjek din forbindelse, og prøv igen - dine svar er gemt.",
+      loading: "Indlæser formular...",
+      loadError: "Formularen kunne ikke indlæses lige nu. Genindlæs siden, eller prøv igen om lidt.",
+    },
+    no: {
+      back: "Tilbake",
+      step: function (i, n) { return "Trinn " + i + " av " + n; },
+      close: "Lukk",
+      optional: " (valgfritt)",
+      continue: "Fortsett",
+      submit: "Send inn",
+      honeypot: "La feltet stå tomt",
+      choose: "Velg et alternativ",
+      pickImage: "Velg et bilde",
+      pickImageSub: "Trykk her for å ta et nytt bilde eller velge ett du allerede har",
+      looksGood: "Ser det bra ut?",
+      retake: "Ta om",
+      retakeAria: "Ta bildet om",
+      required: "Dette feltet er obligatorisk.",
+      badEmail: "Oppgi en gyldig e-postadresse.",
+      sending: "Sender...",
+      genericError: "Noe gikk galt. Prøv igjen.",
+      networkError: "Noe gikk galt. Sjekk tilkoblingen din og prøv igjen - svarene dine er lagret.",
+      loading: "Skjemaet lastes...",
+      loadError: "Skjemaet kunne ikke lastes akkurat nå. Last inn siden på nytt, eller prøv igjen om litt.",
+    },
+  };
+  // Okand marknad faller pa svenska - butikens sprak, inte ett tomt falt.
+  var T = SPRAK[MARKET] || SPRAK.se;
+
   // ------------------------------------------------------------------ styles
   var CSS =
     // Butikens egna typsnitt, samma filer som resten av shopenvana.com
@@ -667,6 +749,18 @@
     // inte kunna dyka upp vid dag 1 bara for att markt-faltet finns i DOM.
     if (cond.all) return cond.all.every(conditionMet);
     var v = state.values[cond.field];
+    // `checkboxes` svarar med en ARRAY. Tom array = inget svar, och `in`
+    // traffar om NAGOT av valen star i listan - det ar det som gor
+    // "Annat -> specificera" mojlig. Spegeln ligger i src/lib/form-utils.ts.
+    if (Array.isArray(v)) {
+      if (cond.isEmpty) return v.length === 0;
+      if (cond.notEmpty) return v.length > 0;
+      if (cond.in) {
+        for (var mi = 0; mi < v.length; mi++) if (cond.in.indexOf(v[mi]) !== -1) return true;
+        return false;
+      }
+      return true;
+    }
     var empty = v === undefined || v === null || v === "" || v === false;
     // isEmpty ar motsatsen till notEmpty och behovs for "visa det har BARA om
     // vi inte redan vet det" - e-postfaltet nar lanken bar en token.
@@ -700,7 +794,7 @@
     // plats oavsett hur langt steget ar.
     if (state.app) return;
     if (stepIdx === 0) return;
-    var back = elText("button", "chf-back", "Tillbaka");
+    var back = elText("button", "chf-back", T.back);
     back.type = "button";
     back.addEventListener("click", function () { showStep(stepIdx - 1); });
     stepEl.appendChild(back);
@@ -739,7 +833,7 @@
     wrap.style.display = "";
     var label = wrap.querySelector(".chf-steps-label");
     var fill = wrap.querySelector(".chf-steps-fill");
-    if (label) label.textContent = "Steg " + (idx + 1) + " av " + total;
+    if (label) label.textContent = T.step(idx + 1, total);
     if (fill) fill.style.width = Math.round(((idx + 1) / total) * 100) + "%";
   }
 
@@ -824,7 +918,7 @@
     var head = elText("div", "chf-head");
     var back = elText("button", "chf-headback");
     back.type = "button";
-    back.setAttribute("aria-label", "Tillbaka");
+    back.setAttribute("aria-label", T.back);
     back.hidden = true;
     back.innerHTML =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"' +
@@ -887,7 +981,7 @@
     img.src = src;
     img.alt = rubrik || "Exempel";
     box.appendChild(img);
-    var stang = elText("button", "chf-modal-close", "Stäng");
+    var stang = elText("button", "chf-modal-close", T.close);
     stang.type = "button";
     box.appendChild(stang);
     back.appendChild(box);
@@ -1062,7 +1156,7 @@
             var lab = elText("label", "chf-label", f.label);
             // Markera det VALFRIA, inte det obligatoriska. Nar nastan alla
             // falt kravs blir asterisker bara rott brus som signalerar krav.
-            if (!f.required) lab.appendChild(elText("span", "chf-optional", " (valfritt)"));
+            if (!f.required) lab.appendChild(elText("span", "chf-optional", T.optional));
             lab.setAttribute("for", "chf-" + f.key);
             wrap.appendChild(lab);
           }
@@ -1116,9 +1210,9 @@
       }
       if (stepIdx < steps.length - 1) {
         // Mellansteg: Fortsätt-knapp som validerar stegets synliga fält
-        var cont = elText("button", "chf-submit", step.continueLabel || "Fortsätt");
+        var cont = elText("button", "chf-submit", step.continueLabel || T.continue);
         cont.type = "button";
-        stepEl.__ctaKlarLabel = step.continueLabel || "Fortsätt";
+        stepEl.__ctaKlarLabel = step.continueLabel || T.continue;
         cont.addEventListener("click", function () {
           // Karusellen ager knappen tills sista panelen ar visad.
           if (stepEl.__carousel && stepEl.__carousel.advance()) return;
@@ -1138,7 +1232,7 @@
       } else {
         // Sista steget: honeypot + submit
         var hp = elText("div", "chf-hp");
-        var hpLabel = elText("label", null, "Lämna fältet tomt");
+        var hpLabel = elText("label", null, T.honeypot);
         var hpInput = document.createElement("input");
         hpInput.type = "text";
         hpInput.name = "website";
@@ -1154,9 +1248,9 @@
         //
         // Ren textersattning, inte interpolate(): etiketten ar TEXT och satts
         // med textContent, sa den ska varken escapas eller tolkas som HTML.
-        var submit = elText("button", "chf-submit", fillPlaceholders(cfg.submitLabel || "Skicka in"));
+        var submit = elText("button", "chf-submit", fillPlaceholders(cfg.submitLabel || T.submit));
         submit.type = "submit";
-        stepEl.__ctaKlarLabel = fillPlaceholders(cfg.submitLabel || "Skicka in");
+        stepEl.__ctaKlarLabel = fillPlaceholders(cfg.submitLabel || T.submit);
         stepEl.appendChild(submit);
         addBackButton(stepEl, stepIdx);
 
@@ -1210,7 +1304,7 @@
     if (f.kind === "select") {
       var sel = elText("select", "chf-select");
       sel.id = id;
-      var ph = elText("option", null, f.placeholder || "Välj ett alternativ");
+      var ph = elText("option", null, f.placeholder || T.choose);
       ph.value = "";
       sel.appendChild(ph);
       f.options.forEach(function (o) {
@@ -1248,6 +1342,35 @@
         group.appendChild(lab);
       });
       return group;
+    }
+    // Flerval. Vardet ar en ARRAY av valda values - sa formatAnswerValue pa
+    // servern skriver dem som "Battre hud, Starkare naglar" i ticketen, och
+    // showWhen/`in` traffar om NAGOT av valen star i listan.
+    //
+    // Ser ut som radiogruppen med flit: samma ruta, samma tryckyta. Det enda
+    // som skiljer ar den fyrkantiga rutan och att flera kan vara ifyllda.
+    if (f.kind === "checkboxes") {
+      var mgroup = elText("div", "chf-radio-group");
+      f.options.forEach(function (o) {
+        var mlab = elText("label", "chf-radio chf-multi");
+        var minp = document.createElement("input");
+        minp.type = "checkbox";
+        minp.name = id;
+        minp.value = o.value;
+        minp.addEventListener("change", function () {
+          var valda = Array.isArray(state.values[f.key]) ? state.values[f.key].slice() : [];
+          var pos = valda.indexOf(o.value);
+          if (minp.checked && pos === -1) valda.push(o.value);
+          if (!minp.checked && pos !== -1) valda.splice(pos, 1);
+          // Tom array ar inget svar - satt "" sa required-kollen och
+          // conditionMet behandlar den som tomt, precis som ett tomt textfalt.
+          setValue(f.key, valda.length ? valda : "");
+        });
+        mlab.appendChild(minp);
+        mlab.appendChild(elText("span", null, o.label));
+        mgroup.appendChild(mlab);
+      });
+      return mgroup;
     }
     if (f.kind === "checkbox") {
       var clab = elText("label", "chf-check");
@@ -1313,8 +1436,8 @@
         svg.appendChild(path);
       });
       idle.appendChild(svg);
-      idle.appendChild(elText("div", "chf-file-main", f.placeholder || "Välj en bild"));
-      idle.appendChild(elText("div", "chf-file-sub", "Tryck här för att ta en ny bild eller välja en du redan har"));
+      idle.appendChild(elText("div", "chf-file-main", f.placeholder || T.pickImage));
+      idle.appendChild(elText("div", "chf-file-sub", T.pickImageSub));
 
       // Valt lage: miniatyr sa hon ser VILKEN bild hon valde, inte bara
       // filnamnet. Hon har ofta tre snarlika selfies i rullen.
@@ -1346,7 +1469,7 @@
         chosen.replaceChildren();
         // I CTA-lage ar bilden hela skarmen, sa fragan star OVANFOR den och
         // inte under: hon laser "Ser den bra ut?" och tittar sedan.
-        if (asCta) chosen.appendChild(elText("div", "chf-file-title", "Ser den bra ut?"));
+        if (asCta) chosen.appendChild(elText("div", "chf-file-title", T.looksGood));
         var file = list[0];
         if (/^image\//.test(file.type)) {
           var img = document.createElement("img");
@@ -1361,7 +1484,7 @@
         // bekraftelse pa vad filen heter. Filnamnet sager henne ingenting -
         // hon har tre snarlika selfies i rullen och behover se VILKEN hon
         // valde och fa en chans att ta om.
-        if (!asCta) meta.appendChild(elText("div", "chf-file-main", "Ser den bra ut?"));
+        if (!asCta) meta.appendChild(elText("div", "chf-file-main", T.looksGood));
 
         // Angra. Hela rutan ar en tryckyta som oppnar filvaljaren igen, sa
         // "byt bild" gick redan. Det som INTE gick var att backa ur helt -
@@ -1369,9 +1492,9 @@
         // finns inget "ingen bild" att valja i en filvaljare. Knappen maste
         // ligga OVANPA filinputen (som tacker hela rutan) och stoppa klicket
         // fran att bubbla, annars oppnas valjaren i stallet for att rensa.
-        var clear = elText("button", "chf-file-clear", "Ta om");
+        var clear = elText("button", "chf-file-clear", T.retake);
         clear.type = "button";
-        clear.setAttribute("aria-label", "Ta om bilden");
+        clear.setAttribute("aria-label", T.retakeAria);
         clear.addEventListener("click", function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -1566,9 +1689,9 @@
       var errEl = wrap.querySelector(".chf-error");
       var msg = "";
       if (f.required && (v === undefined || v === null || v === "" || v === false)) {
-        msg = "Det här fältet är obligatoriskt.";
+        msg = T.required;
       } else if (f.kind === "email" && v && !isEmail(String(v))) {
-        msg = "Ange en giltig e-postadress.";
+        msg = T.badEmail;
       }
       if (msg) {
         ok = false;
@@ -1613,6 +1736,17 @@
           if (f.options[i].value === v) { answer.display = f.options[i].label; break; }
         }
       }
+      // Flerval: samma sak fast flera. Utan det star "hud, naglar" i ticketen
+      // i stallet for "Battre hud (fasthet, elasticitet), Starkare naglar".
+      if (f.kind === "checkboxes" && f.options && Array.isArray(v)) {
+        var etiketter = [];
+        for (var mj = 0; mj < v.length; mj++) {
+          for (var mk = 0; mk < f.options.length; mk++) {
+            if (f.options[mk].value === v[mj]) { etiketter.push(f.options[mk].label); break; }
+          }
+        }
+        if (etiketter.length) answer.display = etiketter.join(", ");
+      }
       answers.push(answer);
     });
     return answers;
@@ -1624,11 +1758,14 @@
       (state.files[key] || []).forEach(function (file) {
         var fd = new FormData();
         fd.append("file", file);
+        // Marknaden med, sa filfel (for stor, fel typ) kommer tillbaka pa
+        // kundens sprak i stallet for pa svenska.
+        fd.append("market", MARKET);
         uploads.push(
           fetch(HUB + "/api/forms/upload", { method: "POST", body: fd })
             .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
             .then(function (res) {
-              if (!res.r.ok || !res.j.url) throw new Error(res.j.error || "Uppladdningen misslyckades");
+              if (!res.r.ok || !res.j.url) throw new Error(res.j.error || T.genericError);
               return { url: res.j.url, filename: res.j.filename || file.name, fieldKey: key };
             })
         );
@@ -1655,7 +1792,7 @@
     state.submitting = true;
     submitBtn.disabled = true;
     var originalLabel = submitBtn.textContent;
-    submitBtn.textContent = "Skickar...";
+    submitBtn.textContent = T.sending;
 
     var hpInput = form.querySelector('input[name="website"]');
 
@@ -1680,14 +1817,14 @@
         }).then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); });
       })
       .then(function (res) {
-        if (!res.r.ok) throw new Error(res.j.error || "Något gick fel. Försök igen.");
+        if (!res.r.ok) throw new Error(res.j.error || T.genericError);
         showEnding(res.j.gate);
       })
       .catch(function (err) {
         state.submitting = false;
         submitBtn.disabled = false;
         submitBtn.textContent = originalLabel;
-        showTopError(topError, (err && err.message) || "Något gick fel. Kontrollera din uppkoppling och försök igen - dina svar finns kvar.");
+        showTopError(topError, (err && err.message) || T.networkError);
       });
   }
 
@@ -1769,7 +1906,7 @@
     wrap.appendChild(bar("chf-sk-btn"));
     container.appendChild(wrap);
     // Screen readers get the status; the bars themselves are decorative.
-    var status = elText("div", "chf-loading", "Laddar formulär...");
+    var status = elText("div", "chf-loading", T.loading);
     status.setAttribute("role", "status");
     container.appendChild(status);
     container.setAttribute("aria-busy", "true");
@@ -1837,7 +1974,7 @@
     .catch(function () {
       container.removeAttribute("aria-busy");
       container.innerHTML = "";
-      var err = elText("div", "chf-toperror", "Formuläret kunde inte laddas just nu. Ladda om sidan eller försök igen om en stund.");
+      var err = elText("div", "chf-toperror", T.loadError);
       err.style.display = "block";
       container.appendChild(err);
     });

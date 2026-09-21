@@ -188,14 +188,38 @@ export function answerableFields(config: FormConfig): FormField[] {
 /** Evaluate a showWhen condition against submitted answers. Mirrors the
  *  runtime's conditionMet: `in` matches listed values, `notEmpty` matches any
  *  non-empty value. */
+type RawAnswer = string | string[] | boolean;
+
 function conditionMet(
   cond: NonNullable<FormField["showWhen"]>,
-  valueOf: (key: string) => string
+  valueOf: (key: string) => RawAnswer
 ): boolean {
   // all: [...] maste ligga FORE falt-uppslaget - ett kombinerat villkor har
   // inget eget `field`. Speglar samma gren i v1.js.
   if (cond.all) return cond.all.every((c) => conditionMet(c, valueOf));
-  const current = valueOf(cond.field ?? "");
+  const raw = valueOf(cond.field ?? "");
+  // `checkboxes` svarar med en ARRAY. Tom array = inget svar, och `in` traffar
+  // om NAGOT av de valda varden star i listan - det ar det som gor
+  // "Annat -> specificera" mojlig pa ett flervalsfalt. Samma gren i v1.js.
+  if (Array.isArray(raw)) {
+    const empty = raw.length === 0;
+    if (cond.isEmpty) return empty;
+    if (cond.notEmpty) return !empty;
+    if (cond.in) return raw.some((v) => cond.in!.includes(v));
+    return true;
+  }
+  // En OBOCKAD kryssruta är tomt svar. Klienten har alltid sett det så
+  // (`v === false` räknas som empty), men servern jämförde den formaterade
+  // strängen och "Nej" är inte tom - så `notEmpty` mot en kryssruta gav olika
+  // svar i de två kopiorna. Villkoret "visa det här först när kunden bockat i"
+  // hade därför gjort ett dolt fält obligatoriskt på servern.
+  if (typeof raw === "boolean") {
+    if (cond.isEmpty) return !raw;
+    if (cond.notEmpty) return raw;
+    if (cond.in) return raw && cond.in.includes("Ja");
+    return true;
+  }
+  const current = raw;
   const empty = !current || current === "(tomt svar)";
   // isEmpty fanns bara i klienten. Utan den har blev e-postfältet - som är
   // villkorat på `kund` och därför INTE skickas med när kunden kommer via en
@@ -215,18 +239,27 @@ export function findMissingRequired(
   config: FormConfig,
   answers: SubmissionAnswer[]
 ): string[] {
-  const valueOf = (key: string): string => {
+  // Rått värde för arrayer (flerval) och booleaner (kryssruta), annars den
+  // formaterade strängen. conditionMet behöver arrayen intakt för att kunna
+  // matcha ett enskilt val, och booleanen för att se en obockad ruta som tom.
+  const valueOf = (key: string): RawAnswer => {
     const a = answers.find((x) => x.key === key);
-    return a ? formatAnswerValue(a.value) : "";
+    if (!a) return "";
+    if (Array.isArray(a.value)) return a.value.map((v) => String(v));
+    if (typeof a.value === "boolean") return a.value;
+    return formatAnswerValue(a.value);
   };
   const missing: string[] = [];
   for (const f of answerableFields(config)) {
     if (!f.required) continue;
     if (f.showWhen && !conditionMet(f.showWhen, valueOf)) continue;
     const v = valueOf(f.key);
-    if (!v || v === "(tomt svar)" || (f.kind === "checkbox" && v === "Nej")) {
-      missing.push(f.label || f.key);
-    }
+    const tomt = Array.isArray(v)
+      ? v.length === 0
+      : typeof v === "boolean"
+        ? !v
+        : !v || v === "(tomt svar)" || (f.kind === "checkbox" && v === "Nej");
+    if (tomt) missing.push(f.label || f.key);
   }
   return missing;
 }

@@ -34,6 +34,13 @@ const FORMULAR = [
   { ws: "happysleep", slug: "retur", market: "dk" },
   { ws: "happysleep", slug: "angerratt", market: "se" },
   { ws: "happysleep", slug: "angerratt", market: "dk" },
+  // Kollagengarantin flyttad hit fran Fillout 2026-09-21.
+  { ws: "happysleep", slug: "garanti", market: "se" },
+  // Norska marknaden fick egna formular 2026-09-21 - fore det serverade
+  // /no-no de svenska.
+  { ws: "happysleep", slug: "kontakt", market: "no" },
+  { ws: "happysleep", slug: "retur", market: "no" },
+  { ws: "happysleep", slug: "angerratt", market: "no" },
 ];
 
 async function main() {

@@ -63,6 +63,18 @@ export type FormField =
   | ({ kind: "info"; html: string } & FormFieldBase)
   | ({ kind: "text" | "email" | "textarea" | "date" } & FormFieldBase)
   | ({ kind: "select" | "radio"; options: { value: string; label: string }[] } & FormFieldBase)
+  // Flerval. Kundens svar är en ARRAY av values, inte en sträng.
+  //
+  // Finns för att Fillouts garantiformulär frågade "Vad var ditt mål?" och
+  // "Varför vill du utnyttja garantin?" som Checkboxes, och hubben hade ingen
+  // flervalstyp - de blev enval vid migreringen 2026-07-24 och en kund som
+  // både såg för lite resultat OCH tyckte det var svårt att ta konsekvent
+  // kunde bara ange ett av skälen. Upptäckt i jämförelsen mot originalen
+  // 2026-09-21.
+  //
+  // `showWhen: { field, in: [...] }` matchar om NÅGOT av de valda värdena
+  // finns i listan, vilket är det som gör "Annat -> specificera" möjlig.
+  | ({ kind: "checkboxes"; options: { value: string; label: string }[] } & FormFieldBase)
   // Checkbox with confirmation text (godkännande)
   | ({ kind: "checkbox"; text: string } & FormFieldBase)
   // `asCta` gör stegets egen CTA till den som öppnar filväljaren, i stället för
