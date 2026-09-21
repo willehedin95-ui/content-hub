@@ -313,12 +313,23 @@ Slutkontroll: `regress-forms` grönt på alla 16 formulär, och alla 14 butikssi
 mätta på 1100 och 390 px - rätt marknad, rätt rubrik, noll Fillout, noll
 sidledsscroll.
 
-## Väntar på deploy
+## Deployat och mätt live (2026-09-21)
 
-`--flerval` på `scripts/fix-forms-2026-09-21.ts` sätter `kind: "checkboxes"` på
-garantiformulärens två frågor. Configen får inte gå före koden: den embed som
-ligger ute renderar okända fälttyper som ett fritextfält. Kör flaggan när nya
-`v1.js` är live.
+Pushad som `be0c9a4f` (bar även en pickup-tracker-fix från en parallell session).
+Nya `v1.js` bekräftat serverad innan `--flerval` kördes - configen får aldrig gå
+före koden, den gamla embedden renderar en okänd fälttyp som ett fritextfält.
+
+Mätt på de skarpa butikssidorna efteråt:
+
+| | stegräknare | valideringsfel | frivillig-markering |
+|---|---|---|---|
+| `/da-dk/pages/angra-kop` | **Trin 1 af 2** | **Dette felt er obligatorisk.** | Besked (valgfrit) |
+| `/no-no/pages/angra-kop` | **Trinn 1 av 2** | **Dette feltet er obligatorisk.** | Melding (valgfritt) |
+
+Flervalet E2E-testat mot prod i testläge: två val i vardera frågan sparades som
+`["hud","naglar"]` med `display` = "Bättre hud (fasthet, elasticitet), Starkare
+naglar", villkoret "Annat -> specificera" slog till på ett av flera val, och
+`delivery_status = skipped` så ingen ticket skapades. Testraden raderad.
 
 ## Blockerat på andras åtgärd
 
