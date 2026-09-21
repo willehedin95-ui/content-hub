@@ -869,9 +869,21 @@
   function skickaInDirekt() {
     var f = container.querySelector(".chf-form");
     if (!f) return;
-    var sb = f.querySelector("button.chf-submit[type=submit]");
     var te = f.querySelector(".chf-toperror");
-    if (sb && te) onSubmit(f, sb, te);
+    if (!te) return;
+    // Aterkopplingen ("Skickar...") maste hamna pa knappen kunden FAKTISKT
+    // ser. Mellanstegens knapp ar type=button, sa en sokning efter
+    // [type=submit] traffar den dolda knappen i sista steget - texten byttes
+    // dar medan den synliga stod still. Kunden sag ingenting hanka i 3-5
+    // sekunder medan bilden laddades upp.
+    var synligt = null;
+    var steg = container.querySelectorAll("[data-step]");
+    for (var i = 0; i < steg.length; i++) {
+      if (steg[i].style.display !== "none") { synligt = steg[i]; break; }
+    }
+    var sb = (synligt && synligt.querySelector("button.chf-submit")) ||
+             f.querySelector("button.chf-submit[type=submit]");
+    if (sb) onSubmit(f, sb, te);
   }
 
   function showStep(idx) {
@@ -1752,17 +1764,57 @@
     return answers;
   }
 
+  /**
+   * Skala ner en bild INNAN den laddas upp.
+   *
+   * Servern komprimerar anda till max 1400 px, men klienten skickade
+   * originalet: en iPhone-selfie ar 2-5 MB och landar som ~145 kB. Alltsa
+   * laddades 20-30 ganger mer an nodvandigt upp, och pa mobilnat ar det
+   * skillnaden mellan nagon sekund och fem.
+   *
+   * Faller tillbaka pa originalfilen vid minsta problem (HEIC som webblasaren
+   * inte kan avkoda, canvas som nekar). En langsam uppladdning ar battre an
+   * en utebliven bild.
+   */
+  function krympBild(file) {
+    var MAX = 1400;
+    if (!file.type || file.type.indexOf("image/") !== 0) return Promise.resolve(file);
+    if (typeof createImageBitmap !== "function") return Promise.resolve(file);
+    // imageOrientation: EXIF maste tolkas har, annars ligger bilden ner nar
+    // canvas ritar den - servern kan inte rotera nagot som redan ar utplattat.
+    return createImageBitmap(file, { imageOrientation: "from-image" })
+      .then(function (bmp) {
+        var skala = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
+        if (skala >= 1) { bmp.close && bmp.close(); return file; }
+        var c = document.createElement("canvas");
+        c.width = Math.round(bmp.width * skala);
+        c.height = Math.round(bmp.height * skala);
+        c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+        bmp.close && bmp.close();
+        return new Promise(function (klar) {
+          c.toBlob(function (blob) {
+            if (!blob || blob.size >= file.size) return klar(file);
+            var namn = (file.name || "bild").replace(/\.[^.]+$/, "") + ".jpg";
+            klar(new File([blob], namn, { type: "image/jpeg" }));
+          }, "image/jpeg", 0.9);
+        });
+      })
+      .catch(function () { return file; });
+  }
+
   function uploadFiles() {
     var uploads = [];
     Object.keys(state.files).forEach(function (key) {
       (state.files[key] || []).forEach(function (file) {
-        var fd = new FormData();
-        fd.append("file", file);
-        // Marknaden med, sa filfel (for stor, fel typ) kommer tillbaka pa
-        // kundens sprak i stallet for pa svenska.
-        fd.append("market", MARKET);
         uploads.push(
-          fetch(HUB + "/api/forms/upload", { method: "POST", body: fd })
+          krympBild(file).then(function (liten) {
+            var fd = new FormData();
+            fd.append("file", liten);
+            // Marknaden med, sa filfel (for stor, fel typ) kommer tillbaka pa
+            // kundens sprak i stallet for pa svenska.
+            fd.append("market", MARKET);
+            return fetch(HUB + "/api/forms/upload", { method: "POST", body: fd });
+          })
             .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
             .then(function (res) {
               if (!res.r.ok || !res.j.url) throw new Error(res.j.error || T.genericError);
