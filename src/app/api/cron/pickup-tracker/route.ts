@@ -140,7 +140,8 @@ async function handleCron(req: NextRequest) {
       });
     }
 
-    if (rows.length > 0) {
+    // Torrkorning ror inte databasen, se kommentaren vid uppdateringen nedan.
+    if (rows.length > 0 && !dryRun) {
       // ignoreDuplicates: en rad som redan bevakas ska INTE fa sina
       // status-/eventfalt nollstallda av upptackten.
       const { error } = await db
@@ -160,6 +161,8 @@ async function handleCron(req: NextRequest) {
   let nowDelivered = 0;
   let nowReturned = 0;
   let eventsSent = 0;
+  /** Bara torrkorning: hur manga event en skarp korning skulle ha skickat. */
+  let eventsWouldSend = 0;
   let eventsSkippedNoEmail = 0;
   let eventsSkippedTooOld = 0;
 
@@ -195,10 +198,12 @@ async function handleCron(req: NextRequest) {
         ref: trackingNumber,
         error: err instanceof Error ? err.message : String(err),
       });
-      await db
-        .from("parcel_tracking")
-        .update({ last_checked_at: new Date().toISOString(), check_count: (row.check_count ?? 0) + 1 })
-        .eq("id", row.id);
+      if (!dryRun) {
+        await db
+          .from("parcel_tracking")
+          .update({ last_checked_at: new Date().toISOString(), check_count: (row.check_count ?? 0) + 1 })
+          .eq("id", row.id);
+      }
       await sleep(BRING_DELAY_MS);
       continue;
     }
@@ -236,7 +241,7 @@ async function handleCron(req: NextRequest) {
         update.klaviyo_error = `Klaviyo key missing for ${brand}`;
         errors.push({ step: "klaviyo", ref: trackingNumber, error: update.klaviyo_error as string });
       } else if (dryRun) {
-        update.klaviyo_error = "dry run - inget skickat";
+        eventsWouldSend += 1;
       } else {
         try {
           await trackKlaviyoEvent({
@@ -268,8 +273,16 @@ async function handleCron(req: NextRequest) {
       nowReturned += 1;
     }
 
-    const { error: updErr } = await db.from("parcel_tracking").update(update).eq("id", row.id);
-    if (updErr) errors.push({ step: "update", ref: trackingNumber, error: updErr.message });
+    // En torrkorning ska kunna koras utan att andra nagonting. Den tidigare
+    // versionen skrev status, delivered_at och - i backlog-grenen - aven
+    // klaviyo_event_sent_at fast inget skickades. Uppmatt 2026-09-21: en
+    // torrkorning flyttade 9 paket till "delivered" utan event, och da matchade
+    // de inte langre urvalet av vad som bevakas. De blev osynliga for nasta
+    // skarpa korning och fick puttas tillbaka for hand.
+    if (!dryRun) {
+      const { error: updErr } = await db.from("parcel_tracking").update(update).eq("id", row.id);
+      if (updErr) errors.push({ step: "update", ref: trackingNumber, error: updErr.message });
+    }
 
     await sleep(BRING_DELAY_MS);
   }
@@ -284,6 +297,7 @@ async function handleCron(req: NextRequest) {
     now_delivered: nowDelivered,
     now_returned: nowReturned,
     events_sent: eventsSent,
+    events_would_send: eventsWouldSend,
     events_skipped_no_email: eventsSkippedNoEmail,
     events_skipped_backlog: eventsSkippedTooOld,
     errors: errors.slice(0, 25),
