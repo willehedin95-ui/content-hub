@@ -58,6 +58,16 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
 ### Klart 2026-09-15
 
+## 2026-09-21 (Jev-utvardering + kanalingest)
+
+- [ ] **Kor om Jev-rerank med snavare fraga** — forsta forsoket lyfte ratt fil till toppen (sak 0,99) men plats 3, 5 och 6 var copy-material utan koppling till fragan. Avgor om problemet ar fragan eller modellen. Harness: `/tmp/jev/shadow.py`, datamangd `/tmp/jev/dataset.jsonl`. **Flytta bada till repot om de ska overleva.**
+- [ ] **Bygg Jev som rangordningssteg i vault-sokningen** — beroende av punkten ovan. Detta ar den uppgift William faktiskt ger oftast ("har vi sparat nat om X", "grav i gamla konversationer om Y"). Grep ner till ~60 kandidater, Jev poangsatter, sortera pa `confidence` inte `score`, las bara over 0,9.
+- [ ] **Lagg utfallsloggning per rad i /bokforing** — hittade underlag / internt / William drar sjalv. Efter en manads korning finns ett riktigt facit att mata pa. Idag finns inget: exporterna har 85 rader, alla i samma klass.
+- [ ] **Avinstallera den gamla yt-dlp pa python 3.9** — `python3 -m yt_dlp` kraschar fortfarande pa configens `--js-runtimes`. Fallan kvarstar tills den tas bort. Nya finns i `~/.local/venvs/yt-dlp`, symlankad till `~/.local/bin/yt-dlp`.
+- [ ] **Bestam om nuggetsmannen ska forbli publik** — ligger pa nuggetsmannen.pages.dev och som artifact, bada oppna for vem som helst med lanken, och innehaller bilder pa en verklig person.
+- [x] **Lagade save-bookmarks-process.py** — trasig sedan konfliktlosningen 2026-09-08, sju kvarglomda rader gjorde filen syntaktiskt ogiltig. /save-bookmarks har inte kunnat kora pa tolv dagar. (done 2026-09-21)
+- [x] **Nio kanaler ingestade, 77 filer + 8 X-poster + 2 nya wiki-sidor** — app-filtrerat pa innehall, alla 39 bilder transkriberade. (done 2026-09-21)
+
 - [x] Klaviyo-adapter - eventet bar hela bildserien, det som gor Zooki-mailen mojliga
 - [x] Signerad kundlank - dag 30 gick fran fyra skarmar till en
 - [x] Sidan shopenvana.com/pages/resa, fullskarm utan butikens header/footer
