@@ -31,8 +31,15 @@ const BRING_DELAY_MS = 250;
  * Sluta bevaka ett paket som aldrig landar nagonstans. 45 dagar ar val tilltaget:
  * matt p90 fran avsant till uthamtat ar 6,3 dygn och Bring returnerar ohamtade
  * paket efter ca 8 dagar.
+ *
+ * Spar ar mattet ALDER, inte antal kontroller. Forsta versionen raknade
+ * kontroller och var skriven som om cronen gick en gang per dygn. Den gar varje
+ * timme, sa taket slog efter 60 timmar (2,5 dygn) i stallet for 45 dagar.
+ * Utfall: 102 av 104 oppna paket slutade bevakas och eventen foll fran 11 om
+ * dagen till noll pa fyra dagar (uppmatt 2026-09-21). En raknare kodar in
+ * cron-frekvensen implicit, en aldersgrans gor det inte.
  */
-const MAX_CHECKS = 60;
+const MAX_TRACKING_DAYS = 45;
 
 /**
  * Skicka INTE event for paket som hamtades ut for lange sedan.
@@ -156,12 +163,18 @@ async function handleCron(req: NextRequest) {
   let eventsSkippedNoEmail = 0;
   let eventsSkippedTooOld = 0;
 
+  // Bevakningsfonster. Rader utan shipped_at (Shelfless satte aldrig datumet)
+  // faller tillbaka pa created_at sa de inte bevakas i all evighet.
+  const trackingCutoff = new Date(Date.now() - MAX_TRACKING_DAYS * 86_400_000).toISOString();
+
   const { data: open, error: openErr } = await db
     .from("parcel_tracking")
     .select("*")
     .is("klaviyo_event_sent_at", null)
     .in("status", ["in_transit", "ready_for_pickup"])
-    .lt("check_count", MAX_CHECKS)
+    .or(
+      `shipped_at.gte.${trackingCutoff},and(shipped_at.is.null,created_at.gte.${trackingCutoff})`
+    )
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .limit(BRING_LOOKUPS_PER_RUN);
 
