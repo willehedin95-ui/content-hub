@@ -79,7 +79,14 @@ export async function GET(req: NextRequest) {
   }
 
   const nycklar = Object.keys(steps).sort();
-  const senaste = nycklar.length ? steps[nycklar[nycklar.length - 1]] : null;
+  // SENAST I TID, inte hogsta stegnummer. Forut togs steps[sista nyckeln],
+  // vilket gav dag 60-bilden till en kund som hoppat over dag 30 och sedan
+  // fyller i den - alltsa fel bild som vinkelguide, och kronologiskt bakvant.
+  const senaste = nycklar.length
+    ? nycklar
+        .map((k) => steps[k])
+        .reduce((a, b) => (new Date(b.at) > new Date(a.at) ? b : a))
+    : null;
   const forsta = nycklar.length ? steps[nycklar[0]] : null;
 
   return NextResponse.json(

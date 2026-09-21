@@ -1940,7 +1940,17 @@
         state.customer = d;
         state.values.kund = d.email;
         state.values.email = d.email;
-        if (d.latestUrl) state.values.forra_bild_url = d.latestUrl;
+        // "Forra bilden" ska vara den hon tog NARMAST FORE det steg hon star
+        // pa nu. Vet vi steget valjs den; annars faller vi tillbaka pa den
+        // senast uppladdade. Utan det kan dag 30-skarmen visa dag 60-bilden.
+        var mittSteg = parseInt(state.values.steg, 10);
+        var vald = null;
+        if (d.steps && mittSteg) {
+          for (var n = mittSteg - 1; n >= 1; n--) {
+            if (d.steps[String(n)]) { vald = d.steps[String(n)]; break; }
+          }
+        }
+        if (vald || d.latestUrl) state.values.forra_bild_url = vald || d.latestUrl;
         if (d.steps) {
           for (var sk in d.steps) {
             if (d.steps[sk]) state.values["bild_" + sk + "_url"] = d.steps[sk];
