@@ -58,6 +58,29 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
 ### Klart 2026-09-15
 
+## 2026-09-21 (Hemlighetsstadning - Hostinger-token roterad)
+
+- [x] **KLART: Hostinger DNS-tokenen roterad.** Lag i klartext i minnesfilen OCH
+      committad till det **publika** repot sedan 2026-04-21 (`3fe8435e`). Fem manader
+      offentligt lasbar med full DNS-skrivatkomst till live-butikerna. Ny token i
+      1Password `Dropship` / **Hostinger API** och som `HOSTINGER_API_TOKEN` i
+      `.env.local`. Gammal verifierad dod (401, tva endpoints, tre omgangar).
+      Skripten `scripts/verify-{get-renew,doginwork}-gsc.ts` laser nu env.
+      Pushad till main (`f9655123`), `feat/valpkurs-sales-page` och `progressbilder`.
+- [x] **KLART: dod Cloudflare- och Supabase-token ut ur minnesfiler och fem filer
+      i tre projekt.** Bada verifierat doda, sa stadning och ingen akut lacka.
+- [ ] **Ny Cloudflare-token nar CF Pages behovs igen.** `CF_PAGES_API_TOKEN` i
+      `.env.local` ar **dod** ("Invalid API Token", matt 2026-09-21). Ingenting
+      krver den just nu, men nasta CF Pages-publicering kommer att falla pa den.
+      Skapa i Cloudflare-dashboarden, lagg i `.env.local`.
+- [ ] **Overvag ett aterkommande hemlighetssvep.** Hard rule mot klartext-hemligheter
+      fanns sedan 2026-05-18 men stadade aldrig det som redan lag pa disk. Sok pa
+      *monstret* (`token:` / `key:` / `secret:` foljt av ett langt varde), inte bara
+      pa kanda prefix - Hostinger-tokenen har inget prefix och syns inte annars.
+      Kolla ocksa om vardet natt ett git-repo och om det repot ar publikt.
+- [ ] **eps-ventiler: `b225963` ligger ocommittad-pushad.** Bara markdown, dod token,
+      ingen bradska. Pusha nar det passar.
+
 ## 2026-09-21 (Jev-utvardering + kanalingest)
 
 - [ ] **Kor om Jev-rerank med snavare fraga** — forsta forsoket lyfte ratt fil till toppen (sak 0,99) men plats 3, 5 och 6 var copy-material utan koppling till fragan. Avgor om problemet ar fragan eller modellen. Harness: `/tmp/jev/shadow.py`, datamangd `/tmp/jev/dataset.jsonl`. **Flytta bada till repot om de ska overleva.**

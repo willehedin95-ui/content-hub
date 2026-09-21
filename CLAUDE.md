@@ -137,7 +137,7 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
 - **NEVER call money-writing Meta functions outside `runWithMetaConfig`** — the module-global `setMetaConfig` can be swapped by concurrent requests and land ads/pauses in the wrong ad account.
 - **NEVER skip `npm run build`** — Always verify the build passes before committing. TypeScript errors caught here prevent broken deploys.
 - **NEVER create files at the project root unless they're config files** — Components go in `src/components/`, utilities in `src/lib/`, types in `src/types/`.
-- **NEVER hardcode API tokens in source files** — All tokens live in `.env.local`. Reference via `process.env.VARIABLE_NAME`.
+- **NEVER hardcode API tokens in source files** — All tokens live in `.env.local`. Reference via `process.env.VARIABLE_NAME`. **This repo is PUBLIC on GitHub** (`willehedin95-ui/content-hub`, verified 2026-09-21 with an unauthenticated API call), so a committed token is world-readable the moment it is pushed, and stays readable in the history afterwards. This rule already existed when the Hostinger DNS token was hardcoded into two `scripts/verify-*-gsc.ts` files and pushed on 2026-04-21; it sat openly on github.com for five months with full DNS write access to every domain, including the live stores. Rotation was the only real fix. Before committing anything that looks like a credential, check it against this rule AND remember the repo is public.
 - **NEVER modify the Supabase service role key or project URL** — These are shared infrastructure. If they look wrong, ask before changing.
 
 ## Session continuity
