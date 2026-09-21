@@ -1,6 +1,12 @@
 import { google } from "googleapis";
 
-const HOSTINGER_TOKEN = "yGjknxOuDCSLPIri0HRZ9jcPsuCujZTnvCgr0pdP4b895c7a";
+const HOSTINGER_TOKEN = process.env.HOSTINGER_API_TOKEN;
+if (!HOSTINGER_TOKEN) {
+  throw new Error(
+    "HOSTINGER_API_TOKEN saknas. Hämta den ur 1Password:\n" +
+      '  export HOSTINGER_API_TOKEN=$(op read "op://Dropship/Hostinger API/credential")'
+  );
+}
 const DOMAIN = "doginwork.se";
 
 async function requestTxtToken() {
