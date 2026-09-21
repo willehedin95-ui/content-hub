@@ -46,6 +46,7 @@
     config: null,
     values: {},
     files: {}, // key -> File[]
+    uploads: {}, // key -> Promise med redan pagaende uppladdning
     submitting: false,
     currentStep: 0, // pagebreak-delade formulär (t.ex. tvåstegs ångerrätt)
     app: false, // config.theme.mode === "app": fullskärms onboarding-skal
@@ -1522,6 +1523,12 @@
       function take(files) {
         var list = Array.prototype.slice.call(files || []).slice(0, f.maxFiles || 3);
         state.files[f.key] = list;
+        // Ladda upp DIREKT, i bakgrunden. Forut lag bilden i minnet tills hon
+        // tryckte sig vidare fran SISTA steget, och da skedde uppladdningen
+        // bakom en knapp som sa "Fortsatt" - flera sekunders tystnad efter ett
+        // klick som lovade nagot annat. Nu sker den medan hon svarar pa fragan
+        // och laser tidslinjen, sa inskicket bara ar en rad JSON.
+        state.uploads[f.key] = list.length ? laddaUppLista(list, f.key) : null;
         setValue(f.key, list.map(function (x) { return x.name; }).join(", "));
         render(list);
       }
@@ -1802,28 +1809,38 @@
       .catch(function () { return file; });
   }
 
+  function laddaUppLista(list, key) {
+    var p = Promise.all(list.map(function (file) {
+      return krympBild(file).then(function (liten) {
+        var fd = new FormData();
+        fd.append("file", liten);
+        // Marknaden med, sa filfel (for stor, fel typ) kommer tillbaka pa
+        // kundens sprak i stallet for pa svenska.
+        fd.append("market", MARKET);
+        return fetch(HUB + "/api/forms/upload", { method: "POST", body: fd });
+      })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (res) {
+          if (!res.r.ok || !res.j.url) throw new Error(res.j.error || T.genericError);
+          return { url: res.j.url, filename: res.j.filename || file.name, fieldKey: key };
+        });
+    }));
+    // Misslyckas den i bakgrunden ska inskicket fa gora ett nytt forsok i
+    // stallet for att arva ett trasigt lofte.
+    p.catch(function () { state.uploads[key] = null; });
+    return p;
+  }
+
   function uploadFiles() {
-    var uploads = [];
-    Object.keys(state.files).forEach(function (key) {
-      (state.files[key] || []).forEach(function (file) {
-        uploads.push(
-          krympBild(file).then(function (liten) {
-            var fd = new FormData();
-            fd.append("file", liten);
-            // Marknaden med, sa filfel (for stor, fel typ) kommer tillbaka pa
-            // kundens sprak i stallet for pa svenska.
-            fd.append("market", MARKET);
-            return fetch(HUB + "/api/forms/upload", { method: "POST", body: fd });
-          })
-            .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
-            .then(function (res) {
-              if (!res.r.ok || !res.j.url) throw new Error(res.j.error || T.genericError);
-              return { url: res.j.url, filename: res.j.filename || file.name, fieldKey: key };
-            })
-        );
-      });
+    var jobb = Object.keys(state.files).map(function (key) {
+      if (!(state.files[key] || []).length) return Promise.resolve([]);
+      // Redan igang sedan hon valde bilden? Vanta pa den i stallet for att
+      // ladda upp samma fil en gang till.
+      return state.uploads[key] || laddaUppLista(state.files[key], key);
     });
-    return Promise.all(uploads);
+    return Promise.all(jobb).then(function (grupper) {
+      return grupper.reduce(function (a, b) { return a.concat(b); }, []);
+    });
   }
 
   function showTopError(topError, msg) {
