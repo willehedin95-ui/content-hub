@@ -23,6 +23,7 @@ const NAMES: Record<string, string> = {
   kvittens: "kvittens (alla tre stegen)",
   paminnelse: "paminnelse nasta bild",
   slutmail: "slutmail dag 60 + samtycke",
+  bekraftelse: "beloningsbekraftelse",
 };
 
 async function kv(path: string, init: RequestInit = {}) {
