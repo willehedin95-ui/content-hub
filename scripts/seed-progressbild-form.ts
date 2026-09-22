@@ -372,9 +372,14 @@ const progressbild: FormConfig = {
       kind: "info",
       key: "belöning",
       showWhen: { field: "steg", in: ["3"] },
-      html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.webp" alt="Presentkort pa 200 kronor" width="900" height="608" loading="eager"></div></figure>
-<h2 class="chf-slide-title chf-mid">200 kr, som tack</h2>
-<p class="chf-slide-sub chf-mid">Dina tre bilder är inne. Vi hör av oss på <strong>{{email}}</strong> med dina 200 kr.</p>`,
+      // "Presentkort" och "vi hor av oss med dina 200 kr" stammer inte mot
+      // nagon av vagarna: prenumeranten far ett avdrag pa nasta Loop-order,
+      // engangskoparen en rabattkod. Bade bilden och texten sager darfor
+      // "till nasta order", vilket ar sant i bada fallen. Exakt vilken vag
+      // det blev star pa kvittensskarmen, som fragar API:et.
+      html: `<figure class="chf-shot" style="margin:6px 0 2px"><div class="chf-shot-frame"><img src="{{hub}}/images/progressbild/presentkort.webp" alt="200 kronor till din nästa order" width="900" height="608" loading="eager"></div></figure>
+<h2 class="chf-slide-title chf-mid">200 kr till din nästa order</h2>
+<p class="chf-slide-sub chf-mid">Dina tre bilder är inne. Du får 200 kr att använda på din nästa beställning.</p>`,
     },
 
     // HAR LAG SAMTYCKET: en skarm som erbjod 400 kr i stallet for 200 om hon
@@ -416,13 +421,22 @@ const progressbild: FormConfig = {
         },
         {
           showWhen: { field: "steg", in: ["3"] },
-          title: "Tack, det betyder mycket",
-          html: `<p>Presentkortet är på väg till <strong>{{email}}</strong>.</p>
+          // Rubriken handlade tidigare om OSS ("Tack, det betyder mycket").
+          // Hon har dokumenterat sina egna 60 dagar - skarmen ska lamna over
+          // resultatet, inte tacka for en tjanst.
+          title: "Här är dina 60 dagar",
+          html: `<p>Dag 1, dag 30 och dag 60. Sida vid sida för första gången.</p>
 <div class="chf-delning">
 <img src="{{hub}}/api/forms/share-card?t={{token}}" alt="Din resa, dag 1 och dag 60" width="1080" height="1350" loading="eager">
 <button type="button" class="chf-dela" data-chf-dela="{{hub}}/api/forms/share-card?t={{token}}">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5V3.5"/><path d="M8.2 7.1 12 3.3l3.8 3.8"/><path d="M5 13v6.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V13"/></svg>
-Dela din resa</button>
+Spara eller dela</button>
+</div>
+<div class="chf-beloning" data-chf-beloning="{{hub}}/api/forms/beloning?t={{token}}">
+<p data-bel="vantar">Dina 200 kr är på väg. Vi mejlar detaljerna till <strong>{{email}}</strong>.</p>
+<p data-bel="loop-avdrag" hidden><strong>200 kr dras på din nästa leverans.</strong> Du behöver inte göra något - rabatten ligger redan på din prenumeration.</p>
+<p data-bel="rabattkod" hidden><strong>200 kr på din nästa beställning.</strong> Använd koden <strong data-bel-kod class="chf-kod"></strong> i kassan. Den finns också i mejlet till {{email}}.</p>
+<p data-bel="manuell" hidden>Dina 200 kr är på väg. Vi hör av oss på <strong>{{email}}</strong>.</p>
 </div>`,
         },
       ],

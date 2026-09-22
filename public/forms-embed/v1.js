@@ -84,6 +84,8 @@
       sending: "Skickar...",
       genericError: "Något gick fel. Försök igen.",
       networkError: "Något gick fel. Kontrollera din uppkoppling och försök igen - dina svar finns kvar.",
+      shareNotReady: "Bilden laddas fortfarande. Försök igen om en stund.",
+      shareFailed: "Delningen gick inte igenom. Håll in bilden ovanför för att spara den.",
       loading: "Laddar formulär...",
       loadError: "Formuläret kunde inte laddas just nu. Ladda om sidan eller försök igen om en stund.",
     },
@@ -106,6 +108,8 @@
       sending: "Sender...",
       genericError: "Noget gik galt. Prøv igen.",
       networkError: "Noget gik galt. Tjek din forbindelse, og prøv igen - dine svar er gemt.",
+      shareNotReady: "Billedet indlæses stadig. Prøv igen om lidt.",
+      shareFailed: "Delingen gik ikke igennem. Hold fingeren på billedet ovenfor for at gemme det.",
       loading: "Indlæser formular...",
       loadError: "Formularen kunne ikke indlæses lige nu. Genindlæs siden, eller prøv igen om lidt.",
     },
@@ -128,6 +132,8 @@
       sending: "Sender...",
       genericError: "Noe gikk galt. Prøv igjen.",
       networkError: "Noe gikk galt. Sjekk tilkoblingen din og prøv igjen - svarene dine er lagret.",
+      shareNotReady: "Bildet lastes fortsatt. Prøv igjen om litt.",
+      shareFailed: "Delingen gikk ikke gjennom. Hold fingeren på bildet over for å lagre det.",
       loading: "Skjemaet lastes...",
       loadError: "Skjemaet kunne ikke lastes akkurat nå. Last inn siden på nytt, eller prøv igjen om litt.",
     },
@@ -645,6 +651,7 @@
     // Delningskortet pa tacksidan. Bilden ar serverrenderad, sa den gar att
     // spara och dela som vilken bild som helst - en skarmdump av en CSS-layout
     // hade burit hennes telefons statusrad med sig.
+    ".chf-app .chf-dela-status{margin:10px 0 0;font-size:.88em;opacity:.7;text-align:center}" +
     ".chf-app .chf-delning{margin:18px 0 0}" +
     ".chf-app .chf-delning img{display:block;width:100%;height:auto;max-height:40vh;" +
     "object-fit:contain;border-radius:18px}" +
@@ -654,6 +661,16 @@
     "cursor:pointer;box-shadow:0 8px 24px rgba(240,87,61,.22)}" +
     ".chf-app .chf-dela:active{transform:scale(.98)}" +
     ".chf-app .chf-dela svg{width:20px;height:20px}" +
+    // Beloningen. Ett eget falt och inte en till brodtextrad - det ar det hon
+    // faktiskt tjanat, och det ska ga att se utan att lasa.
+    ".chf-app .chf-beloning{margin:22px 0 0;padding:16px 18px;border-radius:14px;" +
+    "background:var(--chf-surface,#fff);border:1px solid rgba(50,13,1,.09);text-align:left}" +
+    ".chf-app .chf-beloning p{margin:0;font-size:15.5px;line-height:1.55}" +
+    // Koden ska ga att lasa av och skriva in. Siffror och bokstaver far darfor
+    // fast bredd, sa 0 och O inte ser lika ut nar hon skriver av den i kassan.
+    ".chf-app .chf-kod{display:inline-block;margin:2px 1px;padding:3px 9px;border-radius:7px;" +
+    "background:rgba(240,87,61,.1);color:var(--chf-brand);letter-spacing:1px;" +
+    "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px}" +
     // Valknappar. Den primara ar stor och fylld, den tysta ar en textrad -
     // samma viktning som mobilspelens "Double Reward" mot "Free".
     ".chf-app .chf-choices{display:flex;flex-direction:column;gap:6px}" +
@@ -1023,25 +1040,154 @@
     stang.focus();
   }
 
+  // ------------------------------------------------------------- delningen
+  // WebKit kraver att navigator.share anropas SYNKRONT i klickhanteraren.
+  // Den forra versionen hamtade kortet med fetch och anropade share forst
+  // efter det, alltsa utanfor gesten, vilket iOS Safari avvisar med
+  // NotAllowedError. Bada felvagarna var dessutom tysta: catch var tomt, och
+  // reservvagen oppnade ett fonster som popup-blockeraren stoppar efter ett
+  // await. Symtomet blev en knapp som inte gjorde nagonting.
+  //
+  // (Chrome ar mildare och slapper igenom anropet anda, sa felet gar inte att
+  // ateruppleva i en headless Chrome - koden foljer WebKits regel oavsett.)
+  //
+  // Darfor: bilden hamtas nar slutskarmen ritas, och klicket anropar share
+  // synkront pa en fil som redan ligger i minnet.
+  var delaFil = null;
+
+  /** Startar hamtningen av delningskortet och kopplar felhantering pa
+   *  forhandsvisningen. Anropas nar endingen ritats. */
+  function forberedDelning(rot) {
+    delaFil = null;
+    var btn = rot.querySelector && rot.querySelector("[data-chf-dela]");
+    if (!btn) return;
+    var url = btn.getAttribute("data-chf-dela");
+    var ruta = btn.closest(".chf-delning") || btn.parentNode;
+    var bild = ruta.querySelector && ruta.querySelector("img");
+
+    function hamta() {
+      fetch(url)
+        .then(function (r) {
+          if (!r.ok) throw new Error("kort " + r.status);
+          return r.blob();
+        })
+        .then(function (blob) {
+          delaFil = new File([blob], "min-envana-resa.jpg", {
+            type: blob.type || "image/jpeg",
+          });
+        })
+        .catch(function () {
+          // Gar kortet inte att hamta finns inget att dela. Knappen doljs sa
+          // hon inte trycker pa nagot som inte kan svara.
+          btn.hidden = true;
+        });
+    }
+
+    if (!bild) { hamta(); return; }
+
+    // Kan kortet inte byggas (farre an tva bilder) ska hela blocket bort -
+    // en trasig bildikon bredvid en knapp som inte gor nagot ar samre an
+    // ingen delning alls.
+    bild.addEventListener("error", function () { ruta.hidden = true; });
+
+    // Vanta in <img> innan hamtningen startar. Kortet renderas i en riktig
+    // Chromium pa servern, sa tva samtidiga forfragningar startar TVA
+    // webblasare for samma bild. Efter bildens load ligger svaret i
+    // webblasarens cache och fetch far det utan ny rendering.
+    if (bild.complete && bild.naturalWidth) hamta();
+    else bild.addEventListener("load", hamta);
+  }
+
+  // ------------------------------------------------------------ beloningen
+  // Kvittensen kan inte skrivas i forvag. En prenumerant far avdrag pa nasta
+  // leverans, en engangskopare far en rabattkod, och vilket det blev avgors
+  // forst nar beloningen beviljas - i submit-routens after(), alltsa strax
+  // EFTER att den har skarmen ritats. Darfor fragar skarmen, och fragar om
+  // en gang till sa lange svaret ar "inte klar an".
+  //
+  // Sjalva texterna ligger i formularets config, inte har. Det ar varumarkets
+  // ord, och de ska ga att andra utan att runtimen rors.
+  function forberedBeloning(rot) {
+    var ruta = rot.querySelector && rot.querySelector("[data-chf-beloning]");
+    if (!ruta) return;
+    var url = ruta.getAttribute("data-chf-beloning");
+    // Trappan gar upp: beviljandet tar normalt under en sekund, men ett Loop-
+    // eller Shopify-anrop kan dra ivag. Slutar den fraga star "pa vag"-texten
+    // kvar, vilket ar sant men obestamt - aldrig fel.
+    var forsok = [1200, 2500, 5000, 9000];
+    var i = 0;
+
+    function visa(typ, kod) {
+      var traff = ruta.querySelector('[data-bel="' + typ + '"]');
+      if (!traff) return false;
+      var alla = ruta.querySelectorAll("[data-bel]");
+      for (var n = 0; n < alla.length; n++) alla[n].hidden = true;
+      if (kod) {
+        var kodEl = traff.querySelector("[data-bel-kod]");
+        if (kodEl) kodEl.textContent = kod;
+      }
+      traff.hidden = false;
+      return true;
+    }
+
+    function fraga() {
+      fetch(url, { credentials: "omit" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (j && j.typ) { visa(j.typ, j.rabattkod); return; }
+          if (i < forsok.length) setTimeout(fraga, forsok[i++]);
+        })
+        .catch(function () {
+          if (i < forsok.length) setTimeout(fraga, forsok[i++]);
+        });
+    }
+    fraga();
+  }
+
+  function delaStatus(btn, text) {
+    var rad = btn.parentNode.querySelector(".chf-dela-status");
+    if (!rad) {
+      rad = document.createElement("p");
+      rad.className = "chf-dela-status";
+      btn.parentNode.appendChild(rad);
+    }
+    rad.textContent = text;
+  }
+
   container.addEventListener("click", function (e) {
     var delaBtn = e.target.closest && e.target.closest("[data-chf-dela]");
     if (delaBtn) {
       e.preventDefault();
-      var url = delaBtn.getAttribute("data-chf-dela");
-      delaBtn.disabled = true;
-      fetch(url)
-        .then(function (r) { return r.blob(); })
-        .then(function (blob) {
-          var fil = new File([blob], "min-envana-resa.jpg", { type: blob.type || "image/jpeg" });
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [fil] })) {
-            return navigator.share({ files: [fil] });
-          }
-          // Utan systemdelning: oppna bilden i en egen flik sa hon kan spara
-          // den. En <a download> ar blockerad i flera inbaddade lagen.
-          window.open(URL.createObjectURL(blob), "_blank");
-        })
-        .catch(function () {})
-        .then(function () { delaBtn.disabled = false; });
+      if (!delaFil) {
+        delaStatus(delaBtn, T.shareNotReady);
+        return;
+      }
+      var kanDela =
+        navigator.share && navigator.canShare && navigator.canShare({ files: [delaFil] });
+      if (kanDela) {
+        // Inget await fore det har anropet - det ar hela poangen.
+        navigator.share({ files: [delaFil] }).catch(function (err) {
+          // AbortError = hon stangde delningsarket sjalv. Inte ett fel.
+          if (err && err.name === "AbortError") return;
+          delaStatus(delaBtn, T.shareFailed);
+        });
+        return;
+      }
+      // Ingen systemdelning (de flesta datorer): ladda ner i stallet. Gors
+      // ocksa synkront, for en popup eller nedladdning som utloses efter ett
+      // await stoppas tyst av webblasaren.
+      try {
+        var url = URL.createObjectURL(delaFil);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "min-envana-resa.jpg";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+      } catch (err) {
+        delaStatus(delaBtn, T.shareFailed);
+      }
       return;
     }
     var trigger = e.target.closest && e.target.closest("[data-chf-guide]");
@@ -1938,6 +2084,8 @@
         body.innerHTML = "";
         body.appendChild(box);
       }
+      forberedDelning(box);
+      forberedBeloning(box);
       window.scrollTo(0, 0);
       return;
     }
@@ -1946,6 +2094,8 @@
     box.appendChild(elText("h2", null, ending.title));
     if (ending.html) box.appendChild(elHtml("div", null, interpolate(ending.html)));
     container.appendChild(box);
+    forberedDelning(box);
+    forberedBeloning(box);
     container.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 

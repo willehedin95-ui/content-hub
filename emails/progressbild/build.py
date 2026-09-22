@@ -78,7 +78,7 @@ def slot_cell(n, label, filled):
     src = "tom-ruta.png" if MODE == "preview" else "https://content-hub-nine-theta.vercel.app/images/progressbild/tom-ruta.png"
     return (
       '<td width="33%%" align="center" valign="bottom" style="padding:0 5px;">'
-      '<img src="%s" alt="Tom ruta, vantar pa din bild" width="164" '
+      '<img src="%s" alt="Tom ruta, väntar på din bild" width="164" '
       'style="display:block;width:100%%;max-width:164px;height:auto;border:0;"></td>' % src
     )
 
@@ -130,7 +130,7 @@ def button(text, href="#"):
     )
 
 def gift(belopp="200"):
-    """Presentkortet som BILD. Beloppet och wordmarken ar satta i kod ovanpa ett
+    """Beloppskortet som BILD. Beloppet och wordmarken ar satta i kod ovanpa ett
     genererat kortunderlag (Higgsfield), inte genererade - en bildmodell far
     inte "200 kr" ratt, och ett fel belopp ar ett loftesfel.
 
@@ -141,7 +141,7 @@ def gift(belopp="200"):
     return (
       '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" align="center">'
       '<tr><td align="center">'
-      '<img src="%s" width="290" alt="Presentkort pa %s kronor" '
+      '<img src="%s" width="290" alt="%s kronor till din nästa order" '
       'style="display:block;width:100%%;max-width:290px;height:auto;border:0;">'
       '</td></tr></table>' % (src, belopp)
     )
@@ -272,7 +272,7 @@ elif OUT.endswith("paminnelse"):
       '</td></tr></table>'
       '<div style="height:22px;"></div>%s'
       '<p style="font:400 14px %s;line-height:1.6;color:%s;margin:18px 0 0;text-align:center;">'
-      'Tar 30 sekunder. Presentkortet på 200 kr kommer när alla tre är inne.</p>'
+      'Tar 30 sekunder. Dina 200 kr kommer när alla tre är inne.</p>'
       % (H, rubrik, P, forra, button("Ta bilden", lank(FORM_BAS, "{% if event.antal_bilder == 2 %}3{% else %}2{% endif %}")), FONT, MUTED))
     html = shell("Det är dags för nästa progressbild.", body)
 
@@ -323,7 +323,7 @@ else:
       '<p style="font:400 15px %s;line-height:1.6;color:%s;margin:16px 0 0;">%s</p>'
       '</td></tr></table>'
       % (H, P, series(3), FONT, HEAD, P, kort, FONT, MUTED, kvitto))
-    html = shell("Dina tre bilder, och ditt presentkort.", body)
+    html = shell("Dina tre bilder, och dina 200 kr.", body)
 
 io.open(OUT + "." + MODE + ".html", "w", encoding="utf-8").write(html)
 print("skrev", OUT + "." + MODE + ".html", len(html), "tecken")

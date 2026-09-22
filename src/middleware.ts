@@ -79,6 +79,10 @@ export async function middleware(request: NextRequest) {
     // ar kunden sjalv som ska na sina egna bilder fran formularet.
     "/api/forms/series",
     "/api/forms/share-card",
+    // Vilken beloning kunden fick. Samma signerade token som serieuppslaget -
+    // kvittensskarmen fragar den for att kunna saga "avdrag pa nasta leverans"
+    // i stallet for att gissa.
+    "/api/forms/beloning",
   ];
   const path = request.nextUrl.pathname;
   if (
