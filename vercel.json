@@ -83,6 +83,10 @@
     {
       "schedule": "0 * * * *",
       "path": "/api/cron/pickup-tracker"
+    },
+    {
+      "schedule": "30 * * * *",
+      "path": "/api/cron/progressbild-beloningar"
     }
   ]
 }

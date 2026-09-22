@@ -16,6 +16,8 @@
  */
 
 import { readSubscriptionsForCustomer, type LoopSubscription } from "./loop";
+import { trackKlaviyoEvent } from "./klaviyo-events";
+import { tokenForEmail } from "./forms-token";
 import { createServerSupabase } from "./supabase-admin";
 import {
   getShopifyCredsForWorkspace,
@@ -27,6 +29,10 @@ import {
 const LOOP_BAS = "https://api.loopsubscriptions.com/admin/2026-04";
 
 export const BELONING_SEK = 200;
+
+/** Metricen bekraftelsemailet lyssnar pa. Eget event och inte en gren i
+ *  uppladdningseventet, sa att den kan skickas nar pengarna faktiskt finns. */
+export const BEKRAFTELSE_METRIC = "Progressbild beloning beviljad";
 
 export type BeloningsResultat =
   | { typ: "loop-avdrag"; subscriptionId: number; belopp: number }
@@ -150,34 +156,31 @@ async function skapaRabattkod(email: string, workspaceId: string, belopp: number
  * med att skriva till `progressbild_beloningar` FÖRE Loop-anropet - en kund som
  * laddar upp sista bilden två gånger ska inte få dubbelt avdrag.
  */
-export async function beviljaBeloning(
-  email: string,
-  workspaceId: string
-): Promise<BeloningsResultat> {
-  const adress = email.trim().toLowerCase();
+/**
+ * Sjalva beviljandet. Bryts ut ur `beviljaBeloning` for att omforsoket ska
+ * kunna kora exakt samma vag - en andra implementation hade drivit isar.
+ *
+ * Raden skrivs med upsert pa e-posten: forsta gangen ar det ett insert som
+ * reserverar adressen, vid ett omforsok ar det en uppdatering av raden som
+ * fastnade pa "kraver-manuell".
+ */
+async function utforBeloning(adress: string, workspaceId: string): Promise<BeloningsResultat> {
   const db = createServerSupabase();
-
-  const { data: befintlig } = await db
-    .from("progressbild_beloningar")
-    .select("beviljad_at, typ")
-    .eq("email", adress)
-    .maybeSingle();
-  if (befintlig) {
-    return { typ: "redan-beviljad", tidigare: befintlig.beviljad_at as string };
-  }
-
   const prenumerationer = await readSubscriptionsForCustomer(adress);
   const aktivaBilar = prenumerationer.filter(aktiv);
 
   if (aktivaBilar.length === 0) {
     // Engångsköpare: unik rabattkod. Raden skrivs FÖRE Shopify-anropet av
     // samma skäl som Loop-grenen - den reserverar adressen.
-    await db.from("progressbild_beloningar").insert({
-      email: adress,
-      typ: "rabattkod",
-      belopp: BELONING_SEK,
-      detalj: "ingen aktiv prenumeration, unik rabattkod",
-    });
+    await db.from("progressbild_beloningar").upsert(
+      {
+        email: adress,
+        typ: "rabattkod",
+        belopp: BELONING_SEK,
+        detalj: "ingen aktiv prenumeration, unik rabattkod",
+      },
+      { onConflict: "email" }
+    );
     try {
       const kod = await skapaRabattkod(adress, workspaceId, BELONING_SEK);
       await db.from("progressbild_beloningar").update({ rabattkod: kod }).eq("email", adress);
@@ -197,13 +200,16 @@ export async function beviljaBeloning(
     (a, b) => (a.nextBillingDateEpoch ?? Infinity) - (b.nextBillingDateEpoch ?? Infinity)
   )[0];
 
-  await db.from("progressbild_beloningar").insert({
-    email: adress,
-    typ: "loop-avdrag",
-    belopp: BELONING_SEK,
-    subscription_id: valdaPren.id,
-    detalj: `avdrag pa nasta order for prenumeration ${valdaPren.id}`,
-  });
+  await db.from("progressbild_beloningar").upsert(
+    {
+      email: adress,
+      typ: "loop-avdrag",
+      belopp: BELONING_SEK,
+      subscription_id: valdaPren.id,
+      detalj: `avdrag pa nasta order for prenumeration ${valdaPren.id}`,
+    },
+    { onConflict: "email" }
+  );
 
   try {
     await laggLoopAvdrag(valdaPren.id, BELONING_SEK);
@@ -218,4 +224,91 @@ export async function beviljaBeloning(
   }
 
   return { typ: "loop-avdrag", subscriptionId: valdaPren.id, belopp: BELONING_SEK };
+}
+
+export async function beviljaBeloning(
+  email: string,
+  workspaceId: string
+): Promise<BeloningsResultat> {
+  const adress = email.trim().toLowerCase();
+  const db = createServerSupabase();
+
+  const { data: befintlig } = await db
+    .from("progressbild_beloningar")
+    .select("beviljad_at, typ")
+    .eq("email", adress)
+    .maybeSingle();
+  // "kraver-manuell" ar INTE beviljad - det ar en rad som fastnade. Den far
+  // inte rakna som klar, for da ar adressen last och kunden far aldrig sina
+  // pengar. Den plockas upp av omforsoket i stallet.
+  if (befintlig && befintlig.typ !== "kraver-manuell") {
+    return { typ: "redan-beviljad", tidigare: befintlig.beviljad_at as string };
+  }
+
+  return utforBeloning(adress, workspaceId);
+}
+
+/**
+ * Bekraftelsen till kunden, som ett EGET Klaviyo-event.
+ *
+ * Den lag forut som en rad i dag 60-mailet, alltsa bunden till ogonblicket da
+ * hon laddade upp. Nar Loop-anropet small den gangen fick hon "vi hor av oss"
+ * - och nar avdraget kom pa plats tva minuter senare skickades ingenting om.
+ * Bekraftelsen ska folja PENGARNA, inte uppladdningen.
+ *
+ * `uniqueId` ar adressen: Klaviyo avvisar ett event med samma unique_id, sa
+ * ett omforsok som lyckas efter ett tidigare halvfel inte kan dubbelmejla.
+ */
+export async function skickaBeloningsbekraftelse(
+  email: string,
+  resultat: BeloningsResultat
+): Promise<void> {
+  if (resultat.typ !== "loop-avdrag" && resultat.typ !== "rabattkod") return;
+  const adress = email.trim().toLowerCase();
+  await trackKlaviyoEvent({
+    brand: "envana",
+    metricName: BEKRAFTELSE_METRIC,
+    email: adress,
+    properties: {
+      beloning_typ: resultat.typ,
+      beloning_belopp: resultat.belopp,
+      rabattkod: resultat.typ === "rabattkod" ? resultat.kod : null,
+      kund: adress,
+      token: tokenForEmail(adress),
+    },
+    uniqueId: `beloning-${adress}`,
+  });
+}
+
+/**
+ * Plockar upp de beloningar som fastnade och forsoker igen.
+ *
+ * Utan den ar "kraver-manuell" en atervandsgrand: raden later adressen se
+ * beviljad ut for `beviljaBeloning`, kunden har inga pengar, och ingen far
+ * veta. Kors av /api/cron/progressbild-beloningar.
+ */
+export async function omforsokMisslyckadeBeloningar(
+  workspaceId: string,
+  max = 20
+): Promise<{ email: string; resultat: string }[]> {
+  const db = createServerSupabase();
+  const { data } = await db
+    .from("progressbild_beloningar")
+    .select("email")
+    .eq("typ", "kraver-manuell")
+    .limit(max);
+
+  const ut: { email: string; resultat: string }[] = [];
+  for (const rad of data ?? []) {
+    const adress = String(rad.email).toLowerCase();
+    try {
+      const r = await utforBeloning(adress, workspaceId);
+      await skickaBeloningsbekraftelse(adress, r);
+      ut.push({ email: adress, resultat: r.typ });
+    } catch (e) {
+      // Raden ar redan markerad av utforBeloning. Nasta korning tar den igen.
+      ut.push({ email: adress, resultat: `fortfarande fel: ${String(e).slice(0, 120)}` });
+    }
+  }
+  return ut;
 }

@@ -296,7 +296,9 @@ async function deliverViaKlaviyo(
     // typ=kraver-manuell och kan betalas ut för hand.
     if (series.length >= 3) {
       try {
-        const { beviljaBeloning } = await import("./progressbild-beloning");
+        const { beviljaBeloning, skickaBeloningsbekraftelse } = await import(
+          "./progressbild-beloning"
+        );
         const r = await beviljaBeloning(email, form.workspace_id);
         properties.beloning_typ = r.typ;
         if (r.typ === "loop-avdrag" || r.typ === "rabattkod") {
@@ -304,6 +306,18 @@ async function deliverViaKlaviyo(
         }
         // Koden maste med i eventet - mailet ar enda stallet hon far den.
         if (r.typ === "rabattkod") properties.rabattkod = r.kod;
+
+        // Bekraftelsen som ETT EGET event, sa den kan skickas nar pengarna
+        // faktiskt finns. Dag 60-mailet grenar fortfarande pa beloning_typ,
+        // men den grenen ar last vid uppladdningsogonblicket - slar Loop-
+        // anropet fel dar star det "vi hor av oss" for alltid, aven nar
+        // avdraget kommer pa plats en minut senare. Det hande pa riktigt.
+        // Fel har far inte stoppa uppladdningseventet heller.
+        try {
+          await skickaBeloningsbekraftelse(email, r);
+        } catch (e) {
+          console.error("[form-delivery] bekraftelsen kunde inte skickas:", e);
+        }
       } catch (e) {
         console.error("[form-delivery] belöningen kunde inte beviljas:", e);
         properties.beloning_typ = "kraver-manuell";

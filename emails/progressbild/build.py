@@ -249,6 +249,63 @@ if OUT.endswith("kvittens"):
             % (H, rubrik, P, serie, FONT, MUTED))
     html = shell("Dina bilder finns sparade här.", body)
 
+# ----------------------------------------------------- 1b. BELONINGSBEKRAFTELSE
+# Eget mail, drivet av sitt eget event ("Progressbild beloning beviljad"), och
+# inte en rad i dag 60-mailet.
+#
+# Skalet ar inte snygghet utan att den forra losningen ljog nar det gick fel.
+# Dag 60-mailet grenar pa beloning_typ i det ogonblick bilden laddas upp; slar
+# Loop-anropet fel just da star det "vi hor av oss" for alltid, aven nar
+# avdraget kommer pa plats en minut senare. Det hande 2026-09-21. Bekraftelsen
+# foljer PENGARNA nu, och gar ut nar de finns - aven pa ett omforsok.
+#
+# Koden far ett eget block i stallet for att ligga i en mening: den ska ga att
+# hitta i inkorgen om ett halvar och ga att lasa av utan att zooma.
+elif OUT.endswith("bekraftelse"):
+    kort = gift("200")
+    if MODE == "klaviyo":
+        rubrik = cond("event.beloning_typ == 'rabattkod'",
+            "Dina 200 kr är klara att använda",
+            "200 kr dras på din nästa leverans")
+        brod = cond("event.beloning_typ == 'rabattkod'",
+            "Du dokumenterade hela din resa. Här är dina <strong>200 kr</strong> - "
+            "använd koden i kassan nästa gång du handlar.",
+            "Du dokumenterade hela din resa. Dina <strong>200 kr</strong> ligger redan "
+            "på din prenumeration och dras automatiskt på nästa leverans. "
+            "Du behöver inte göra någonting.")
+        kodblock = cond("event.beloning_typ == 'rabattkod'",
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" '
+            'style="margin:22px 0 0;"><tr><td align="center" bgcolor="#fdf1ee" '
+            'style="border-radius:14px;padding:18px 16px;">'
+            '<div style="font:700 11px %s;letter-spacing:1.6px;color:%s;">DIN KOD</div>'
+            '<div style="font:700 27px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+            'letter-spacing:2px;color:#320d01;padding-top:7px;">{{ event.rabattkod }}</div>'
+            '</td></tr></table>' % (FONT, MUTED))
+    else:
+        rubrik = "Dina 200 kr är klara att använda"
+        brod = ("Du dokumenterade hela din resa. Här är dina <strong>200 kr</strong> - "
+                "använd koden i kassan nästa gång du handlar.")
+        kodblock = ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" '
+                    'style="margin:22px 0 0;"><tr><td align="center" bgcolor="#fdf1ee" '
+                    'style="border-radius:14px;padding:18px 16px;">'
+                    '<div style="font:700 11px %s;letter-spacing:1.6px;color:%s;">DIN KOD</div>'
+                    '<div style="font:700 27px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+                    'letter-spacing:2px;color:#320d01;padding-top:7px;">ENVANA-XXXXXX</div>'
+                    '</td></tr></table>' % (FONT, MUTED))
+    # H och P AR hela style-attributet. Att lagga pa ett andra style= hade gett
+    # taggen tva, och mailklienter tar den forsta - centreringen hade tyst
+    # uteblivit. Justeringen vavs darfor in i den befintliga deklarationen.
+    Hc = H[:-1] + 'text-align:center;"'
+    Pc = P[:-1] + 'text-align:center;"'
+    body = ('<tr><td style="background:#ffffff;border-radius:18px;padding:30px 26px;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" '
+            'align="center"><tr><td align="center">%s</td></tr></table>'
+            '<h1 %s>%s</h1>'
+            '<p %s>%s</p>'
+            '%s'
+            '</td></tr>' % (kort, Hc, rubrik, Pc, brod, kodblock))
+    html = shell("Dina 200 kr är klara.", body)
+
 # ------------------------------------------------------------- 2. PAMINNELSE
 # Hennes FORRA bild visas stort. Det ar den enda vinkelguidning hon far, och
 # den ar battre an en textrad: hon ser hur bilden togs i stallet for att lasa
