@@ -2183,7 +2183,44 @@
       .catch(function () {});
   }
 
+  /** Loggar att sidan oppnats, en gang per flik och steg.
+   *
+   *  Utan den syns bara de som skickade in, och da gar det inte att se hur
+   *  manga som oppnade och sedan lamnade - vilket ar precis dar ett flode
+   *  tappar folk. `?k=` sager varifran hon kom (qr fran kortet i paketet,
+   *  mail fran ett utskick).
+   *
+   *  Ingen adress och ingen cookie: `besokare` ar ett slumptal i
+   *  sessionStorage som dor med fliken, och finns bara for att en omladdning
+   *  inte ska rakna som en ny person. Allt har ar best-effort - misslyckas
+   *  det ska formularet marka exakt ingenting. */
+  function loggaOppning() {
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      var steg = qs.get("steg") || "1";
+      var nyckel = "chf-open-" + WORKSPACE + "-" + FORM_SLUG + "-" + steg;
+      if (sessionStorage.getItem(nyckel)) return;
+      sessionStorage.setItem(nyckel, "1");
+      var bes = sessionStorage.getItem("chf-bes");
+      if (!bes) {
+        bes = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        sessionStorage.setItem("chf-bes", bes);
+      }
+      var kropp = JSON.stringify({
+        workspace: WORKSPACE, slug: FORM_SLUG, market: MARKET,
+        kalla: qs.get("k") || (qs.get("t") ? "mail" : "direkt"),
+        steg: steg, besokare: bes,
+      });
+      // keepalive sa loggningen overlever att hon direkt trycker vidare.
+      fetch(HUB + "/api/forms/open", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: kropp, keepalive: true,
+      }).catch(function () {});
+    } catch (e) { /* privat lage: sessionStorage kastar. Da loggas inget. */ }
+  }
+
   renderSkeleton();
+  loggaOppning();
   fetch(HUB + "/api/forms/config?workspace=" + encodeURIComponent(WORKSPACE) + "&slug=" + encodeURIComponent(FORM_SLUG) + "&market=" + encodeURIComponent(MARKET))
     .then(function (r) {
       if (!r.ok) throw new Error("config " + r.status);

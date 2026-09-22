@@ -83,6 +83,9 @@ export async function middleware(request: NextRequest) {
     // kvittensskarmen fragar den for att kunna saga "avdrag pa nasta leverans"
     // i stallet for att gissa.
     "/api/forms/beloning",
+    // Oppningsloggen. Anropas fran butikssidan innan kunden gjort nagot alls,
+    // sa den kan inte ligga bakom inloggning.
+    "/api/forms/open",
   ];
   const path = request.nextUrl.pathname;
   if (
