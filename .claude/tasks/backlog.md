@@ -1,13 +1,28 @@
 ## Progressbildsflodet (Envana/Hydro13)
 
-ALLT AR PUSHAT OCH LIVE (commit `d5795957`, 2026-09-16). Sidan
-**shopenvana.com/pages/resa ar publicerad** men inget lankar dit an.
+ALLT AR PUSHAT OCH LIVE (commit `e16068fa`, 2026-09-22). Sidan
+**shopenvana.com/pages/resa ar publicerad** men inget lankar dit an - QR-kortet ar
+inte tryckt, sa flodet har ingen ingang och har annu inte mott en riktig kund.
+Oversikt och QR-nedladdning: `/forms/progressbild` i hubben.
 Spec: SharedVault `envana/envana-progressbilder-flode-spec.md`.
 Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
+### Klart sedan forra rundan
+
+- [x] **Utbetalningen ar byggd och verifierad** (2026-09-21/22). Prenumerant far
+      Loop-avdrag (`manualDiscount` kraver ett `title`-falt som inte star i var spec),
+      engangskopare far en unik Shopify-rabattkod. Bekraftelsen ar ett EGET Klaviyo-event
+      som gar nar pengarna faktiskt finns, inte nar bilden laddas upp - och
+      `/api/cron/progressbild-beloningar` kor om de som fastnat varje timme.
+- [x] **Ny Loop-token** - lost, avdraget verifierat pa prenumeration 38716485.
+- [x] **Ordet "presentkort" ar borta ur hela flodet**, inklusive de tva live-mejlen
+      (floden ombyggda; Klaviyo klonar mallen, se CLAUDE.md).
+- [x] **Kvittensskarmen sager ratt sak** for bada beloningsvagarna, och delningskortet
+      renderar och gar att dela.
+
 ### Blockerar allt annat
 
-- [ ] **Utbetalningen finns inte.** Tre ytor lovar presentkortet: belonings-
+- [~] ~~**Utbetalningen finns inte.**~~ KLAR, se ovan. Historik: Tre ytor lovar presentkortet: belonings-
       skarmen, samtyckesskarmen och slutmailet. Ingen kod skapar eller skickar
       nagot. Researchen ar KLAR, se specen i SharedVault. Riktning: prenumerant
       far Loop-avdrag utan kod (`POST /2026-04/subscription/{id}/discount` med
@@ -44,8 +59,32 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
 ### Kvar att bygga
 
-- [ ] **Kortet till tryck** - QR pa framsidan mot shopenvana.com/pages/resa UTAN
-      parametrar, exempelbilder pa baksidan.
+- [ ] **Hubbens larmmejl ar trasigt.** `RESEND_API_KEY` finns varken i `.env.local` eller
+      i Vercel, och domanen `updates.contenttools.app` ar inte verifierad pa det
+      Resend-konto vi har (1Password `Dropship`: "Resend (info@stefanhedin.se) -
+      sending", en send-only-nyckel for Onsjos leadnotiser). `sendCriticalAlertEmail` i
+      `src/lib/email.ts` kastar alltsa i produktion - och den finns just for att larm
+      inte ska forsvinna tyst nar Telegram ar nere. Reservvagen ar sjalv nere.
+      Ror inte progressbilderna, men bor bestammas.
+- [ ] **Butikssidan gar inte att testa utan att skapa en riktig kund.** `?test=1` laser
+      `data-test` pa skripttaggen, som bara hubbens `/f/`-route satter. Ett inskick fran
+      `shopenvana.com/pages/resa` blir skarpt oavsett URL - det skapade en riktig kund
+      och ett Klaviyo-event 2026-09-22 (uppstadat). Forslag, ej byggt: lat embedden lasa
+      `?test=1` fran vardsidans URL ocksa.
+- [ ] **Tva saker ar byggda men aldrig korda skarpt:** omforsokscronen for fastnade
+      beloningar, och rabattkodsgrenen i bekraftelsemailet med en RIKTIG Shopify-kod
+      (den har bara skickats med en pahittad).
+- [ ] **Overvag overstruket pris i bekraftelsen** nar forsta riktiga kunden gatt hela
+      vagen. Datan finns i Loop (nasta debitering + radpris), men rakningen
+      radpris minus 200 ar var egen - stam av mot en faktisk debitering forst.
+      William 2026-09-22: "vi kor som det ar nu sa det inte riskerar att bli fel."
+
+- [ ] **Kortet till tryck** - QR pa framsidan, exempelbilder pa baksidan.
+      **BESLUTAT 2026-09-22, andrat fran raden ovanfor:** koden ska peka pa
+      `shopenvana.com/pages/resa?k=qr&steg=1`, alltsa MED parametrar. `?k=qr` later
+      oppningen raknas till ratt kalla i tratten, och `?steg=1` star utskrivet for att
+      koden trycks en gang och sedan lever for alltid medan en fallback i en config gar
+      att andra. Fardig SVG for tryck hamtas pa `/forms/progressbild`.
 - [ ] **Uppdatera integritetspolicyn + App Privacy** innan nagon bild samlas in
       skarpt. Samtycket maste ga att aterkalla, alltsa maste vi kunna hitta och
       radera en specifik kunds bilder.
