@@ -55,7 +55,16 @@ async function laggLoopAvdrag(subscriptionId: number, belopp: number): Promise<v
       accept: "application/json",
     },
     body: JSON.stringify({
-      manualDiscount: { type: "FIXED_AMOUNT", value: belopp, orderLimit: 1 },
+      manualDiscount: {
+        // title ar OBLIGATORISKT - utan det svarar Loop 422
+        // "manualDiscount,title | Required". Det star inte i var spec, och
+        // upptacktes forst nar avdraget kordes mot en riktig prenumeration.
+        // Texten syns for kunden pa ordern, sa den ska ga att forsta dar.
+        title: "Tack för dina progressbilder",
+        type: "FIXED_AMOUNT",
+        value: belopp,
+        orderLimit: 1,
+      },
     }),
     signal: AbortSignal.timeout(30_000),
   });
