@@ -123,3 +123,6 @@ scripts/test-gsc-gaps.ts
 scripts/test-pubmed.ts
 scripts/test-shopify-article.ts
 scripts/test-shopify-autopilot.ts
+
+# Definitioner sparade innan ett Klaviyo-flode byggs om
+.klaviyo-backup/

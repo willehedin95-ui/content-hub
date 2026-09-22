@@ -51,6 +51,53 @@ async function kv(path: string) {
   return text ? JSON.parse(text) : null;
 }
 
+/**
+ * Klaviyo skriver om HTML:en nar den lagras: versaler i doctype, sjalvstangda
+ * void-taggar, omsorterade attribut och bortkastade kommentarer. En
+ * teckenjamforelse kan darfor aldrig ga jamnt ut - den rapporterade varje mall
+ * som driftad aven direkt efter en ombyggnad.
+ *
+ * Darfor jamfors INNEHALLET i stallet for markupen: den text kunden laser, och
+ * uppsattningen bilder och lankar. Det ar de tva saker som faktiskt kan vara
+ * gamla. Attributordning ar lagringens ensak.
+ */
+/** Klaviyo avkodar HTML-entiteter vid lagring: `&copy;` blir `©`. Utan det
+ *  rapporterades slutmailet som driftat pa ett enda tecken i sidfoten. */
+function avkoda(s: string): string {
+  return s
+    .replace(/&copy;/gi, "\u00a9")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&ndash;/gi, "\u2013")
+    .replace(/&mdash;/gi, "\u2014")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/gi, "&");
+}
+
+function lasbarText(html: string): string {
+  return avkoda(html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim());
+}
+
+function urler(html: string): string {
+  // avkoda aven har: Klaviyo skriver &amp; i href, vilket ar samma lank.
+  const ut = [...html.matchAll(/\s(?:src|href)="([^"]*)"/gi)].map((m) => avkoda(m[1]));
+  return [...new Set(ut)].sort().join("\n");
+}
+
+/**
+ * Soker forbjudna ord i det KUNDEN LASER. Sokvagar raknas inte: bildfilen
+ * heter fortfarande presentkort-mail.jpg, och en traff pa det ar en falsk
+ * varning som gor hela kontrollen vardelos.
+ */
+function synligText(html: string): string {
+  return html.replace(/\s(?:src|href)="[^"]*"/gi, " ");
+}
+
 async function main() {
   const flows = await kv("/flows/?fields[flow]=name,status");
   let problem = 0;
@@ -73,19 +120,22 @@ async function main() {
         if (!tplId) continue;
         const live = (await kv(`/templates/${tplId}/`)).data.attributes.html as string;
 
+        const lasbar = synligText(live);
         for (const { ord, varfor } of FORBJUDET) {
-          if (live.includes(ord)) {
+          if (lasbar.includes(ord)) {
             console.log(`FEL  ${namn} (${tplId}) innehaller "${ord}" - ${varfor}`);
             problem++;
           }
         }
         if (koppling) {
           const byggd = readFileSync(koppling.fil, "utf-8");
-          if (byggd !== live) {
-            console.log(
-              `DRIFT ${namn} (${tplId}) skiljer sig fran ${koppling.fil} ` +
-                `(${live.length} tecken live mot ${byggd.length} byggda)`
-            );
+          const textDrift = lasbarText(byggd) !== lasbarText(live);
+          const urlDrift = urler(byggd) !== urler(live);
+          if (textDrift || urlDrift) {
+            const vad = [textDrift ? "texten" : null, urlDrift ? "bilder/lankar" : null]
+              .filter(Boolean)
+              .join(" och ");
+            console.log(`DRIFT ${namn} (${tplId}): ${vad} skiljer sig fran ${koppling.fil}`);
             problem++;
           } else {
             console.log(`ok   ${namn} (${tplId})`);
