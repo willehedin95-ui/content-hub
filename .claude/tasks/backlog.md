@@ -9,6 +9,12 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
 ### Klart sedan forra rundan
 
+- [x] **All testdata borta ur bada systemen** (2026-09-24). 50 rader och 48 bilder ur
+      Supabase (`a@b.se`, `verifiering@exempel.se`, `william@exempel.se`,
+      `wefwef@grg.se`, `anna@exempel.se` och Rasmus enda steg 3), tre profiler ur
+      Klaviyo. Kvar i flodet: Williams fullstandiga serie och Rasmus dag 1.
+      Den doda bild-URL:en som visade en trasig ruta forsvann pa kopet.
+
 - [x] **Utbetalningen ar byggd och verifierad** (2026-09-21/22). Prenumerant far
       Loop-avdrag (`manualDiscount` kraver ett `title`-falt som inte star i var spec),
       engangskopare far en unik Shopify-rabattkod. Bekraftelsen ar ett EGET Klaviyo-event
@@ -59,6 +65,17 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 
 ### Kvar att bygga
 
+- [ ] **Klaviyos logga star i sidfoten pa VARJE mail** - kvittensen, paminnelserna,
+      slutmailet och beloningsbekraftelsen. Den sitter i prisplanen: gratiskonton bar
+      market och det gar inte att ta bort, pa betalplan forsvinner det automatiskt.
+      Envanas konto har 38 profiler, gratistaket ar 250. **Fixen ar en uppgradering,
+      alltsa ett faktureringsbeslut** - inget att koda. Bor bestammas innan utskicken
+      borjar pa allvar.
+- [ ] **En serie gar inte att starta om.** Rutorna hanger pa e-postadressen for alltid,
+      sa den som gor resan tva ganger arver forsta rundans bilder. Upptacktes nar Rasmus
+      test av dag 1 visade hans gamla steg 3 i dag 60-rutan. For en riktig kund uppstar
+      det knappt, men det finns ingen vag tillbaka om nagon ber om en omstart.
+
 - [ ] **Hubbens larmmejl ar trasigt.** `RESEND_API_KEY` finns varken i `.env.local` eller
       i Vercel, och domanen `updates.contenttools.app` ar inte verifierad pa det
       Resend-konto vi har (1Password `Dropship`: "Resend (info@stefanhedin.se) -
@@ -94,6 +111,7 @@ Figma: https://www.figma.com/design/1hKgqpaPe2YCCId9My0xEV (Rasmus team, pro).
 - [ ] **En vy dar kunden ser sin egen serie** mellan bilderna. Lovi och Shopify
       har bada det (se `envana-selfieguider-matning.md`). Inte byggt.
 - [ ] **SMS dag 3** till den som skannat men aldrig laddat upp. Ligger i specen.
+- [ ] **Sms-avregistreringsordet.** Envanas sms-villkor (/pages/sms-villkor) och punkt 9 i båda kopiorna av integritetspolicyn säger STOP. Kolla i Klaviyo om STOPP också tas emot; annars är det rätt som det står. Bakgrund: SharedVault `envana/envana-sms-klaviyo-villkor.md`.
 
 ### Klart 2026-09-15
 
