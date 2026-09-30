@@ -324,7 +324,9 @@ export async function POST(req: NextRequest) {
         referenceImages,
         detectedRatio,
         "2K",
-        imageModel
+        imageModel,
+        // JPEG: a 2K PNG from Kie is ~6.6 MB and draws row by row for seconds.
+        "jpg"
       );
 
       const result = await pollTaskResult(imageTaskId);

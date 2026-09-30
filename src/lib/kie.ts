@@ -56,7 +56,8 @@ export async function createImageTask(
   imageUrls: string[],
   aspectRatio: string = "2:3",
   resolution: string = "1K",
-  model: string = KIE_MODEL
+  model: string = KIE_MODEL,
+  format: "png" | "jpg" = "png"
 ): Promise<string> {
   // Input schema differs per model family (see IMAGE_MODELS): the reference-image
   // field name and whether resolution/output_format apply are model-specific.
@@ -68,7 +69,11 @@ export async function createImageTask(
   if (cfg && "extraInput" in cfg) Object.assign(input, cfg.extraInput);
   input[cfg?.imageField ?? "image_input"] = imageUrls;
   if (cfg?.includeResolution ?? true) input.resolution = cfg?.resolutionOverride ?? resolution;
-  if (cfg?.outputFormat ?? true) input.output_format = "png";
+  // Kie's enum differs per family: Nano Banana wants "jpg", Seedream "jpeg".
+  // Models without output_format (GPT, Grok) ignore the choice.
+  if (cfg?.outputFormat ?? true) {
+    input.output_format = format === "jpg" ? (model.startsWith("seedream/") ? "jpeg" : "jpg") : "png";
+  }
 
   return withRetry(
     async () => {
