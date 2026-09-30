@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
-import { KIE_IMAGE_COST } from "@/lib/pricing";
+import { KIE_PRO_IMAGE_COST } from "@/lib/pricing";
 
 export const maxDuration = 800;
 
@@ -53,15 +53,15 @@ export async function POST(req: NextRequest) {
       ? [competitor_image_url, ...productHeroUrls]
       : productHeroUrls;
 
-    const taskId = await createImageTask(prompt, referenceImages, ratio, "2K");
+    const taskId = await createImageTask(prompt, referenceImages, ratio, "2K", "nano-banana-pro");
 
     // Log the Kie cost IMMEDIATELY after task creation - the image is paid
     // for once the task exists, so a poll timeout must not hide the spend.
     const db = createServerSupabase();
     await db.from("usage_logs").insert({
       type: "image_swiper",
-      model: "nano-banana-2",
-      cost_usd: KIE_IMAGE_COST,
+      model: "nano-banana-pro",
+      cost_usd: KIE_PRO_IMAGE_COST,
       metadata: {
         product: product || null,
         task_id: taskId,

@@ -4,11 +4,15 @@ import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { CLAUDE_MODEL } from "@/lib/constants";
-import { calcClaudeCost, KIE_IMAGE_COST } from "@/lib/pricing";
+import { calcClaudeCost, KIE_PRO_IMAGE_COST } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import type { ProductFull } from "@/types";
 
 export const maxDuration = 800;
+
+// nano-banana-pro renders labels and faces far better than the flash tier
+// (nano-banana-2), which is what made swiped products look fake.
+const SWIPER_IMAGE_MODEL = "nano-banana-pro";
 
 const VALID_RATIOS = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"] as const;
 
@@ -185,14 +189,23 @@ export async function POST(req: NextRequest) {
 
       // Build Nano Banana JSON prompt: swap competitor product with target product
       const isUgc = mode === "ugc";
+      // With a real product photo as reference the label must be KEPT. The old
+      // "no text / no labels / unbranded" rules made the model paint a blank
+      // bottle (seen 2026-09-30 on the Envana bottle). They only make sense
+      // when there is no product image to copy the label from.
+      const hasProductRef = !!product && productHeroUrls.length > 0;
+      const labelNote = hasProductRef
+        ? ` CRITICAL: The product must look exactly like the product reference image, including its label, logo, colours and printed text. Copy the label from the reference; do not invent new text and do not leave the product blank.`
+        : "";
+      const compositionNote = ` Reference image 1 is the original photo: keep its composition, framing, camera angle, lighting, colours, setting and photo quality. Replace only the original product with the product shown in the other reference image(s).`;
       const nanaBananaJson = structuredClone(extraction);
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
           if (subject.is_competitor_product && product) {
             // In UGC/Replica mode: minimal description — rely on reference image for appearance
             // In standard mode: full description for accurate product rendering
-            subject.description = (isUgc || mode === "replica")
-              ? `the ${product.name} bottle (exact appearance from reference image — do NOT generate any text or labels on the bottle)`
+            subject.description = hasProductRef
+              ? `the ${product.name} product, identical to the product reference image including its label and printed text`
               : `${product.name} — ${product.description || "premium wellness product"}`;
             subject.type = "product";
             delete subject.is_competitor_product;
@@ -224,10 +237,10 @@ export async function POST(req: NextRequest) {
         instruction = `Replace the person with a different ${demographic}`;
       } else if (isUgc) {
         // UGC mode — strong authenticity instructions
-        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo. CRITICAL: Do NOT generate, invent, or write ANY text on the product bottle — no labels, no descriptions, no ingredient lists. The bottle appearance must come ONLY from the reference images.`;
+        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo.${hasProductRef ? "" : " CRITICAL: Do NOT generate, invent, or write ANY text on the product - no labels, no descriptions, no ingredient lists."}`;
 
         instruction = product
-          ? `Recreate this exact visual style as a UGC customer photo featuring ${product.name}. The product must match the reference images provided.${ethnicityNote}${ugcBlock}`
+          ? `Recreate this exact visual style as a UGC customer photo featuring ${product.name}. The product must match the reference images provided.${compositionNote}${labelNote}${ethnicityNote}${ugcBlock}`
           : `Recreate this exact visual style as a UGC customer photo.${ethnicityNote}${ugcBlock}`;
       } else {
         // Standard mode — original behavior
@@ -237,11 +250,14 @@ export async function POST(req: NextRequest) {
         const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
           ? ` Texture must be: ${extraction.style.texture}.`
           : "";
-        const noLogoNote = " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
+        // Only strip branding when there is no product photo to copy it from.
+        const noLogoNote = hasProductRef
+          ? labelNote
+          : " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
 
         instruction = product
-          ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${noLogoNote}${ethnicityNote}${qualityNote}${textureNote}`
-          : `Recreate this visual style with the described subjects and environment.${ethnicityNote}${qualityNote}${textureNote}`;
+          ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${compositionNote}${noLogoNote}${ethnicityNote}${qualityNote}${textureNote}`
+          : `Recreate this visual style with the described subjects and environment.${compositionNote}${ethnicityNote}${qualityNote}${textureNote}`;
       }
 
       if (notes) {
@@ -295,16 +311,17 @@ export async function POST(req: NextRequest) {
       // Use programmatically measured aspect ratio (not Claude's guess)
       const detectedRatio = await aspectRatioPromise;
 
-      // In replica mode, send the original image as reference + simple swap prompt
-      const referenceImages = isReplica
-        ? [image_url, ...productHeroUrls]
-        : productHeroUrls;
+      // The original photo is ALWAYS reference image 1, in every mode. Before,
+      // standard/UGC mode only sent the product, so the model never saw the
+      // photo it was meant to recreate - only Claude's text description of it.
+      const referenceImages = [image_url, ...productHeroUrls];
 
       const imageTaskId = await createImageTask(
         nanaBananaPrompt,
         referenceImages,
         detectedRatio,
-        "2K"
+        "2K",
+        SWIPER_IMAGE_MODEL
       );
 
       const result = await pollTaskResult(imageTaskId);
@@ -318,8 +335,8 @@ export async function POST(req: NextRequest) {
       // Log Nano Banana usage
       await db.from("usage_logs").insert({
         type: "image_swiper",
-        model: "nano-banana-2",
-        cost_usd: KIE_IMAGE_COST,
+        model: SWIPER_IMAGE_MODEL,
+        cost_usd: KIE_PRO_IMAGE_COST,
         metadata: {
           product: productSlug,
           task_id: imageTaskId,

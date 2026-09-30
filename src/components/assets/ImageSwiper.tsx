@@ -354,8 +354,9 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           prompt: finalPrompt,
           ...(product && { product }),
           aspect_ratio: retryRatio,
-          // In replica mode, pass the competitor image as visual reference
-          ...(mode === "replica" && resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
+          // Always pass the original photo as visual reference 1 (every mode),
+          // matching the first generation - the retry prompt refers to it.
+          ...(resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
         }),
       });
 
