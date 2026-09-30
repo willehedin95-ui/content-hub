@@ -48,7 +48,7 @@ const CATEGORY_LABELS: Record<AssetCategory, string> = {
 const PRODUCT_OPTIONS = [
   { value: "", label: "General (no product)" },
   { value: "happysleep", label: "HappySleep" },
-  { value: "hydro13", label: "Hydro13" },
+  { value: "hydro13", label: "Collagen Formula" },
 ];
 
 const SUGGESTED_TAGS = [

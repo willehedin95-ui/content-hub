@@ -608,7 +608,7 @@ export default function LaunchpadClient() {
                       </span>
                       {concept.product && (
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${PRODUCT_COLORS[concept.product] || "bg-gray-100 text-gray-500"}`}>
-                          {concept.product === "happysleep" ? "HappySleep" : concept.product === "hydro13" ? "Hydro13" : concept.product}
+                          {concept.product === "happysleep" ? "HappySleep" : concept.product === "hydro13" ? "Collagen Formula" : concept.product}
                         </span>
                       )}
                     </div>

@@ -47,14 +47,14 @@ const VISUAL_RULES: Record<string, VisualRule[]> = {
     {
       pattern: /\bamber\b/i,
       severity: "block",
-      message: "Hydro13 bottle is WHITE, never amber.",
+      message: "Collagen Formula bottle is WHITE, never amber.",
       fixHint: "Describe the bottle as a tall sleek WHITE plastic bottle with a white screw cap.",
     },
     {
       pattern: /\b(glass|transparent|clear|brown|dark)\s+bottle\b/i,
       severity: "block",
-      message: "Hydro13 bottle is white PLASTIC, not glass/transparent/clear/brown.",
-      fixHint: "Bottle = white 500ml plastic bottle, white cap, label 'HYDRO13'.",
+      message: "Collagen Formula bottle is white PLASTIC, not glass/transparent/clear/brown.",
+      fixHint: "Bottle = white 500ml plastic bottle, white cap, peach Envana 'collagen formula' label.",
     },
     {
       pattern: /\bshot\s*glass\b/i,
@@ -65,13 +65,13 @@ const VISUAL_RULES: Record<string, VisualRule[]> = {
     {
       pattern: /\b(tall|large|full[- ]?size|regular)\s+(drinking\s+)?glass\b/i,
       severity: "block",
-      message: "No regular/large drinking glass for Hydro13.",
+      message: "No regular/large drinking glass for Collagen Formula.",
       fixHint: "Use a tiny 30ml espresso-size clear glass (~1/5 the bottle height).",
     },
     {
       pattern: /\b(ice cubes?|iceberg|snow|frost|glacier|mountain stream)\b/i,
       severity: "warn",
-      message: "No ice/nature themes for Hydro13 (irrelevant to product).",
+      message: "No ice/nature themes for Collagen Formula (irrelevant to product).",
       fixHint: "Drop ice/nature; keep it a clean Scandinavian product/lifestyle context.",
     },
   ],

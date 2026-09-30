@@ -19,7 +19,7 @@ export function getProductAppearance(product: ProductLike): string {
   }
 
   if (product.slug === "hydro13") {
-    return `The product is: Hydro13 — a premium liquid marine collagen supplement. IMPORTANT PHYSICAL APPEARANCE: The bottle is a tall, sleek WHITE bottle (not amber, not glass, not transparent) with a white screw cap. The label says "HYDRO13" with "Beauty Collagen Drinkable" text. It is a 500 ml white plastic bottle — modern, clean, Scandinavian design. If a drinking glass is shown, it must be a tiny 30 ml clear glass (like an espresso cup, about one-fifth the height of the bottle) with golden honey-colored liquid. NEVER show a regular drinking glass or shot glass.`;
+    return `The product is: Envana Collagen Formula — a premium liquid marine collagen supplement. IMPORTANT PHYSICAL APPEARANCE: The bottle is a WHITE 500 ml plastic bottle (not amber, not glass, not transparent) with a white ribbed screw cap and a soft peach label: the coral wordmark "Envana" runs vertically along the left edge, "collagen formula" in dark brown, a small coral pill "FÖR HUD, HÅR & NAGLAR", a peach flower motif, "Kosttillskott med marint kollagen" and "12500mg | 500ml". Copy the label from the product reference image. If a drinking glass is shown, it must be a tiny 30 ml clear glass (like an espresso cup, about one-fifth the height of the bottle) with golden honey-colored liquid. NEVER show a regular drinking glass or shot glass.`;
   }
 
   if (product.description || product.ingredients) {

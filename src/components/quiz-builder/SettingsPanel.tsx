@@ -360,7 +360,7 @@ export function SettingsPanel() {
           />
           <p className="text-xs text-gray-400 mt-1">
             Used when an exit node has no specific URL. Usually the product URL from
-            market_product_urls (e.g. https://get-renew.com/products/hydro13 for Hydro13).
+            market_product_urls (e.g. https://get-renew.com/products/hydro13 for Collagen Formula).
           </p>
         </div>
       </Section>

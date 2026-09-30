@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
         `💡 Saved to hook bank!\n\n"${plainText.slice(0, 100)}${plainText.length > 100 ? "…" : ""}"\n\nWhich product?`,
         [[
           { text: "🛏 HappySleep", callback_data: `hook_product:${hook.id}:happysleep` },
-          { text: "💧 Hydro13", callback_data: `hook_product:${hook.id}:hydro13` },
+          { text: "💧 Collagen Formula", callback_data: `hook_product:${hook.id}:hydro13` },
           { text: "🌐 Universal", callback_data: `hook_product:${hook.id}:universal` },
         ]]
       );
@@ -427,7 +427,7 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<NextResponse> 
       await answerCallbackQuery(query.id, "Product set!");
       const db = createServerSupabase();
       await db.from("hook_library").update({ product: productValue }).eq("id", hookId);
-      const productLabel = parts[2] === "universal" ? "Universal" : parts[2] === "happysleep" ? "HappySleep" : "Hydro13";
+      const productLabel = parts[2] === "universal" ? "Universal" : parts[2] === "happysleep" ? "HappySleep" : "Collagen Formula";
       const hubBase = process.env.NEXT_PUBLIC_APP_URL || "https://content-hub-nine-theta.vercel.app";
       await editMessageText(chatId, messageId, `💡 Hook saved → ${productLabel}\n\nView: ${hubBase}/hooks`);
     } else {

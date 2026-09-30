@@ -1106,7 +1106,7 @@ kan påverka ...") rather than fabricating specifics.`
 
 ## CRITICAL: Language Rules
 - Write ENTIRELY in ${langName}. Every word, including product descriptions, must be in ${langName}.
-- Product names stay in their original brand form (e.g. "${request.productSlug === "hydro13" ? "Hydro13" : "HappySleep"}", "Tempur Original", "IKEA KLUBBSPORRE")
+- Product names stay in their original brand form (e.g. "${request.productSlug === "hydro13" ? "Collagen Formula" : "HappySleep"}", "Tempur Original", "IKEA KLUBBSPORRE")
 - NEVER translate brand names into English. Brand names are proper nouns — do NOT append English descriptors.
 ${request.language === "da"
   ? `- Use the brand name as-is or with a short ${langName} descriptor (e.g. just the product name).

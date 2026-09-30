@@ -504,7 +504,7 @@ QUALITY CHECK (do silently):
 ADDITIONAL RULES:
 ${formatRules()}
 
-Keep brand names unchanged: HappySleep, Hydro13, SwedishBalance, Nordic Cradle, Hälsobladet.
+Keep brand names unchanged: HappySleep, Hydro13, Envana, Collagen Formula, SwedishBalance, Nordic Cradle, Hälsobladet.
 Keep person/character names exactly as-is — do NOT rename them.
 
 OUTPUT:

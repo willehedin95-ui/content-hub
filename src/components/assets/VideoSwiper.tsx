@@ -823,7 +823,7 @@ export default function VideoSwiper({ onAssetCreated }: Props) {
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {tasks.length > 1 ? `Scene ${task.scene_number} — ` : ""}
-                      Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Hydro13"})` : "(Style)"}
+                      Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Collagen Formula"})` : "(Style)"}
                     </p>
                     <div className="flex items-center gap-2">
                       {status?.video_url && (

@@ -1128,7 +1128,7 @@ export async function publishBlogArticle(
           const productUrl = (settings.shopify_domains as string)?.split(",")[0]?.trim()
             ? `https://${(settings.shopify_domains as string).split(",")[0].trim()}/products/${productSlug}`
             : "";
-          const productName = productSlug === "happysleep" ? "HappySleep" : productSlug === "hydro13" ? "Hydro13" : productSlug;
+          const productName = productSlug === "happysleep" ? "HappySleep" : productSlug === "hydro13" ? "Collagen Formula" : productSlug;
           if (productUrl && productName) {
             productRatingSchema = buildProductRatingSchema({
               productName,

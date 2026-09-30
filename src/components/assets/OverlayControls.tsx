@@ -369,7 +369,7 @@ export default function OverlayControls({ overlay, onChange }: Props) {
                   setPresetNameDraft("");
                 }
               }}
-              placeholder="Preset name (e.g. 'Hydro13 yellow')"
+              placeholder="Preset name (e.g. 'Collagen Formula korall')"
               className="flex-1 rounded-md border border-gray-200 px-2 py-1 text-xs"
             />
             <button

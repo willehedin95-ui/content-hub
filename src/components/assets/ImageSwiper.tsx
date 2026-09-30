@@ -734,7 +734,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Hydro13"})` : "(Style)"}
+                    Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Collagen Formula"})` : "(Style)"}
                   </p>
                   <a
                     href={generatedImageUrl}

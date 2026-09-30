@@ -44,6 +44,8 @@ export function formatLocalization(lang: Language): string {
 export const NEVER_TRANSLATE = [
   "HappySleep",
   "Hydro13",
+  "Envana",
+  "Collagen Formula",
   "Hälsobladet",
   "SwedishBalance",
   "Nordic Cradle",

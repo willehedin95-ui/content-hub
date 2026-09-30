@@ -36,7 +36,7 @@ function buildTranslationPrompt(langLabel: string): string {
     `Recreate this exact image but translate all visible text to ${langLabel}.`,
     ``,
     `KEEP UNCHANGED (do NOT translate these):`,
-    `- Brand name "HYDRO 13" / "HYDRO13" must stay exactly as-is. Do NOT translate it to "VATTEN 13" or anything else. It is a product name.`,
+    `- Brand names "Envana", "Collagen Formula" and the old "HYDRO 13" / "HYDRO13" must stay exactly as-is. Do NOT translate them (e.g. not "VATTEN 13" or "Kollagenformel"). They are product names.`,
     `- Brand name "renew" / "Renew" must stay exactly as-is. Do NOT translate it to "Förnya" or anything else.`,
     `- Product description "Beauty Collagen Drinkable" / "Beauty Collagen Formula" stays exactly as-is on the bottle label.`,
     `- Volume and dosage units like "500 ml", "12,500 mg", "30 ml" stay exactly as-is.`,

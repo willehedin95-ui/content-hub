@@ -70,7 +70,7 @@ export async function POST() {
       return `- [${priority}] [${status}] ${t.subject}`;
     });
 
-    const prompt = `Du är en supportanalytiker för Swedish Balance, ett DTC e-handelsföretag som säljer sömnprodukter (HappySleep-kuddar) och kollagentillskott (Hydro13). Marknader: Sverige, Norge, Danmark.
+    const prompt = `Du är en supportanalytiker för Swedish Balance, ett DTC e-handelsföretag som säljer sömnprodukter (HappySleep-kuddar) och kollagentillskott (Envana Collagen Formula). Marknader: Sverige, Norge, Danmark.
 
 Här är veckans ${tickets.length} supportärenden:
 

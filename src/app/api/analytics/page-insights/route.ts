@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `You are an expert ecommerce conversion rate optimization (CRO) analyst. You're analyzing landing page performance data for a Scandinavian ecommerce operation (HappySleep mattresses / Hydro13 products) selling in Sweden (sv), Norway (no), and Denmark (da).
+          content: `You are an expert ecommerce conversion rate optimization (CRO) analyst. You're analyzing landing page performance data for a Scandinavian ecommerce operation (HappySleep mattresses / Envana Collagen Formula) selling in Sweden (sv), Norway (no), and Denmark (da).
 
 Data comes from three sources:
 - GA4: pageviews, sessions, bounce rate, engagement rate, conversions per page per language

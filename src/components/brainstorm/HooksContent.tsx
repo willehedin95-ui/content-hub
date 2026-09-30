@@ -14,7 +14,7 @@ type SourceFilter = "all" | "manual" | "telegram" | "concept_auto";
 const PRODUCT_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "happysleep", label: "HappySleep" },
-  { value: "hydro13", label: "Hydro13" },
+  { value: "hydro13", label: "Collagen Formula" },
   { value: "universal", label: "Universal" },
 ];
 
@@ -42,7 +42,7 @@ function productColor(product: string | null) {
 
 function productLabel(product: string | null) {
   if (product === "happysleep") return "HappySleep";
-  if (product === "hydro13") return "Hydro13";
+  if (product === "hydro13") return "Collagen Formula";
   return "Universal";
 }
 

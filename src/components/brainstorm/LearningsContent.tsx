@@ -16,7 +16,7 @@ type AwarenessFilter = "all" | (typeof AWARENESS_LEVELS)[number];
 const PRODUCT_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "happysleep", label: "HappySleep" },
-  { value: "hydro13", label: "Hydro13" },
+  { value: "hydro13", label: "Collagen Formula" },
 ];
 
 const MARKET_OPTIONS: { value: MarketFilter; label: string }[] = [
@@ -81,7 +81,7 @@ function productColor(product: string | null) {
 
 function productLabel(product: string | null) {
   if (product === "happysleep") return "HappySleep";
-  if (product === "hydro13") return "Hydro13";
+  if (product === "hydro13") return "Collagen Formula";
   return product ?? "Unknown";
 }
 

@@ -888,7 +888,7 @@ export default function ImportProgressPanel({ swipeJobId, pageId, product }: Pro
   }
 
   const selectedCount = extractedImages.filter((img) => img.selected).length;
-  const productLabel = product === "happysleep" ? "HappySleep" : product === "hydro13" ? "Hydro13" : "Product";
+  const productLabel = product === "happysleep" ? "HappySleep" : product === "hydro13" ? "Collagen Formula" : "Product";
 
   // Image selection view
   if (substep === "image_selection") {

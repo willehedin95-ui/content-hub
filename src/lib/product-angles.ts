@@ -59,7 +59,7 @@ const HYDRO13_ANGLES: ProductAngleConfig = {
       value: "general",
       label: "General (skin, aging, beauty)",
       description:
-        'General — covers the full range of Hydro13 benefits with skin and aging as the primary focus. 12,500 mg marine collagen (2.5-6x more than competitors), liquid format for superior absorption, 1,500 Dalton molecular weight, 13+ active ingredients, 60-day results guarantee. Primary benefits: radiant skin, reduced fine lines, restored glow and elasticity, collagen replenishment. Secondary benefits: stronger hair, healthier nails, replaces entire supplement cabinet. Frame as a health investment, not anti-aging (Scandinavian cultural sensitivity). Evidence-based confidence, not hypey.',
+        'General — covers the full range of Envana Collagen Formula benefits with skin and aging as the primary focus. 12,500 mg marine collagen (2.5-6x more than competitors), liquid format for superior absorption, 1,500 Dalton molecular weight, 13+ active ingredients, 60-day results guarantee. Primary benefits: radiant skin, reduced fine lines, restored glow and elasticity, collagen replenishment. Secondary benefits: stronger hair, healthier nails, replaces entire supplement cabinet. Frame as a health investment, not anti-aging (Scandinavian cultural sensitivity). Evidence-based confidence, not hypey.',
     },
   ],
 };
