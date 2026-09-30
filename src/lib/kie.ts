@@ -39,6 +39,18 @@ function getApiKey(): string {
   return key;
 }
 
+// Map a ratio the model does not accept (e.g. 4:5 on GPT Image 2.5) to the
+// closest one it does, compared on the log of width/height.
+function nearestRatio(ratio: string, allowed: readonly string[]): string {
+  if (allowed.includes(ratio)) return ratio;
+  const val = (r: string) => {
+    const [w, h] = r.split(":").map(Number);
+    return w > 0 && h > 0 ? Math.log(w / h) : 0;
+  };
+  const target = val(ratio);
+  return allowed.reduce((best, r) => (Math.abs(val(r) - target) < Math.abs(val(best) - target) ? r : best), allowed[0]);
+}
+
 export async function createImageTask(
   prompt: string,
   imageUrls: string[],
@@ -50,7 +62,10 @@ export async function createImageTask(
   // field name and whether resolution/output_format apply are model-specific.
   // Unknown model → nano-banana-2 defaults (image_input + resolution + output_format).
   const cfg = IMAGE_MODELS.find((m) => m.id === model);
-  const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio };
+  const allowed = cfg && "allowedRatios" in cfg ? (cfg.allowedRatios as readonly string[]) : null;
+  const ratio = allowed ? nearestRatio(aspectRatio, allowed) : aspectRatio;
+  const input: Record<string, unknown> = { prompt, aspect_ratio: ratio };
+  if (cfg && "extraInput" in cfg) Object.assign(input, cfg.extraInput);
   input[cfg?.imageField ?? "image_input"] = imageUrls;
   if (cfg?.includeResolution ?? true) input.resolution = cfg?.resolutionOverride ?? resolution;
   if (cfg?.outputFormat ?? true) input.output_format = "png";

@@ -3,8 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
-import { CLAUDE_MODEL } from "@/lib/constants";
-import { calcClaudeCost, KIE_PRO_IMAGE_COST } from "@/lib/pricing";
+import { CLAUDE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
+import { calcClaudeCost, KIE_IMAGE_COST, KIE_PRO_IMAGE_COST } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import type { ProductFull } from "@/types";
 
@@ -54,12 +54,15 @@ export async function POST(req: NextRequest) {
     product: productSlug,
     notes,
     mode = "standard",
+    model: requestedModel,
   } = body as {
     image_url?: string;
     product?: string;
     notes?: string;
     mode?: "standard" | "ugc" | "replica";
+    model?: string;
   };
+  const imageModel = requestedModel && IMAGE_MODEL_IDS.includes(requestedModel) ? requestedModel : SWIPER_IMAGE_MODEL;
 
   if (!image_url) {
     return NextResponse.json({ error: "image_url is required" }, { status: 400 });
@@ -321,7 +324,7 @@ export async function POST(req: NextRequest) {
         referenceImages,
         detectedRatio,
         "2K",
-        SWIPER_IMAGE_MODEL
+        imageModel
       );
 
       const result = await pollTaskResult(imageTaskId);
@@ -335,8 +338,8 @@ export async function POST(req: NextRequest) {
       // Log Nano Banana usage
       await db.from("usage_logs").insert({
         type: "image_swiper",
-        model: SWIPER_IMAGE_MODEL,
-        cost_usd: KIE_PRO_IMAGE_COST,
+        model: imageModel,
+        cost_usd: imageModel === "nano-banana-pro" ? KIE_PRO_IMAGE_COST : KIE_IMAGE_COST,
         metadata: {
           product: productSlug,
           task_id: imageTaskId,

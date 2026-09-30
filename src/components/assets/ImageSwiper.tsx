@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IMAGE_MODELS, type ImageModelId } from "@/lib/constants";
 import { ASSET_CATEGORIES, type Product, type Asset, type AssetCategory } from "@/types";
 import { useProducts } from "@/hooks/useProducts";
 
@@ -49,6 +50,9 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [notes, setNotes] = useState("");
   const [mode, setMode] = useState<"standard" | "ugc" | "replica">("standard");
+  // Image model for both the first generation and retries. Pro renders
+  // product labels and faces far better than the flash tier.
+  const [imageModel, setImageModel] = useState<ImageModelId>("nano-banana-pro");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Analysis + Generation
@@ -186,6 +190,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           ...(product && { product }),
           notes: notes.trim() || undefined,
           mode,
+          model: imageModel,
         }),
         signal: controller.signal,
       });
@@ -243,7 +248,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setError(msg);
       setPhase("upload");
     }
-  }, [competitorImageUrl, competitorImageFile, product, notes, mode]);
+  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -354,6 +359,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           prompt: finalPrompt,
           ...(product && { product }),
           aspect_ratio: retryRatio,
+          model: imageModel,
           // Always pass the original photo as visual reference 1 (every mode),
           // matching the first generation - the retry prompt refers to it.
           ...(resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
@@ -373,7 +379,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl]);
+  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl, imageModel]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -552,6 +558,21 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                   Replica
                 </button>
               </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Bildmodell
+              </label>
+              <select
+                value={imageModel}
+                onChange={(e) => setImageModel(e.target.value as ImageModelId)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                title="Bildmodell för generering och Retry"
+              >
+                {IMAGE_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} - {m.description}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -749,6 +770,17 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                   if (e.key === "Enter" && !retrying) handleRetry();
                 }}
               />
+              <select
+                value={imageModel}
+                onChange={(e) => setImageModel(e.target.value as ImageModelId)}
+                disabled={retrying}
+                className="rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50 max-w-[10rem]"
+                title="Bildmodell för Retry"
+              >
+                {IMAGE_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
               <button
                 onClick={handleRetry}
                 disabled={retrying || saving}

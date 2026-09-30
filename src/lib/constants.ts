@@ -9,11 +9,18 @@ export const KIE_MODEL = "nano-banana-2";
 //   nano-banana-2 / -pro  -> image_input,  resolution, output_format
 //   nano-banana-2-lite    -> image_urls,   (no resolution, no output_format)
 //   gpt-image-2-i2i       -> input_urls,   resolution (1K for 4:5), no output_format
+//   gpt-image-2-5-*-i2i   -> input_urls,   resolution, no output_format, NO 4:5/5:4 (2026-09-30)
+//   gpt-image/1.5-i2i     -> input_urls,   no resolution, quality required, only 1:1/2:3/3:2
+// `allowedRatios` lists what a model accepts; kie.ts maps any other ratio to the
+// nearest one instead of letting createTask fail. `extraInput` is merged as-is.
 export const IMAGE_MODELS = [
   { id: "gpt-image-2-image-to-image", label: "GPT Image 2", description: "OpenAI — hög precision, stark textrendering", imageField: "input_urls", includeResolution: true, resolutionOverride: "1K", outputFormat: false },
   { id: "nano-banana-2", label: "Nano Banana 2", description: "Gemini 3.1 Flash — snabb, billig (standard)", imageField: "image_input", includeResolution: true, resolutionOverride: null, outputFormat: true },
   { id: "nano-banana-2-lite", label: "Nano Banana 2 Lite", description: "Snabbast, lägst latens", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: false },
   { id: "nano-banana-pro", label: "Nano Banana Pro", description: "Gemini 3 Pro — bäst kvalitet + text", imageField: "image_input", includeResolution: true, resolutionOverride: null, outputFormat: true },
+  { id: "gpt-image-2-5-flare-image-to-image", label: "GPT Image 2.5 Flare", description: "OpenAI 2.5 — Flare-varianten", imageField: "input_urls", includeResolution: true, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"] },
+  { id: "gpt-image-2-5-sunburst-image-to-image", label: "GPT Image 2.5 Sunburst", description: "OpenAI 2.5 — Sunburst-varianten", imageField: "input_urls", includeResolution: true, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"] },
+  { id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5", description: "OpenAI 1.5 — bara 1:1, 2:3, 3:2", imageField: "input_urls", includeResolution: false, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "2:3", "3:2"], extraInput: { quality: "high" } },
 ] as const;
 export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];
 export const IMAGE_MODEL_IDS = IMAGE_MODELS.map((m) => m.id) as readonly string[];
