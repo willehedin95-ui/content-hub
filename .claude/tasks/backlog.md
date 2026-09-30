@@ -3,7 +3,11 @@
 - [x] **OMTEST av bildmodeller i den RIKTIGA kedjan** - KLART 2026-09-30. GPT Image 2 står kvar som standard.
       Bilder, kontaktark och närbilder: `~/Claude Code/envana-social/storlekstest/omtest-standard/`. Skript: `scripts/_swipe-model-retest.ts` (ej committat).
       Fel produkt: GPT 2 1/6, Sunburst 0/5 (1 timeout 3 av 3), NB Pro 1/6 (burk), NB2 1/4 (pumpkork, 2 gick ej att hämta från Kie), Seedream Pro 2/2 genomskinlig flaska.
-- [ ] **Seedream Pro avvisar Standard-prompter över ~5000 tecken** ("text length cannot exceed the maximum limit"). 4 av 6 riktiga prompter föll: 4294 och 4567 gick, 5160-5920 föll. Lite har 3000-gräns, faller alltså nästan alltid. Behöver beslut: dölj Seedream i Standard/UGC, eller korta JSON:en för dem.
+- [x] Seedream borttaget (`c98335a0`). Formval Flaska/Shotglas/Glas, konkurrenttext bort, händer läses bokstavligt (`8e870064`). Anpassa person (`8bedc644`). Allt live 2026-09-30.
+- [ ] **Kie-timeout 280 s i hubben.** Eftermiddagen 2026-09-30 tog GPT Image 2 48-222 s, flera >280 s och en >600 s; filservern bröt nedladdningar (`terminated`). Användaren får då ett fel. Överväg längre poll + att visa bilden när den väl kommer (Kie-task-id finns).
+- [ ] **Parbilden (mannen "matar" kvinnan) ej omtestad** med nya regler - väntar på Williams högupplösta version.
+- [ ] **Claude Sonnet 4.5 vs 5.5 för extraktionen:** 1-2 bilder per förlaga, ingen skillnad att bygga på. 5.5 kräver att `temperature` tas bort. Bilder: `envana-social/storlekstest/formtest/`.
+- [ ] Personvalen ej verifierade i genererad bild (Kie stod still). Claude-beskrivningen verifierad.
 - [x] Specen för omtestet (historik):
       - **Varför:** testet 2026-09-30 skickade originalbilden som referens 1, alltså Replica-beteende. Storlek och "bästa modell" gäller därför inte för Standard. Kostnaderna gäller.
       - **Kedjan som ska testas:** Claude-extraktion med samma systemprompt som routen, produkten utbytt i JSON, samma instruktion och `getSwipeProductNote`. Bildmodellen får BARA hero-bilden (hand-packshoten). 1K och JPEG.
