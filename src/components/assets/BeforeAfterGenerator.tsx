@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ASSET_CATEGORIES, type Asset, type AssetCategory, type Product } from "@/types";
 import { IMAGE_MODELS } from "@/lib/constants";
+import { GENDER_OPTIONS, AGE_OPTIONS, ETHNICITY_OPTIONS } from "@/lib/person-options";
 import { useProducts } from "@/hooks/useProducts";
 import PostProductionPanel from "./PostProductionPanel";
 
@@ -57,25 +58,7 @@ const INTENSITIES: { value: Intensity; label: string; description: string }[] = 
   { value: "dramatic", label: "Dramatic", description: "Striking improvement, stops short of unreal" },
 ];
 
-// Woman is the default and is listed first. There is deliberately no "Random"
-// option - a man is only ever generated when explicitly picked.
-const GENDER_OPTIONS = [
-  { value: "woman", label: "Woman" },
-  { value: "man", label: "Man" },
-];
 
-const AGE_OPTIONS = [
-  { value: "", label: "Random" },
-  { value: "30-35", label: "30-35" },
-  { value: "36-40", label: "36-40" },
-  { value: "40-45", label: "40-45" },
-  { value: "46-50", label: "46-50" },
-  { value: "51-55", label: "51-55" },
-  { value: "56-60", label: "56-60" },
-  { value: "61-65", label: "61-65" },
-  { value: "66-70", label: "66-70" },
-  { value: "71-75", label: "71-75" },
-];
 
 // Output format. 16:9 is the default because each half then lands at roughly
 // square, which is what the wide zone crops (forehead strip, eye area, neck)
@@ -104,16 +87,6 @@ const CAMERA_ANGLE_OPTIONS = [
   { value: "dutch_tilt", label: "Slight Dutch tilt" },
 ];
 
-const ETHNICITY_OPTIONS = [
-  { value: "scandinavian", label: "Scandinavian (default)" },
-  { value: "north_european", label: "Northern European" },
-  { value: "mediterranean", label: "Mediterranean" },
-  { value: "east_asian", label: "East Asian" },
-  { value: "south_asian", label: "South Asian" },
-  { value: "latin", label: "Latin / Hispanic" },
-  { value: "middle_eastern", label: "Middle Eastern" },
-  { value: "african", label: "African / African American" },
-];
 
 interface Props {
   onAssetCreated?: (asset: Asset) => void;

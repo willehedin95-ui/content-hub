@@ -253,8 +253,15 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 Return ONLY the JSON object. No markdown fences, no extra text.`;
 }
 
-export function buildImageSwiperUserPrompt(imageUrl: string, notes?: string): string {
+export function buildImageSwiperUserPrompt(imageUrl: string, notes?: string, person?: string): string {
   let prompt = "Extract every visual detail from this image as structured JSON.";
+
+  if (person) {
+    // Changing the person here, not in the image prompt, keeps the subject
+    // description consistent - otherwise it still says the original age and
+    // ethnicity and the image model gets two conflicting people.
+    prompt += `\n\n**Person:** The main person in the image (if there are several, the most prominent one) must be described as: ${person}. Write that person's subject description with this identity instead of what you see, and fill in anything not given (e.g. hair colour) so it fits. Keep their clothing, pose, expression and action exactly as in the image.`;
+  }
 
   if (notes) {
     prompt += `\n\n**Additional Notes:** ${notes}`;

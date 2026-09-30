@@ -15,6 +15,15 @@ import {
 import { cn } from "@/lib/utils";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/constants";
 import type { SwipeForm } from "@/lib/product-appearance";
+import { GENDER_OPTIONS, AGE_OPTIONS, ETHNICITY_OPTIONS, type PersonOverride } from "@/lib/person-options";
+
+// "" = keep what the competitor's image shows.
+const FROM_IMAGE = { value: "", label: "Från bilden" };
+const PERSON_FIELDS = [
+  { key: "gender", label: "Kön", options: [FROM_IMAGE, ...GENDER_OPTIONS] },
+  { key: "age", label: "Ålder", options: [FROM_IMAGE, ...AGE_OPTIONS.filter((o) => o.value)] },
+  { key: "ethnicity", label: "Etnicitet", options: [FROM_IMAGE, ...ETHNICITY_OPTIONS.map((o) => ({ ...o, label: o.label.replace(/ \(default\)$/, "") }))] },
+] as const;
 
 const SWIPE_FORM_OPTIONS: { id: SwipeForm; label: string; hint: string }[] = [
   { id: "bottle", label: "Flaska", hint: "Flaskan tar förpackningens plats i bilden" },
@@ -59,6 +68,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [mode, setMode] = useState<"standard" | "ugc" | "replica">("standard");
   // Which forms of our product appear in the image. None picked = bottle.
   const [forms, setForms] = useState<SwipeForm[]>(["bottle"]);
+  // Person override. Empty = keep the person from the competitor's image.
+  const [person, setPerson] = useState<PersonOverride>({ gender: "", age: "", ethnicity: "", hair_color: "" });
   // Image model for both the first generation and retries. GPT Image 2 won
   // the 2026-09-30 benchmark: Pro-level labels and size at a third of the cost.
   const [imageModel, setImageModel] = useState<ImageModelId>("gpt-image-2-image-to-image");
@@ -200,6 +211,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           notes: notes.trim() || undefined,
           mode,
           forms,
+          person,
           model: imageModel,
         }),
         signal: controller.signal,
@@ -258,7 +270,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setError(msg);
       setPhase("upload");
     }
-  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms]);
+  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms, person]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -616,6 +628,38 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               </select>
             </div>
           </div>
+
+          <details className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+            <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">
+              Anpassa person <span className="text-gray-400 font-normal">(valfritt, annars samma som i bilden)</span>
+            </summary>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {PERSON_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <label className="block text-[11px] text-gray-500 mb-1">{field.label}</label>
+                  <select
+                    value={person[field.key] ?? ""}
+                    onChange={(e) => setPerson((p) => ({ ...p, [field.key]: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                  >
+                    {field.options.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Hårfärg</label>
+                <input
+                  type="text"
+                  value={person.hair_color ?? ""}
+                  onChange={(e) => setPerson((p) => ({ ...p, hair_color: e.target.value }))}
+                  placeholder="Från bilden"
+                  className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 focus:outline-none"
+                />
+              </div>
+            </div>
+          </details>
 
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">

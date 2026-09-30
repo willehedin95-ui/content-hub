@@ -8,6 +8,7 @@ import { calcClaudeCost, kieImageCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import type { SwipeForm } from "@/lib/product-appearance";
+import { describePersonOverride, type PersonOverride } from "@/lib/person-options";
 import { buildImageSwiperSystemPrompt, buildImageSwiperUserPrompt, buildSwipePrompt } from "@/lib/swipe-image-prompt";
 import type { ProductFull } from "@/types";
 
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     mode = "standard",
     model: requestedModel,
     forms: requestedForms,
+    person,
   } = body as {
     image_url?: string;
     product?: string;
@@ -66,7 +68,9 @@ export async function POST(req: NextRequest) {
     mode?: "standard" | "ugc" | "replica";
     model?: string;
     forms?: string[];
+    person?: PersonOverride;
   };
+  const personDescription = describePersonOverride(person);
   const forms = (Array.isArray(requestedForms) ? requestedForms : []).filter(
     (f): f is SwipeForm => f === "bottle" || f === "shot" || f === "glass"
   );
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
   // Build Claude system prompt (product-agnostic — extraction only)
   const systemPrompt = buildImageSwiperSystemPrompt();
 
-  const userPrompt = buildImageSwiperUserPrompt(image_url, notes);
+  const userPrompt = buildImageSwiperUserPrompt(image_url, notes, personDescription || undefined);
 
   // Stream NDJSON
   const encoder = new TextEncoder();
