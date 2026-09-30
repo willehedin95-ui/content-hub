@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
+import { persistSwipeImage } from "@/lib/swipe-image-store";
 import { kieImageCost } from "@/lib/pricing";
 import { IMAGE_MODEL_IDS } from "@/lib/constants";
 
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No image generated" }, { status: 500 });
     }
 
-    return NextResponse.json({ image_url: result.urls[0] });
+    return NextResponse.json({ image_url: await persistSwipeImage(result.urls[0]) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[image-swiper/regenerate] Error:", msg);

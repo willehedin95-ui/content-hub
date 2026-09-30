@@ -6,6 +6,8 @@ import { getWorkspaceId } from "@/lib/workspace";
 import { CLAUDE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
 import { calcClaudeCost, kieImageCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
+import { persistSwipeImage } from "@/lib/swipe-image-store";
+import { getSwipeProductNote } from "@/lib/product-appearance";
 import type { ProductFull } from "@/types";
 
 export const maxDuration = 800;
@@ -200,7 +202,10 @@ export async function POST(req: NextRequest) {
       const labelNote = hasProductRef
         ? ` CRITICAL: The product must look exactly like the product reference image, including its label, logo, colours and printed text. Copy the label from the reference; do not invent new text and do not leave the product blank.`
         : "";
-      const compositionNote = ` Reference image 1 is the original photo: keep its composition, framing, camera angle, lighting, colours, setting and photo quality. Replace only the original product with the product shown in the other reference image(s).`;
+      // Standard/UGC make a NEW photo in the style of image 1 - new people,
+      // not the same faces (copying image 1 wholesale is what Replica is for,
+      // and reusing real people from a competitor's ad is not ours to do).
+      const compositionNote = ` Reference image 1 is the style reference: recreate its composition, framing, camera angle, poses, lighting, colours, setting and photo quality as a NEW photo. Any people must be different individuals of the same age, gender and overall look as described - do not copy the faces from image 1. Put the product from the other reference image(s) where the original product was.${product ? getSwipeProductNote(product) : ""}`;
       const nanaBananaJson = structuredClone(extraction);
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
@@ -351,10 +356,13 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await emit({ step: "generating", message: "Saving image..." });
+      const storedUrl = await persistSwipeImage(result.urls[0]);
+
       await emit({
         step: "completed",
         message: "Image generated",
-        image_url: result.urls[0],
+        image_url: storedUrl,
         prompt_used: nanaBananaPrompt,
         aspect_ratio: detectedRatio,
       });

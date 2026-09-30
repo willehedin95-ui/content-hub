@@ -28,3 +28,16 @@ export function getProductAppearance(product: ProductLike): string {
 
   return "";
 }
+
+/**
+ * Product-specific rule for the swipe tool, applied ONLY when the swiped photo
+ * already shows the product being drunk or poured. Worded conditionally so
+ * the model never adds a drink to a photo that has none (2026-09-30: a
+ * magnesium-drink photo came back with milky water in the glasses).
+ */
+export function getSwipeProductNote(product: ProductLike): string {
+  if (product.slug === "hydro13") {
+    return " PRODUCT LIQUID: Only if the original photo shows the drink being drunk, poured or held in a glass (a drink that stands in for the original product), render that liquid as this product really looks: a clear golden amber liquid, like apple juice. Never milky, white, cloudy, fizzy or colourless. If the original photo has no such drink, do NOT add a glass or a drink.";
+  }
+  return "";
+}
