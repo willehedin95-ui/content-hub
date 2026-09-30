@@ -9,7 +9,7 @@ import { STORAGE_BUCKET } from "@/lib/constants";
 // generation, so the wait happens during "Generating..." and the image the
 // user sees (and saves) loads from our CDN. Falls back to the Kie URL on any
 // failure - a slow image beats no image.
-const FETCH_TIMEOUT_MS = 150_000;
+const FETCH_TIMEOUT_MS = 280_000;
 
 export async function persistSwipeImage(kieUrl: string): Promise<string> {
   try {

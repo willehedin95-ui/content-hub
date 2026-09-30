@@ -360,9 +360,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           ...(product && { product }),
           aspect_ratio: retryRatio,
           model: imageModel,
-          // Always pass the original photo as visual reference 1 (every mode),
-          // matching the first generation - the retry prompt refers to it.
-          ...(resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
+          // Only Replica uses the original photo as a visual reference.
+          ...(mode === "replica" && resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
         }),
       });
 

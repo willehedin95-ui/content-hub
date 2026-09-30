@@ -202,10 +202,10 @@ export async function POST(req: NextRequest) {
       const labelNote = hasProductRef
         ? ` CRITICAL: The product must look exactly like the product reference image, including its label, logo, colours and printed text. Copy the label from the reference; do not invent new text and do not leave the product blank.`
         : "";
-      // Standard/UGC make a NEW photo in the style of image 1 - new people,
-      // not the same faces (copying image 1 wholesale is what Replica is for,
-      // and reusing real people from a competitor's ad is not ours to do).
-      const compositionNote = ` Reference image 1 is the style reference: recreate its composition, framing, camera angle, poses, lighting, colours, setting and photo quality as a NEW photo. Any people must be different individuals of the same age, gender and overall look as described - do not copy the faces from image 1. Put the product from the other reference image(s) where the original product was.${product ? getSwipeProductNote(product) : ""}`;
+      // Standard/UGC build the image from Claude's JSON description plus OUR
+      // product photo only. Sending the original photo too (tried 2026-09-30)
+      // made the model copy it near pixel-for-pixel - that is Replica's job.
+      const compositionNote = product ? getSwipeProductNote(product) : "";
       const nanaBananaJson = structuredClone(extraction);
       if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
         for (const subject of nanaBananaJson.subjects) {
@@ -319,10 +319,10 @@ export async function POST(req: NextRequest) {
       // Use programmatically measured aspect ratio (not Claude's guess)
       const detectedRatio = await aspectRatioPromise;
 
-      // The original photo is ALWAYS reference image 1, in every mode. Before,
-      // standard/UGC mode only sent the product, so the model never saw the
-      // photo it was meant to recreate - only Claude's text description of it.
-      const referenceImages = [image_url, ...productHeroUrls];
+      // Only Replica sends the original photo (it is a copy-with-changes mode).
+      // Standard/UGC get the JSON description + our product photo, so the
+      // result is a new image in that style, not a copy.
+      const referenceImages = isReplica ? [image_url, ...productHeroUrls] : productHeroUrls;
 
       const imageTaskId = await createImageTask(
         nanaBananaPrompt,

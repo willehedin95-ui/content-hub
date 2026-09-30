@@ -37,7 +37,7 @@ export function getProductAppearance(product: ProductLike): string {
  */
 export function getSwipeProductNote(product: ProductLike): string {
   if (product.slug === "hydro13") {
-    return " PRODUCT LIQUID: Only if the original photo shows the drink being drunk, poured or held in a glass (a drink that stands in for the original product), render that liquid as this product really looks: a clear golden amber liquid, like apple juice. Never milky, white, cloudy, fizzy or colourless. If the original photo has no such drink, do NOT add a glass or a drink.";
+    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as this product really looks: a clear golden amber liquid, like apple juice. Never milky, white, cloudy, fizzy or colourless. If the scene has no drink, do NOT add a glass or a drink.";
   }
   return "";
 }
