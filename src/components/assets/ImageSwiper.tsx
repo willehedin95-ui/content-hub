@@ -83,6 +83,16 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [measuredRatio, setMeasuredRatio] = useState<string>("4:5");
   const [resolvedCompetitorUrl, setResolvedCompetitorUrl] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  // Which Kie model is running and since when - shown as "GPT Image 2 · 2:14".
+  const [genInfo, setGenInfo] = useState<{ model: string; startedAt: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  // Set when Kie timed out: the finished prompt, so only the image is retried.
+  const [timeoutRetry, setTimeoutRetry] = useState<{ prompt: string; ratio: string } | null>(null);
+  useEffect(() => {
+    if (!genInfo) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [genInfo]);
   const abortRef = useRef<AbortController | null>(null);
 
   // File selection
@@ -171,6 +181,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     abortRef.current = controller;
 
     setError(null);
+    setTimeoutRetry(null);
     setAnalysis(null);
     setGeneratedImageUrl(null);
     setPromptUsed(null);
@@ -239,7 +250,12 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           if (!line.trim()) continue;
           const event = JSON.parse(line);
 
-          if (event.step === "error") throw new Error(event.message);
+          if (event.step === "error") {
+            if (event.timeout && event.prompt_used) {
+              setTimeoutRetry({ prompt: event.prompt_used, ratio: event.aspect_ratio || "4:5" });
+            }
+            throw new Error(event.message);
+          }
           if (event.message) setStatusMessage(event.message);
 
           if (event.step === "analyzed" && event.analysis) {
@@ -248,6 +264,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
 
           if (event.step === "generating") {
             setPhase("generating");
+            if (event.model) setGenInfo({ model: event.model, startedAt: event.started_at || Date.now() });
           }
 
           if (event.step === "completed" && event.image_url) {
@@ -269,8 +286,46 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       setPhase("upload");
+    } finally {
+      setGenInfo(null);
     }
   }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms, person]);
+
+  // Kie timed out: generate the image again from the finished prompt with the
+  // fastest model, without redoing Claude's analysis.
+  const handleTimeoutRetry = useCallback(async () => {
+    if (!timeoutRetry) return;
+    const fallback = "nano-banana-2";
+    setError(null);
+    setImageModel(fallback);
+    setPhase("generating");
+    setStatusMessage("Generating adapted image...");
+    setGenInfo({ model: fallback, startedAt: Date.now() });
+    try {
+      const res = await fetch("/api/assets/image-swiper/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: timeoutRetry.prompt,
+          ...(product && { product: product }),
+          aspect_ratio: timeoutRetry.ratio,
+          model: fallback,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.image_url) throw new Error(json.error || `API error: ${res.status}`);
+      setGeneratedImageUrl(json.image_url);
+      setPromptUsed(timeoutRetry.prompt);
+      setMeasuredRatio(timeoutRetry.ratio);
+      setTimeoutRetry(null);
+      setPhase("done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("upload");
+    } finally {
+      setGenInfo(null);
+    }
+  }, [timeoutRetry, product]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -433,6 +488,14 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           <div>
             <p className="text-sm font-medium text-red-800">Error</p>
             <p className="text-sm text-red-600 mt-0.5">{error}</p>
+            {timeoutRetry && (
+              <button
+                onClick={handleTimeoutRetry}
+                className="mt-2 px-3 py-1.5 rounded-lg border border-red-300 bg-white text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Försök igen med Nano Banana 2
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -749,7 +812,13 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                 <Sparkles className="w-8 h-8 text-amber-600 animate-pulse" />
               </div>
               <p className="text-sm font-medium text-gray-900">{statusMessage}</p>
-              <p className="text-xs text-gray-400">Generating adapted image with Nano Banana...</p>
+              {genInfo && (
+                <p className="text-xs text-gray-400 tabular-nums">
+                  {IMAGE_MODELS.find((m) => m.id === genInfo.model)?.label ?? genInfo.model}
+                  {" · "}
+                  {Math.floor(Math.max(0, now - genInfo.startedAt) / 60000)}:{String(Math.floor(Math.max(0, now - genInfo.startedAt) / 1000) % 60).padStart(2, "0")}
+                </p>
+              )}
               <button
                 onClick={handleCancel}
                 className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-4 py-1.5 rounded-lg transition-colors"

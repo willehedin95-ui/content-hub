@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
   }
 
   (async () => {
+    let currentTask: { id: string; model: string; ratio: string; prompt: string } | null = null;
     try {
       // --- Step 1: Claude Vision analysis ---
       await emit({ step: "analyzing", message: "Analyzing competitor image..." });
@@ -258,16 +259,12 @@ export async function POST(req: NextRequest) {
         // JPEG: a 2K PNG from Kie is ~6.6 MB and draws row by row for seconds.
         "jpg"
       );
+      currentTask = { id: imageTaskId, model: imageModel, ratio: detectedRatio, prompt: nanaBananaPrompt };
 
-      const result = await pollTaskResult(imageTaskId);
-
-      if (result.urls.length === 0) {
-        await emit({ step: "error", message: "No image generated" });
-        await writer.close();
-        return;
-      }
-
-      // Log Nano Banana usage
+      // Log the Kie task IMMEDIATELY (same as the Retry route): the image is
+      // paid for once the task exists, and a task that never finishes must
+      // still leave its id behind so it can be looked up at Kie. Before this,
+      // a stuck generation left no trace at all (2026-09-30).
       await db.from("usage_logs").insert({
         type: "image_swiper",
         model: imageModel,
@@ -279,6 +276,15 @@ export async function POST(req: NextRequest) {
           has_product_ref: productHeroUrls.length > 0,
         },
       });
+      await emit({ step: "generating", message: "Generating adapted image...", model: imageModel, task_id: imageTaskId, started_at: Date.now() });
+
+      const result = await pollTaskResult(imageTaskId);
+
+      if (result.urls.length === 0) {
+        await emit({ step: "error", message: "No image generated" });
+        await writer.close();
+        return;
+      }
 
       await emit({ step: "generating", message: "Saving image..." });
       const storedUrl = await persistSwipeImage(result.urls[0]);
@@ -292,8 +298,20 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[image-swiper] Error:", msg);
-      await emit({ step: "error", message: `Analysis failed: ${msg}` });
+      console.error("[image-swiper] Error:", msg, currentTask?.id ?? "");
+      if (currentTask && /timed out/i.test(msg)) {
+        // Kie never finished. Hand the prompt back so the page can retry the
+        // image alone (with a faster model) without redoing the analysis.
+        await emit({
+          step: "error",
+          message: `Kie blev inte klart med bilden på 280 s (${currentTask.model}, uppdrag ${currentTask.id}).`,
+          timeout: true,
+          prompt_used: currentTask.prompt,
+          aspect_ratio: currentTask.ratio,
+        });
+      } else {
+        await emit({ step: "error", message: `Analysis failed: ${msg}` });
+      }
     } finally {
       await writer.close();
     }
