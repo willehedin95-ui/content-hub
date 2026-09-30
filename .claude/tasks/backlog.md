@@ -1,6 +1,10 @@
 ## Swipe Image - nästa steg (från sessionen 2026-09-30)
 
-- [ ] **OMTEST av bildmodeller i den RIKTIGA kedjan.** Nästa agent gör det.
+- [x] **OMTEST av bildmodeller i den RIKTIGA kedjan** - KLART 2026-09-30. GPT Image 2 står kvar som standard.
+      Bilder, kontaktark och närbilder: `~/Claude Code/envana-social/storlekstest/omtest-standard/`. Skript: `scripts/_swipe-model-retest.ts` (ej committat).
+      Fel produkt: GPT 2 1/6, Sunburst 0/5 (1 timeout 3 av 3), NB Pro 1/6 (burk), NB2 1/4 (pumpkork, 2 gick ej att hämta från Kie), Seedream Pro 2/2 genomskinlig flaska.
+- [ ] **Seedream Pro avvisar Standard-prompter över ~5000 tecken** ("text length cannot exceed the maximum limit"). 4 av 6 riktiga prompter föll: 4294 och 4567 gick, 5160-5920 föll. Lite har 3000-gräns, faller alltså nästan alltid. Behöver beslut: dölj Seedream i Standard/UGC, eller korta JSON:en för dem.
+- [x] Specen för omtestet (historik):
       - **Varför:** testet 2026-09-30 skickade originalbilden som referens 1, alltså Replica-beteende. Storlek och "bästa modell" gäller därför inte för Standard. Kostnaderna gäller.
       - **Kedjan som ska testas:** Claude-extraktion med samma systemprompt som routen, produkten utbytt i JSON, samma instruktion och `getSwipeProductNote`. Bildmodellen får BARA hero-bilden (hand-packshoten). 1K och JPEG.
       - **Modeller:** GPT Image 2, GPT 2.5 Sunburst, Nano Banana Pro, Seedream 5.0 Pro och Nano Banana 2.

@@ -69,10 +69,9 @@ export async function createImageTask(
   if (cfg && "extraInput" in cfg) Object.assign(input, cfg.extraInput);
   input[cfg?.imageField ?? "image_input"] = imageUrls;
   if (cfg?.includeResolution ?? true) input.resolution = cfg?.resolutionOverride ?? resolution;
-  // Kie's enum differs per family: Nano Banana wants "jpg", Seedream "jpeg".
   // Models without output_format (GPT, Grok) ignore the choice.
   if (cfg?.outputFormat ?? true) {
-    input.output_format = format === "jpg" ? (model.startsWith("seedream/") ? "jpeg" : "jpg") : "png";
+    input.output_format = format;
   }
 
   return withRetry(

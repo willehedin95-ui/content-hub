@@ -25,9 +25,6 @@ const KIE_CREDITS_PER_IMAGE_1K: Record<string, number> = {
   "gpt-image-2-image-to-image": 6,
   "gpt-image-2-5-flare-image-to-image": 6,
   "gpt-image-2-5-sunburst-image-to-image": 6,
-  "seedream/5-pro-image-to-image": 7.5,
-  "seedream/5-flash-image-to-image": 3.24,
-  "seedream/5-lite-image-to-image": 5.5,
   "grok-imagine-image-2-0/image-edit": 4,
 };
 /** Measured USD cost of one 1K image for a Kie image model (falls back to KIE_IMAGE_COST). */
