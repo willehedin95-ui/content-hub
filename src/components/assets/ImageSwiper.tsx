@@ -50,9 +50,9 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [notes, setNotes] = useState("");
   const [mode, setMode] = useState<"standard" | "ugc" | "replica">("standard");
-  // Image model for both the first generation and retries. Pro renders
-  // product labels and faces far better than the flash tier.
-  const [imageModel, setImageModel] = useState<ImageModelId>("nano-banana-pro");
+  // Image model for both the first generation and retries. GPT Image 2 won
+  // the 2026-09-30 benchmark: Pro-level labels and size at a third of the cost.
+  const [imageModel, setImageModel] = useState<ImageModelId>("gpt-image-2-image-to-image");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Analysis + Generation

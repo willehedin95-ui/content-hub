@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
-import { KIE_IMAGE_COST, KIE_PRO_IMAGE_COST } from "@/lib/pricing";
+import { kieImageCost } from "@/lib/pricing";
 import { IMAGE_MODEL_IDS } from "@/lib/constants";
 
 export const maxDuration = 800;
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     competitor_image_url?: string;
     model?: string;
   };
-  const imageModel = requestedModel && IMAGE_MODEL_IDS.includes(requestedModel) ? requestedModel : "nano-banana-pro";
+  const imageModel = requestedModel && IMAGE_MODEL_IDS.includes(requestedModel) ? requestedModel : "gpt-image-2-image-to-image";
 
   if (!prompt) {
     return NextResponse.json({ error: "prompt is required" }, { status: 400 });
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     await db.from("usage_logs").insert({
       type: "image_swiper",
       model: imageModel,
-      cost_usd: imageModel === "nano-banana-pro" ? KIE_PRO_IMAGE_COST : KIE_IMAGE_COST,
+      cost_usd: kieImageCost(imageModel),
       metadata: {
         product: product || null,
         task_id: taskId,

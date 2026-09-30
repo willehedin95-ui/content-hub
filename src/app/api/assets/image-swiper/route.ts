@@ -4,15 +4,15 @@ import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { CLAUDE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
-import { calcClaudeCost, KIE_IMAGE_COST, KIE_PRO_IMAGE_COST } from "@/lib/pricing";
+import { calcClaudeCost, kieImageCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import type { ProductFull } from "@/types";
 
 export const maxDuration = 800;
 
-// nano-banana-pro renders labels and faces far better than the flash tier
-// (nano-banana-2), which is what made swiped products look fake.
-const SWIPER_IMAGE_MODEL = "nano-banana-pro";
+// Default model. Benchmark 2026-09-30 (10 models, 1K): GPT Image 2 matched
+// nano-banana-pro on label accuracy and bottle size at a third of the price.
+const SWIPER_IMAGE_MODEL = "gpt-image-2-image-to-image";
 
 const VALID_RATIOS = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"] as const;
 
@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
       await db.from("usage_logs").insert({
         type: "image_swiper",
         model: imageModel,
-        cost_usd: imageModel === "nano-banana-pro" ? KIE_PRO_IMAGE_COST : KIE_IMAGE_COST,
+        cost_usd: kieImageCost(imageModel),
         metadata: {
           product: productSlug,
           task_id: imageTaskId,

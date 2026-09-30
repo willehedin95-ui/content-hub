@@ -15,6 +15,27 @@ export const KIE_IMAGE_COST = 0.06; // $0.06 per image (~12 credits at 2K, $0.00
 // TODO: verify against Kie's price list — flat estimate at half the 2K cost.
 export const KIE_KEYFRAME_COST = 0.03;
 
+// Kie credits per image at 1K, measured from the Kie balance before/after
+// 3 generations per model on 2026-09-30 (swipe benchmark). $0.005/credit.
+const KIE_CREDIT_USD = 0.005;
+const KIE_CREDITS_PER_IMAGE_1K: Record<string, number> = {
+  "nano-banana-pro": 18,
+  "nano-banana-2": 8,
+  "nano-banana-2-lite": 4,
+  "gpt-image-2-image-to-image": 6,
+  "gpt-image-2-5-flare-image-to-image": 6,
+  "gpt-image-2-5-sunburst-image-to-image": 6,
+  "seedream/5-pro-image-to-image": 7.5,
+  "seedream/5-flash-image-to-image": 3.24,
+  "seedream/5-lite-image-to-image": 5.5,
+  "grok-imagine-image-2-0/image-edit": 4,
+};
+/** Measured USD cost of one 1K image for a Kie image model (falls back to KIE_IMAGE_COST). */
+export function kieImageCost(model: string): number {
+  const c = KIE_CREDITS_PER_IMAGE_1K[model];
+  return c ? c * KIE_CREDIT_USD : KIE_IMAGE_COST;
+}
+
 // Kie.ai nano-banana-pro at 2K (relabel tool).
 // TODO: verify against Kie's price list — flat estimate at ~2x nano-banana-2.
 export const KIE_PRO_IMAGE_COST = 0.12;
