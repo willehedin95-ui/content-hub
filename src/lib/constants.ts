@@ -10,7 +10,6 @@ export const KIE_MODEL = "nano-banana-2";
 //   nano-banana-2-lite    -> image_urls,   (no resolution, no output_format)
 //   gpt-image-2-i2i       -> input_urls,   resolution (1K for 4:5), no output_format
 //   gpt-image-2-5-*-i2i   -> input_urls,   resolution, no output_format, NO 4:5/5:4 (2026-09-30)
-//   gpt-image/1.5-i2i     -> input_urls,   no resolution, quality required, only 1:1/2:3/3:2
 //   seedream/5-*-i2i      -> image_urls,   no resolution (pro: quality basic=1K, flash: size 1K, lite: basic=2K is its minimum), no 4:5
 //   grok-imagine-image-2-0/image-edit -> image_urls (max 5), only 1:1/2:3/3:2/16:9/9:16
 // `allowedRatios` lists what a model accepts; kie.ts maps any other ratio to the
@@ -26,7 +25,6 @@ export const IMAGE_MODELS = [
   { id: "seedream/5-flash-image-to-image", label: "Seedream 5.0 Flash", description: "ByteDance — snabb (1K)", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: true, allowedRatios: ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"], extraInput: { size: "1K" } },
   { id: "seedream/5-lite-image-to-image", label: "Seedream 5.0 Lite", description: "ByteDance — lägsta nivån är 2K, max 3000 tecken prompt", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: true, allowedRatios: ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"], extraInput: { quality: "basic" } },
   { id: "grok-imagine-image-2-0/image-edit", label: "Grok Imagine 2.0", description: "xAI — bild till bild, max 5 referenser", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "2:3", "3:2", "16:9", "9:16"] },
-  { id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5", description: "OpenAI 1.5 — bara 1:1, 2:3, 3:2", imageField: "input_urls", includeResolution: false, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "2:3", "3:2"], extraInput: { quality: "high" } },
 ] as const;
 export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];
 export const IMAGE_MODEL_IDS = IMAGE_MODELS.map((m) => m.id) as readonly string[];
