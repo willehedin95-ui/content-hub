@@ -1,3 +1,17 @@
+## Swipe Image - nästa steg (från sessionen 2026-09-30)
+
+- [ ] **OMTEST av bildmodeller i den RIKTIGA kedjan.** Nästa agent gör det.
+      - **Varför:** testet 2026-09-30 skickade originalbilden som referens 1, alltså Replica-beteende. Storlek och "bästa modell" gäller därför inte för Standard. Kostnaderna gäller.
+      - **Kedjan som ska testas:** Claude-extraktion med samma systemprompt som routen, produkten utbytt i JSON, samma instruktion och `getSwipeProductNote`. Bildmodellen får BARA hero-bilden (hand-packshoten). 1K och JPEG.
+      - **Modeller:** GPT Image 2, GPT 2.5 Sunburst, Nano Banana Pro, Seedream 5.0 Pro och Nano Banana 2.
+      - **Förlagor:** GEM-kvinnan och paret (Higgsfield-URL:er, se `~/Claude Code/envana-social/referenser/` och journalen). 3 bilder per modell och förlaga.
+      - **Mät:** storlek med `~/Claude Code/envana-social/storlekstest/measure.py` (etikett/ansikte). Kontrollera etiketterna i närbild. Räkna missar: fel produkt, konkurrentens produkt kvar.
+      - **Rapportera** en tabell med pris, tid, missar, etikett och storlek. Byt standardmodell bara om data visar det.
+      - **Obs:** Kies filserver är långsam första hämtningen, så ladda ner parallellt med lång timeout.
+- [ ] **Konkurrentens text följer med i Standard.** Claude-extraktionen tar med textöverlägg, t.ex. "The Magnesium Drink You Look Forward To.". Behöver ett beslut av William: ta bort text som standard, eller låta anteckningarna styra.
+- [ ] **Extraktionsprompten säger "generated image must be clean with no branding".** Det krockar med att etiketten ska kopieras. Städa raden.
+- [x] Tom flaska, modellväljare, nya modeller, 1K, JPEG, egen lagring, Replica-only-original, vätskeregel och namnbytet till Collagen Formula. Allt live i `3ecd2ed3`.
+
 ## Progressbildsflodet (Envana/Hydro13)
 
 ALLT AR PUSHAT OCH LIVE (commit `e16068fa`, 2026-09-22). Sidan
