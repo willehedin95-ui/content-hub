@@ -7,7 +7,8 @@ import { CLAUDE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
 import { calcClaudeCost, kieImageCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
-import { getSwipeProductNote } from "@/lib/product-appearance";
+import type { SwipeForm } from "@/lib/product-appearance";
+import { buildImageSwiperSystemPrompt, buildImageSwiperUserPrompt, buildSwipePrompt } from "@/lib/swipe-image-prompt";
 import type { ProductFull } from "@/types";
 
 export const maxDuration = 800;
@@ -57,13 +58,18 @@ export async function POST(req: NextRequest) {
     notes,
     mode = "standard",
     model: requestedModel,
+    forms: requestedForms,
   } = body as {
     image_url?: string;
     product?: string;
     notes?: string;
     mode?: "standard" | "ugc" | "replica";
     model?: string;
+    forms?: string[];
   };
+  const forms = (Array.isArray(requestedForms) ? requestedForms : []).filter(
+    (f): f is SwipeForm => f === "bottle" || f === "shot" || f === "glass"
+  );
   const imageModel = requestedModel && IMAGE_MODEL_IDS.includes(requestedModel) ? requestedModel : SWIPER_IMAGE_MODEL;
 
   if (!image_url) {
@@ -192,95 +198,9 @@ export async function POST(req: NextRequest) {
         style: `${extraction.style?.category ?? "Unknown"}. ${extraction.style?.feel ?? ""}${extraction.style?.photo_quality ? `. Quality: ${extraction.style.photo_quality}` : ""}`,
       };
 
-      // Build Nano Banana JSON prompt: swap competitor product with target product
-      const isUgc = mode === "ugc";
-      // With a real product photo as reference the label must be KEPT. The old
-      // "no text / no labels / unbranded" rules made the model paint a blank
-      // bottle (seen 2026-09-30 on the Envana bottle). They only make sense
-      // when there is no product image to copy the label from.
       const hasProductRef = !!product && productHeroUrls.length > 0;
-      const labelNote = hasProductRef
-        ? ` CRITICAL: The product must look exactly like the product reference image, including its label, logo, colours and printed text. Copy the label from the reference; do not invent new text and do not leave the product blank.`
-        : "";
-      // Standard/UGC build the image from Claude's JSON description plus OUR
-      // product photo only. Sending the original photo too (tried 2026-09-30)
-      // made the model copy it near pixel-for-pixel - that is Replica's job.
-      const compositionNote = product ? getSwipeProductNote(product) : "";
-      const nanaBananaJson = structuredClone(extraction);
-      if (nanaBananaJson.subjects && Array.isArray(nanaBananaJson.subjects)) {
-        for (const subject of nanaBananaJson.subjects) {
-          if (subject.is_competitor_product && product) {
-            // In UGC/Replica mode: minimal description — rely on reference image for appearance
-            // In standard mode: full description for accurate product rendering
-            subject.description = hasProductRef
-              ? `the ${product.name} product, identical to the product reference image including its label and printed text`
-              : `${product.name} — ${product.description || "premium wellness product"}`;
-            subject.type = "product";
-            delete subject.is_competitor_product;
-          } else if (subject.is_competitor_product) {
-            // No product selected — make it generic
-            subject.description = "Generic wellness product, neutral/white color";
-            delete subject.is_competitor_product;
-          }
-        }
-      }
-      // Add generation task instruction at the top level
-      nanaBananaJson.task = "generate_image";
-
       const isReplica = mode === "replica";
-      const ethnicityNote = " CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.";
-
-      let instruction: string;
-
-      if (isReplica) {
-        // Replica mode — send original as reference + simple swap instruction
-        // Extract demographic from Claude's subjects analysis
-        const personSubjects = (extraction.subjects || []).filter(
-          (s: Record<string, unknown>) => s.type === "person"
-        );
-        const demographic = personSubjects.length > 0
-          ? personSubjects[0].description?.split(",").slice(0, 2).join(",").trim() || "woman"
-          : "person";
-
-        instruction = `Replace the person with a different ${demographic}`;
-      } else if (isUgc) {
-        // UGC mode — strong authenticity instructions
-        const ugcBlock = ` CRITICAL UGC AUTHENTICITY RULES: This MUST look like a real photo captured on an iPhone 16 Pro with the typical computational look of a real smartphone photo. Preserve raw handheld realism and the color science of an actual iPhone image. Any people must have fully realistic skin texture: visible pores on cheeks and nose, faint natural redness, slight forehead shine, soft under-eye detail — absolutely NO cosmetic smoothing or skin retouching. Do NOT upgrade to studio quality — match the casual, imperfect feel of the original exactly. Keep the same imperfect composition, slightly off-center framing, and natural ambient lighting. No filters, no retouching, no artificial blur, no professional studio lighting. The result must be indistinguishable from a real customer's phone photo.${hasProductRef ? "" : " CRITICAL: Do NOT generate, invent, or write ANY text on the product - no labels, no descriptions, no ingredient lists."}`;
-
-        instruction = product
-          ? `Recreate this exact visual style as a UGC customer photo featuring ${product.name}. The product must match the reference images provided.${compositionNote}${labelNote}${ethnicityNote}${ugcBlock}`
-          : `Recreate this exact visual style as a UGC customer photo.${ethnicityNote}${ugcBlock}`;
-      } else {
-        // Standard mode — original behavior
-        const qualityNote = extraction.style?.photo_quality
-          ? ` CRITICAL: Match the original photo quality exactly — ${extraction.style.photo_quality}. If the original is grainy, low-res, or looks like a phone photo, the result MUST have the same imperfections. Do NOT upgrade to studio quality.`
-          : "";
-        const textureNote = extraction.style?.texture && extraction.style.texture !== "sharp" && extraction.style.texture !== "clean"
-          ? ` Texture must be: ${extraction.style.texture}.`
-          : "";
-        // Only strip branding when there is no product photo to copy it from.
-        const noLogoNote = hasProductRef
-          ? labelNote
-          : " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
-
-        instruction = product
-          ? `Recreate this visual style featuring ${product.name}. The product must match the reference images provided.${compositionNote}${noLogoNote}${ethnicityNote}${qualityNote}${textureNote}`
-          : `Recreate this visual style with the described subjects and environment.${compositionNote}${ethnicityNote}${qualityNote}${textureNote}`;
-      }
-
-      if (notes) {
-        instruction += ` Additional instructions: ${notes}`;
-      }
-
-      // In replica mode, send ONLY the simple instruction as prompt (no JSON extraction).
-      // The original image is the reference - the JSON blob just confuses Nano Banana.
-      let nanaBananaPrompt: string;
-      if (isReplica) {
-        nanaBananaPrompt = instruction;
-      } else {
-        nanaBananaJson.instruction = instruction;
-        nanaBananaPrompt = JSON.stringify(nanaBananaJson);
-      }
+      const nanaBananaPrompt = buildSwipePrompt({ extraction, product, hasProductRef, forms, mode, notes });
 
       // Log Claude usage
       const inputTokens = response.usage.input_tokens;
@@ -378,106 +298,4 @@ export async function POST(req: NextRequest) {
   return new Response(stream.readable, {
     headers: { "Content-Type": "application/x-ndjson" },
   });
-}
-
-// --- Prompt builders ---
-
-function buildImageSwiperSystemPrompt(): string {
-  return `You are an expert visual analyst. Extract every visual detail from the provided image as structured JSON. This JSON will be passed directly to an image generation model, so be extremely precise and detailed.
-
-# CRITICAL: Camera Perspective & Human Actions
-
-The MOST IMPORTANT thing to get right is the camera perspective and what any people are doing. These are the #1 cause of bad generations. Ask yourself:
-
-- **Who is taking this photo?** Is it a first-person POV (photographer holding/showing something)? A selfie? A third-person shot? A tripod/studio shot?
-- **What are the hands/body ACTUALLY doing?** "Hand touching pillow" is NOT the same as "person holding pillow out in front of them over a bed, first-person POV". Be specific about the exact action and body position.
-- **Where is the camera relative to the scene?** Eye-level? Looking down at a surface? Looking up? Held at arm's length?
-
-Examples of BAD vs GOOD descriptions:
-- BAD: "Medium shot from above, bird's eye perspective looking down at bed surface"
-- GOOD: "First-person POV — person holding the pillow with one hand, arm extended forward over their bed, camera at chest height looking slightly down at the pillow and bed below"
-- BAD: "Person with hand on pillow"
-- GOOD: "Person's left hand gripping the side of the pillow, holding it up at arm's length in front of them — only the hand and forearm are visible, rest of body is behind camera"
-
-# Photo Quality & Naturalness
-
-Describe the ACTUAL quality level of the image — do NOT assume studio perfection:
-- Is it a casual phone photo with natural imperfections?
-- Slightly overexposed or underexposed?
-- Is the focus soft or slightly off?
-- Does it look like a professional shoot or a real person's photo?
-- Is the lighting natural/ambient or carefully set up?
-
-This matters because the generated image should match the same quality level — a casual UGC-style photo should NOT become a studio-perfect shot.
-
-# Structured Visual Extraction
-
-Analyze the image and extract ALL visual details into this exact JSON structure:
-
-\`\`\`json
-{
-  "scene": {
-    "setting": "Describe the environment/location",
-    "background": "Specific background elements, textures, wall colors with hex codes",
-    "lighting": "Light direction, quality (soft/hard/diffused), color temperature (warm/cool), shadow behavior. Also note if lighting looks natural/casual vs studio-controlled",
-    "atmosphere": "Overall environmental feel"
-  },
-  "composition": {
-    "camera_perspective": "CRITICAL — exactly describe the camera position and who is taking the photo. e.g. 'First-person POV, camera held at chest height' or 'Third-person, eye-level tripod shot' or 'Overhead flat-lay from directly above'",
-    "layout": "How the frame is organized (centered, rule-of-thirds, split/diptych, diagonal, etc.)",
-    "framing": "Shot type (extreme close-up, close-up, medium, wide, etc.)",
-    "focal_point": "What draws the eye and where",
-    "negative_space": "How empty space is used",
-    "aspect_ratio": "MUST be one of: 1:1, 4:5, 5:4, 3:2, 2:3, 16:9, 9:16"
-  },
-  "subjects": [
-    {
-      "type": "person | product | prop | text | graphic",
-      "description": "Detailed visual description — ethnicity/skin tone, hair color and texture, age range, clothing, expression, material, color with hex codes",
-      "position": "Where in the frame (center, top-left, bottom-third, etc.)",
-      "action": "CRITICAL — describe EXACTLY what they are doing with their body, hands, arms. Not just 'touching' but HOW they are interacting. e.g. 'holding pillow with right hand at arm's length, palm underneath, fingers gripping the side'",
-      "visibility": "What parts are visible? Full body, upper body, just hands, etc.",
-      "is_competitor_product": false
-    }
-  ],
-  "colors": {
-    "palette": ["#hex1", "#hex2", "...at least 5 dominant colors"],
-    "dominant_tone": "warm | cool | neutral",
-    "contrast": "high | medium | low",
-    "mood": "What the color palette communicates (e.g., 'Clean clinical whites with warm wood accents')"
-  },
-  "style": {
-    "category": "lifestyle | studio | clinical | native-ad | UGC | editorial | graphic | before-after",
-    "feel": "Describe the overall aesthetic in one sentence",
-    "texture": "clean | grainy | soft-focus | sharp | matte | glossy",
-    "photo_quality": "Describe the actual quality — e.g. 'casual phone photo, slightly soft focus, natural imperfections' or 'professional studio shot, tack-sharp, controlled lighting'"
-  }
-}
-\`\`\`
-
-# Rules
-
-- Use specific hex color codes wherever possible (background colors, product colors, clothing colors)
-- For subjects: mark exactly ONE subject as \`"is_competitor_product": true\` — the main product being advertised
-- **camera_perspective is the MOST important field** — get this wrong and the entire generation will look nothing like the original
-- **action descriptions must be specific and physical** — describe exact hand positions, grip, arm angles, body posture
-- **For person subjects, ALWAYS explicitly describe: ethnicity/skin tone (e.g. "Caucasian woman with fair skin", "East Asian man with warm beige skin tone"), hair color and texture (e.g. "straight dark brown hair", "curly black hair"), and approximate age range (e.g. "mid-40s"). These details are CRITICAL for accurate reproduction.**
-- Be precise about lighting direction (e.g., "soft light from upper-left, no harsh shadows")
-- Be precise about composition (e.g., "product occupies lower-right third, person upper-left")
-- Describe each subject in enough visual detail that an image generator could recreate it
-- Do NOT describe the competitor product's brand name — just its physical appearance
-- **NEVER include logos, brand tags, watermarks, or branded overlays** in the extraction — skip them entirely from the subjects list. The generated image must be clean with no branding.
-- If the user provides additional notes/instructions, APPLY them to the extraction. For example: "change 60 days to 100 days" → modify the text subject's description to say "100 days". "Remove the badge" → omit that subject entirely. "Make the background blue" → update the background and color palette accordingly.
-
-Return ONLY the JSON object. No markdown fences, no extra text.`;
-}
-
-function buildImageSwiperUserPrompt(imageUrl: string, notes?: string): string {
-  let prompt = "Extract every visual detail from this image as structured JSON.";
-
-  if (notes) {
-    prompt += `\n\n**Additional Notes:** ${notes}`;
-  }
-
-  return prompt;
 }

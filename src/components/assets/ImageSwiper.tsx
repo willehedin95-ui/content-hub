@@ -14,6 +14,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/constants";
+import type { SwipeForm } from "@/lib/product-appearance";
+
+const SWIPE_FORM_OPTIONS: { id: SwipeForm; label: string; hint: string }[] = [
+  { id: "bottle", label: "Flaska", hint: "Flaskan tar förpackningens plats i bilden" },
+  { id: "shot", label: "Shotglas", hint: "Ett litet shotglas med outspätt kollagen" },
+  { id: "glass", label: "Glas", hint: "Ett vanligt glas med kollagen utblandat i vatten" },
+];
 import { ASSET_CATEGORIES, type Product, type Asset, type AssetCategory } from "@/types";
 import { useProducts } from "@/hooks/useProducts";
 
@@ -50,6 +57,8 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [product, setProduct] = useState<Product | null>(null);
   const [notes, setNotes] = useState("");
   const [mode, setMode] = useState<"standard" | "ugc" | "replica">("standard");
+  // Which forms of our product appear in the image. None picked = bottle.
+  const [forms, setForms] = useState<SwipeForm[]>(["bottle"]);
   // Image model for both the first generation and retries. GPT Image 2 won
   // the 2026-09-30 benchmark: Pro-level labels and size at a third of the cost.
   const [imageModel, setImageModel] = useState<ImageModelId>("gpt-image-2-image-to-image");
@@ -190,6 +199,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           ...(product && { product }),
           notes: notes.trim() || undefined,
           mode,
+          forms,
           model: imageModel,
         }),
         signal: controller.signal,
@@ -248,7 +258,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setError(msg);
       setPhase("upload");
     }
-  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel]);
+  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -558,6 +568,38 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                 </button>
               </div>
             </div>
+            {product && mode !== "replica" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Produkten visas som
+                </label>
+                <div className="flex gap-2">
+                  {SWIPE_FORM_OPTIONS.map((f) => {
+                    const on = forms.includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() =>
+                          setForms((cur) => {
+                            const next = on ? cur.filter((x) => x !== f.id) : [...cur, f.id];
+                            return next.length > 0 ? next : ["bottle"];
+                          })
+                        }
+                        title={f.hint}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                          on
+                            ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                            : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        )}
+                      >
+                        {f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Bildmodell

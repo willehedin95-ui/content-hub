@@ -37,7 +37,35 @@ export function getProductAppearance(product: ProductLike): string {
  */
 export function getSwipeProductNote(product: ProductLike): string {
   if (product.slug === "hydro13") {
-    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as this product really looks: a clear golden amber liquid, like apple juice. Never milky, white, cloudy, fizzy or colourless. If the scene has no drink, do NOT add a glass or a drink.";
+    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as this product really looks: undiluted (a shot) it is a clear golden amber liquid, like apple juice; mixed with water in a regular glass it is a pale, clear light-golden liquid. Never milky, white, cloudy, fizzy or colourless. If the scene has no drink, do NOT add a glass or a drink.";
   }
   return "";
+}
+
+export type SwipeForm = "bottle" | "shot" | "glass";
+
+/**
+ * How each serving form of the product is described to the image model in
+ * Swipe Image. The user picks the forms (bottle, shot glass, regular glass);
+ * swapCompetitorProduct places them in the competitor's scene.
+ */
+export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: boolean): Record<SwipeForm, (count?: number) => string> {
+  const bottle = (count = 1) => {
+    const one = hasProductRef
+      ? `the ${product.name} product, identical to the product reference image including its label and printed text`
+      : `${product.name} — ${product.description || "premium wellness product"}`;
+    return count > 1 ? `${count} identical units of ${one}` : one;
+  };
+  if (product.slug === "hydro13") {
+    return {
+      bottle,
+      shot: () => "a tiny 30 ml clear shot glass (espresso-cup size, about one-fifth the height of the product bottle) filled with clear golden amber liquid like apple juice - an undiluted shot of the collagen",
+      glass: () => "a regular clear drinking glass of water with the collagen mixed in: a pale, clear light-golden liquid",
+    };
+  }
+  return {
+    bottle,
+    shot: () => `a small clear shot glass with a serving of ${product.name}`,
+    glass: () => `a regular clear drinking glass with ${product.name} mixed into water`,
+  };
 }
