@@ -11,6 +11,8 @@ export const KIE_MODEL = "nano-banana-2";
 //   gpt-image-2-i2i       -> input_urls,   resolution (1K for 4:5), no output_format
 //   gpt-image-2-5-*-i2i   -> input_urls,   resolution, no output_format, NO 4:5/5:4 (2026-09-30)
 //   gpt-image/1.5-i2i     -> input_urls,   no resolution, quality required, only 1:1/2:3/3:2
+//   seedream/5-*-i2i      -> image_urls,   no resolution (pro/lite: quality, flash: size), no 4:5
+//   grok-imagine-image-2-0/image-edit -> image_urls (max 5), only 1:1/2:3/3:2/16:9/9:16
 // `allowedRatios` lists what a model accepts; kie.ts maps any other ratio to the
 // nearest one instead of letting createTask fail. `extraInput` is merged as-is.
 export const IMAGE_MODELS = [
@@ -20,6 +22,10 @@ export const IMAGE_MODELS = [
   { id: "nano-banana-pro", label: "Nano Banana Pro", description: "Gemini 3 Pro — bäst kvalitet + text", imageField: "image_input", includeResolution: true, resolutionOverride: null, outputFormat: true },
   { id: "gpt-image-2-5-flare-image-to-image", label: "GPT Image 2.5 Flare", description: "OpenAI 2.5 — Flare-varianten", imageField: "input_urls", includeResolution: true, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"] },
   { id: "gpt-image-2-5-sunburst-image-to-image", label: "GPT Image 2.5 Sunburst", description: "OpenAI 2.5 — Sunburst-varianten", imageField: "input_urls", includeResolution: true, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"] },
+  { id: "seedream/5-pro-image-to-image", label: "Seedream 5.0 Pro", description: "ByteDance — högsta kvalitet (2K)", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: true, allowedRatios: ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"], extraInput: { quality: "high" } },
+  { id: "seedream/5-flash-image-to-image", label: "Seedream 5.0 Flash", description: "ByteDance — snabb (2K)", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: true, allowedRatios: ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"], extraInput: { size: "2K" } },
+  { id: "seedream/5-lite-image-to-image", label: "Seedream 5.0 Lite", description: "ByteDance — billigast (2K), max 3000 tecken prompt", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: true, allowedRatios: ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"], extraInput: { quality: "basic" } },
+  { id: "grok-imagine-image-2-0/image-edit", label: "Grok Imagine 2.0", description: "xAI — bild till bild, max 5 referenser", imageField: "image_urls", includeResolution: false, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "2:3", "3:2", "16:9", "9:16"] },
   { id: "gpt-image/1.5-image-to-image", label: "GPT Image 1.5", description: "OpenAI 1.5 — bara 1:1, 2:3, 3:2", imageField: "input_urls", includeResolution: false, resolutionOverride: null, outputFormat: false, allowedRatios: ["1:1", "2:3", "3:2"], extraInput: { quality: "high" } },
 ] as const;
 export type ImageModelId = (typeof IMAGE_MODELS)[number]["id"];
