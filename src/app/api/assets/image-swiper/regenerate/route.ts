@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       ? [competitor_image_url, ...productHeroUrls]
       : productHeroUrls;
 
-    const taskId = await createImageTask(prompt, referenceImages, ratio, "2K", imageModel, "jpg");
+    const taskId = await createImageTask(prompt, referenceImages, ratio, "1K", imageModel, "jpg");
 
     // Log the Kie cost IMMEDIATELY after task creation - the image is paid
     // for once the task exists, so a poll timeout must not hide the spend.

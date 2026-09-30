@@ -323,7 +323,8 @@ export async function POST(req: NextRequest) {
         nanaBananaPrompt,
         referenceImages,
         detectedRatio,
-        "2K",
+        // 1K: Instagram shows at most 1080 px wide, 2K only costs more.
+        "1K",
         imageModel,
         // JPEG: a 2K PNG from Kie is ~6.6 MB and draws row by row for seconds.
         "jpg"
