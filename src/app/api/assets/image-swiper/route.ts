@@ -168,13 +168,18 @@ export async function POST(req: NextRequest) {
         ],
       });
 
-      const rawContent =
-        response.content[0]?.type === "text"
-          ? response.content[0].text.trim()
-          : "";
+      // Take the first TEXT block wherever it is - Sonnet 5.5 can put another
+      // block type first, and reading only content[0] then failed as "No
+      // response from AI" (2026-10-01).
+      const textBlock = response.content.find((b) => b.type === "text");
+      const rawContent = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
 
       if (!rawContent) {
-        await emit({ step: "error", message: "No response from AI" });
+        const why = response.stop_reason === "refusal"
+          ? "Claude avböjde att beskriva bilden (refusal). Prova utan personval eller med en annan bild."
+          : `Claude svarade utan text (stop_reason: ${response.stop_reason}, block: ${response.content.map((b) => b.type).join(", ") || "inga"}).`;
+        console.error("[image-swiper] empty extraction:", response.stop_reason, response.content.map((b) => b.type));
+        await emit({ step: "error", message: why });
         await writer.close();
         return;
       }
