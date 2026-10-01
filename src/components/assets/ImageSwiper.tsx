@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/constants";
 import type { SwipeForm } from "@/lib/product-appearance";
+import { shrinkForUpload } from "@/lib/shrink-for-upload";
 import { GENDER_OPTIONS, AGE_OPTIONS, ETHNICITY_OPTIONS, type PersonOverride } from "@/lib/person-options";
 
 // "" = keep what the competitor's image shows.
@@ -195,9 +196,12 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
         setStatusMessage("Uploading competitor image...");
 
         const formData = new FormData();
-        formData.append("file", competitorImageFile);
+        formData.append("file", await shrinkForUpload(competitorImageFile));
         const uploadRes = await fetch("/api/upload-temp", { method: "POST", body: formData, signal: controller.signal });
-        if (!uploadRes.ok) throw new Error("Failed to upload image");
+        if (!uploadRes.ok) {
+          const detail = await uploadRes.json().then((j) => j.error).catch(() => null);
+          throw new Error(`Failed to upload image (${uploadRes.status}${detail ? `: ${detail}` : uploadRes.status === 413 ? ": bilden är för stor" : ""})`);
+        }
         const { url } = await uploadRes.json();
         imageUrl = url;
       }
