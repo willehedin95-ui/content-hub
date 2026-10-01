@@ -334,6 +334,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           aspect_ratio: timeoutRetry.ratio,
           model: fallback,
           reference_ids: refIds,
+          forms,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -349,7 +350,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setGenInfo(null);
     }
-  }, [timeoutRetry, product, refIds]);
+  }, [timeoutRetry, product, refIds, forms]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -462,6 +463,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           aspect_ratio: retryRatio,
           model: imageModel,
           reference_ids: refIds,
+          forms,
           // Only Replica uses the original photo as a visual reference.
           ...(mode === "replica" && resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
         }),
@@ -480,7 +482,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl, imageModel, refIds]);
+  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl, imageModel, refIds, forms]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -717,7 +719,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             </div>
           </div>
 
-          {product && refImages.length > 1 && (
+          {product && refImages.length > 1 && forms.includes("bottle") && (
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Produktreferens{" "}

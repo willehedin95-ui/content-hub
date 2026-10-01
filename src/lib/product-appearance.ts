@@ -37,7 +37,7 @@ export function getProductAppearance(product: ProductLike): string {
  */
 export function getSwipeProductNote(product: ProductLike): string {
   if (product.slug === "hydro13") {
-    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as this product really looks: undiluted (a shot) it is a clear golden amber liquid, like apple juice; mixed with water in a regular glass it is a pale, clear light-golden liquid. Never milky, white, cloudy, fizzy or colourless. If the scene has no drink, do NOT add a glass or a drink.";
+    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as a clear DARK GOLDEN liquid, like dark honey or apple juice. Never milky, white, pink, cloudy, fizzy or colourless. If the scene has no drink, do NOT add a glass or a drink.";
   }
   return "";
 }
@@ -49,6 +49,13 @@ export type SwipeForm = "bottle" | "shot" | "glass";
  * Swipe Image. The user picks the forms (bottle, shot glass, regular glass);
  * swapCompetitorProduct places them in the competitor's scene.
  */
+/** What fills a glass the competitor already shows, when "Glas" is picked. */
+export function getSwipeGlassContents(product: ProductLike): string {
+  return product.slug === "hydro13"
+    ? "a clear dark golden liquid, like dark honey or apple juice"
+    : `a drink made with ${product.name}`;
+}
+
 export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: boolean): Record<SwipeForm, (count?: number) => string> {
   const bottle = (count = 1) => {
     const one = hasProductRef
@@ -59,8 +66,8 @@ export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: bo
   if (product.slug === "hydro13") {
     return {
       bottle,
-      shot: () => "a tiny 30 ml clear shot glass (espresso-cup size, about one-fifth the height of the product bottle) filled with clear golden amber liquid like apple juice - an undiluted shot of the collagen",
-      glass: () => "a regular clear drinking glass of water with the collagen mixed in: a pale, clear light-golden liquid",
+      shot: () => "a tiny 30 ml clear shot glass (espresso-cup size, about one-fifth the height of the product bottle) filled with a clear dark golden liquid like dark honey - an undiluted shot of the collagen",
+      glass: () => "a clear drinking glass filled with a clear dark golden liquid, like dark honey or apple juice",
     };
   }
   return {

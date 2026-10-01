@@ -5,19 +5,20 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import { kieImageCost } from "@/lib/pricing";
 import { IMAGE_MODEL_IDS } from "@/lib/constants";
-import { resolveSwipeReferences } from "@/lib/swipe-references";
+import { resolveSwipeReferences, modelNeedsImage } from "@/lib/swipe-references";
 
 export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { prompt, product, aspect_ratio, competitor_image_url, model: requestedModel, reference_ids } = body as {
+  const { prompt, product, aspect_ratio, competitor_image_url, model: requestedModel, reference_ids, forms } = body as {
     prompt?: string;
     product?: string;
     aspect_ratio?: string;
     competitor_image_url?: string;
     model?: string;
     reference_ids?: string[];
+    forms?: string[];
   };
   const imageModel = requestedModel && IMAGE_MODEL_IDS.includes(requestedModel) ? requestedModel : "gpt-image-2-image-to-image";
 
@@ -42,7 +43,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (productData) {
-      productHeroUrls = await resolveSwipeReferences(db, productData.id, reference_ids);
+      // Same rule as the first generation: no bottle picked = no reference.
+      const showsBottle = !Array.isArray(forms) || forms.length === 0 || forms.includes("bottle");
+      productHeroUrls = showsBottle || competitor_image_url || modelNeedsImage(imageModel)
+        ? await resolveSwipeReferences(db, productData.id, reference_ids)
+        : [];
     }
   }
 

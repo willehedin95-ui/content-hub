@@ -20,3 +20,8 @@ export async function resolveSwipeReferences(db: SupabaseClient, productId: stri
   const { data } = await db.from("product_images").select("url").eq("product_id", productId).eq("category", "hero").order("sort_order", { ascending: true });
   return (data ?? []).map((r: { url: string }) => r.url);
 }
+
+/** Kie models that reject a task with no input image (measured 2026-10-01: only Grok; the GPT and Nano Banana image-to-image models generate fine without one). */
+export function modelNeedsImage(model: string): boolean {
+  return model.startsWith("grok-");
+}

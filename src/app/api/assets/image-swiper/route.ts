@@ -9,7 +9,7 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import type { SwipeForm } from "@/lib/product-appearance";
 import { describePersonOverride, type PersonOverride } from "@/lib/person-options";
-import { resolveSwipeReferences } from "@/lib/swipe-references";
+import { resolveSwipeReferences, modelNeedsImage } from "@/lib/swipe-references";
 import { buildImageSwiperSystemPrompt, buildImageSwiperUserPrompt, buildSwipePrompt } from "@/lib/swipe-image-prompt";
 import type { ProductFull } from "@/types";
 
@@ -107,8 +107,14 @@ export async function POST(req: NextRequest) {
     }
     product = productData as ProductFull;
 
-    // Product reference photos: the user's pick, or the hero images.
-    productHeroUrls = await resolveSwipeReferences(db, product.id, referenceIds);
+    // Product reference photos: the user's pick, or the hero images. With only
+    // a glass/shot picked there is no bottle to copy, so no reference is sent
+    // (the model then cannot drag the packshot's bottle into the scene) -
+    // except for models that refuse a request without an image (Grok).
+    const showsBottle = forms.length === 0 || forms.includes("bottle");
+    productHeroUrls = showsBottle || mode === "replica" || modelNeedsImage(imageModel)
+      ? await resolveSwipeReferences(db, product.id, referenceIds)
+      : [];
   }
 
   // Detect actual source image dimensions (runs in parallel with Claude call)

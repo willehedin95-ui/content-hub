@@ -1,7 +1,7 @@
 // Swipe Image: extraction prompt and product swap. Shared by the route and
 // scripts/_swipe-model-retest.ts so a test runs the exact production chain.
 import type { ProductFull } from "@/types";
-import { getSwipeFormDescriptions, getSwipeProductNote, type SwipeForm } from "@/lib/product-appearance";
+import { getSwipeFormDescriptions, getSwipeGlassContents, getSwipeProductNote, type SwipeForm } from "@/lib/product-appearance";
 
 /**
  * Swap the competitor's product in Claude's extraction for the forms of our
@@ -53,7 +53,19 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
       else become(p, desc[first!]());
     }
   }
-  if (serving && queue.length > 0) become(serving, desc[queue.shift()!]());
+  if (serving && queue.length > 0) {
+    const f = queue.shift()!;
+    if (f === "glass") {
+      // Keep the competitor's own vessel (a wine glass stays a wine glass with
+      // its stem) - only the contents change. Rewriting it as "a drinking
+      // glass" threw the original glass away (2026-10-01).
+      serving.type = "product";
+      serving.description = `${serving.description}. KEEP THIS EXACT VESSEL - same shape, stem, size, position and grip. Only its contents change: it now holds ${getSwipeGlassContents(product)} instead of the original drink.`;
+      delete serving.count;
+    } else {
+      become(serving, desc[f]());
+    }
+  }
   for (const f of queue) {
     subjects.push({ type: "product", description: desc[f](), position: "next to the other product, on the same surface or held naturally", action: "standing still" });
   }
@@ -92,8 +104,8 @@ export function buildSwipePrompt(opts: {
   // The label rule only applies when the bottle is in the picture. With
   // only a shot/glass picked, the reference photo is there for colours
   // and the model must not paint the bottle into the scene.
-  const labelNote = hasProductRef && !showsBottle
-    ? ` The product reference image shows the product bottle for colour reference only. Do NOT show the bottle in this image - the product appears only as the drink described in the subjects.`
+  const labelNote = !showsBottle
+    ? ` Do NOT show any bottle, can, jar or package in this image - the product appears only as the drink described in the subjects.`
     : hasProductRef
     ? ` CRITICAL: The product must look exactly like the product reference image, including its label, logo, colours and printed text. Copy the label from the reference; do not invent new text and do not leave the product blank.`
     : "";
@@ -136,7 +148,7 @@ export function buildSwipePrompt(opts: {
       ? ` Texture must be: ${extraction.style.texture}.`
       : "";
     // Only strip branding when there is no product photo to copy it from.
-    const noLogoNote = hasProductRef
+    const noLogoNote = hasProductRef || !showsBottle
       ? labelNote
       : " CRITICAL: The product must NOT have any tags, labels, logos, branded text, hang tags, or any form of branding visible on it. The product should appear completely clean and unbranded.";
 
