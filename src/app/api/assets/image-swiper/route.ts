@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
-import { CLAUDE_MODEL, IMAGE_MODEL_IDS } from "@/lib/constants";
+import { IMAGE_MODEL_IDS } from "@/lib/constants";
 import { calcClaudeCost, kieImageCost } from "@/lib/pricing";
 import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
@@ -18,6 +18,12 @@ export const maxDuration = 800;
 // Default model. Benchmark 2026-09-30 (10 models, 1K): GPT Image 2 matched
 // nano-banana-pro on label accuracy and bottle size at a third of the price.
 const SWIPER_IMAGE_MODEL = "gpt-image-2-image-to-image";
+
+// Claude model for the extraction. Sonnet 4.5 (the hub-wide CLAUDE_MODEL)
+// read the man in a couple photo as "East Asian" 3 of 3 times, so the image
+// model drew the wrong person; Sonnet 5.5 and Opus 5.5 read him right 3/3
+// (2026-10-01). Sonnet 5.5 rejects `temperature`, so none is sent.
+const SWIPER_CLAUDE_MODEL = "claude-sonnet-5-5";
 
 const VALID_RATIOS = ["1:1", "4:5", "5:4", "3:2", "2:3", "16:9", "9:16"] as const;
 
@@ -143,9 +149,8 @@ export async function POST(req: NextRequest) {
       const client = new Anthropic({ apiKey });
 
       const response = await client.messages.create({
-        model: CLAUDE_MODEL,
+        model: SWIPER_CLAUDE_MODEL,
         max_tokens: 4000,
-        temperature: 0.7,
         system: [
           { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
         ],
@@ -220,7 +225,7 @@ export async function POST(req: NextRequest) {
 
       await db.from("usage_logs").insert({
         type: "image_swiper",
-        model: CLAUDE_MODEL,
+        model: SWIPER_CLAUDE_MODEL,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         cost_usd: claudeCost,

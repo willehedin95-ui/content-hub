@@ -25,7 +25,24 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
   // competitor's dropper bottle in the picture (2026-10-01, UpCircle).
   const pkgs = subjects.filter((s) => s.is_competitor_product);
   const pkg = pkgs[0];
-  const serving = subjects.find((s) => s.is_competitor_serving && !pkgs.includes(s));
+  // Every glass/cup with the competitor's drink gets the picked form - a
+  // couple each holding a glass must both get one (2026-10-01: only the
+  // woman's glass became a shot, the man kept his).
+  const servings = subjects.filter((s) => s.is_competitor_serving && !pkgs.includes(s));
+  // A person must never be replaced. Claude sometimes puts the serving flag
+  // on the people holding the glasses (2026-10-01: both people were rewritten
+  // as "a tiny shot glass" and the model invented a new couple). For a person
+  // only the glass in their hand changes.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const swapServing = (sv: Record<string, any>, text: string) => {
+    if (sv.type === "person") {
+      sv.description = `${sv.description}. The glass in their hand is now ${text}.`;
+      if (sv.action) sv.action = `${sv.action} (the glass is now ${text})`;
+    } else {
+      become(sv, text);
+    }
+  };
+  const serving = servings[0];
   for (const s of subjects) {
     delete s.is_competitor_product;
     delete s.is_competitor_serving;
@@ -55,15 +72,19 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
   }
   if (serving && queue.length > 0) {
     const f = queue.shift()!;
-    if (f === "glass") {
-      // Keep the competitor's own vessel (a wine glass stays a wine glass with
-      // its stem) - only the contents change. Rewriting it as "a drinking
-      // glass" threw the original glass away (2026-10-01).
-      serving.type = "product";
-      serving.description = `${serving.description}. KEEP THIS EXACT VESSEL - same shape, stem, size, position and grip. Only its contents change: it now holds ${getSwipeGlassContents(product)} instead of the original drink.`;
-      delete serving.count;
-    } else {
-      become(serving, desc[f]());
+    for (const sv of servings) {
+      if (f === "glass" && sv.type === "person") {
+        swapServing(sv, `the same glass, holding ${getSwipeGlassContents(product)} instead of the original drink`);
+      } else if (f === "glass") {
+        // Keep the competitor's own vessel (a wine glass stays a wine glass with
+        // its stem) - only the contents change. Rewriting it as "a drinking
+        // glass" threw the original glass away (2026-10-01).
+        sv.type = "product";
+        sv.description = `${sv.description}. KEEP THIS EXACT VESSEL - same shape, stem, size, position and grip. Only its contents change: it now holds ${getSwipeGlassContents(product)} instead of the original drink.`;
+        delete sv.count;
+      } else {
+        swapServing(sv, desc[f]());
+      }
     }
   }
   for (const f of queue) {
@@ -243,6 +264,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
     "category": "lifestyle | studio | clinical | native-ad | UGC | editorial | graphic | before-after",
     "feel": "Describe the overall aesthetic in one sentence",
     "texture": "clean | grainy | soft-focus | sharp | matte | glossy",
+    "exposure_and_grading": "Exposure and colour grading exactly as seen, flaws included - e.g. 'overexposed, blown-out window highlights, lifted washed-out shadows, low contrast, warm faded film tone' or 'correctly exposed, punchy contrast, neutral colours'",
     "photo_quality": "Describe the actual quality — e.g. 'casual phone photo, slightly soft focus, natural imperfections' or 'professional studio shot, tack-sharp, controlled lighting'"
   }
 }
@@ -253,7 +275,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 - Use specific hex color codes wherever possible (background colors, product colors, clothing colors)
 - **Mark the competitor's product in two slots** (each at most once, either may be absent):
   - \`"is_competitor_product": true\` on the PACKAGE of the advertised product (bottle, can, jar, tub, pouch, box). If several identical packages appear together (e.g. three cans in one hand), describe them as ONE subject and set \`"count"\` to how many. If the same product appears in SEPARATE places (e.g. two bottles in different corners), mark EVERY one of them - no unit of the competitor's product may be left unmarked.
-  - \`"is_competitor_serving": true\` on the product in PREPARED form: a glass or cup with the drink, a bowl or scoop with the powder, a shot glass.
+  - \`"is_competitor_serving": true\` on the product in PREPARED form: a glass or cup with the drink, a bowl or scoop with the powder, a shot glass. If several people each hold a glass of it, mark EVERY one of those glasses. Each glass is its OWN subject (type "product") with its own position - put the flag on the glass, NEVER on the person holding it.
   - If no package is visible, do NOT invent one - mark only the serving. If the image shows neither, mark nothing.
 - **Read hands literally.** Before describing an interaction, check whose arm each hand belongs to. A person holding their own glass to their mouth is drinking - do not describe it as someone else feeding them unless that is unmistakable.
 - **camera_perspective is the MOST important field** — get this wrong and the entire generation will look nothing like the original
