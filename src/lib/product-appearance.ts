@@ -37,7 +37,7 @@ export function getProductAppearance(product: ProductLike): string {
  */
 export function getSwipeProductNote(product: ProductLike): string {
   if (product.slug === "hydro13") {
-    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as a clear DARK GOLDEN liquid, like dark honey or apple juice. Never milky, white, pink, cloudy, fizzy or colourless. If the scene has no drink, do NOT add a glass or a drink.";
+    return " PRODUCT LIQUID: Only if the scene includes a drink being drunk, poured or held in a glass, render that liquid as this product really looks. Undiluted - in a small shot glass, or pouring straight from the bottle - it is a clear DARK GOLDEN liquid, like dark honey. Mixed into a drink in any larger glass it is diluted: a PALE, light straw-yellow, softly translucent liquid. Never pink, white, brown or fizzy. If the scene has no drink, do NOT add a glass or a drink.";
   }
   return "";
 }
@@ -52,7 +52,7 @@ export type SwipeForm = "bottle" | "shot" | "glass";
 /** What fills a glass the competitor already shows, when "Glas" is picked. */
 export function getSwipeGlassContents(product: ProductLike): string {
   return product.slug === "hydro13"
-    ? "a clear dark golden liquid, like dark honey or apple juice"
+    ? "a diluted drink: a pale, light straw-yellow, softly translucent liquid"
     : `a drink made with ${product.name}`;
 }
 
@@ -67,7 +67,7 @@ export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: bo
     return {
       bottle,
       shot: () => "a tiny 30 ml clear shot glass (espresso-cup size, about one-fifth the height of the product bottle) filled with a clear dark golden liquid like dark honey - an undiluted shot of the collagen",
-      glass: () => "a clear drinking glass filled with a clear dark golden liquid, like dark honey or apple juice",
+      glass: () => "a clear drinking glass with the collagen mixed into a drink: a pale, light straw-yellow, softly translucent liquid",
     };
   }
   return {
