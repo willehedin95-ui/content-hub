@@ -20,8 +20,12 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
   const json = structuredClone(extraction);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const subjects: Record<string, any>[] = Array.isArray(json.subjects) ? json.subjects : [];
-  const pkg = subjects.find((s) => s.is_competitor_product);
-  const serving = subjects.find((s) => s.is_competitor_serving && s !== pkg);
+  // Every unit of the competitor's package is swapped. Claude sometimes lists
+  // a second bottle as its own subject; leaving it unmarked kept the
+  // competitor's dropper bottle in the picture (2026-10-01, UpCircle).
+  const pkgs = subjects.filter((s) => s.is_competitor_product);
+  const pkg = pkgs[0];
+  const serving = subjects.find((s) => s.is_competitor_serving && !pkgs.includes(s));
   for (const s of subjects) {
     delete s.is_competitor_product;
     delete s.is_competitor_serving;
@@ -43,8 +47,11 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
   };
 
   if (pkg) {
-    if (wantBottle) become(pkg, desc.bottle(Number(pkg.count) || 1));
-    else become(pkg, desc[queue.shift()!]());
+    const first = wantBottle ? null : queue.shift()!;
+    for (const p of pkgs) {
+      if (wantBottle) become(p, desc.bottle(Number(p.count) || 1));
+      else become(p, desc[first!]());
+    }
   }
   if (serving && queue.length > 0) become(serving, desc[queue.shift()!]());
   for (const f of queue) {
@@ -233,7 +240,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 
 - Use specific hex color codes wherever possible (background colors, product colors, clothing colors)
 - **Mark the competitor's product in two slots** (each at most once, either may be absent):
-  - \`"is_competitor_product": true\` on the PACKAGE of the advertised product (bottle, can, jar, tub, pouch, box). If several identical packages appear together (e.g. three cans in one hand), describe them as ONE subject and set \`"count"\` to how many.
+  - \`"is_competitor_product": true\` on the PACKAGE of the advertised product (bottle, can, jar, tub, pouch, box). If several identical packages appear together (e.g. three cans in one hand), describe them as ONE subject and set \`"count"\` to how many. If the same product appears in SEPARATE places (e.g. two bottles in different corners), mark EVERY one of them - no unit of the competitor's product may be left unmarked.
   - \`"is_competitor_serving": true\` on the product in PREPARED form: a glass or cup with the drink, a bowl or scoop with the powder, a shot glass.
   - If no package is visible, do NOT invent one - mark only the serving. If the image shows neither, mark nothing.
 - **Read hands literally.** Before describing an interaction, check whose arm each hand belongs to. A person holding their own glass to their mouth is drinking - do not describe it as someone else feeding them unless that is unmistakable.

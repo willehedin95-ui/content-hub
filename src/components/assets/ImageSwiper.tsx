@@ -69,6 +69,24 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [mode, setMode] = useState<"standard" | "ugc" | "replica">("standard");
   // Which forms of our product appear in the image. None picked = bottle.
   const [forms, setForms] = useState<SwipeForm[]>(["bottle"]);
+  // Product reference photos (from the product bank). Default = hero images.
+  const [refImages, setRefImages] = useState<{ id: string; url: string; category: string; description: string | null }[]>([]);
+  const [refIds, setRefIds] = useState<string[]>([]);
+  useEffect(() => {
+    setRefImages([]);
+    setRefIds([]);
+    if (!product) return;
+    let cancelled = false;
+    fetch(`/api/assets/image-swiper/references?product=${encodeURIComponent(product)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        setRefImages(rows);
+        setRefIds(rows.filter((r: { category: string }) => r.category === "hero").map((r: { id: string }) => r.id));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [product]);
   // Person override. Empty = keep the person from the competitor's image.
   const [person, setPerson] = useState<PersonOverride>({ gender: "", age: "", ethnicity: "", hair_color: "" });
   // Image model for both the first generation and retries. GPT Image 2 won
@@ -227,6 +245,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           mode,
           forms,
           person,
+          reference_ids: refIds,
           model: imageModel,
         }),
         signal: controller.signal,
@@ -293,7 +312,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setGenInfo(null);
     }
-  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms, person]);
+  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms, person, refIds]);
 
   // Kie timed out: generate the image again from the finished prompt with the
   // fastest model, without redoing Claude's analysis.
@@ -314,6 +333,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           ...(product && { product: product }),
           aspect_ratio: timeoutRetry.ratio,
           model: fallback,
+          reference_ids: refIds,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -329,7 +349,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setGenInfo(null);
     }
-  }, [timeoutRetry, product]);
+  }, [timeoutRetry, product, refIds]);
 
   // Save to assets modal
   const [saving, setSaving] = useState(false);
@@ -441,6 +461,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           ...(product && { product }),
           aspect_ratio: retryRatio,
           model: imageModel,
+          reference_ids: refIds,
           // Only Replica uses the original photo as a visual reference.
           ...(mode === "replica" && resolvedCompetitorUrl && { competitor_image_url: resolvedCompetitorUrl }),
         }),
@@ -459,7 +480,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl, imageModel]);
+  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl, imageModel, refIds]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -695,6 +716,43 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               </select>
             </div>
           </div>
+
+          {product && refImages.length > 1 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Produktreferens{" "}
+                <span className="text-gray-400 font-normal">
+                  (modellen kopierar flaskan som den ser ut här - välj en hällbild när flaskan ska luta eller hälla)
+                </span>
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {refImages.map((img) => {
+                  const on = refIds.includes(img.id);
+                  return (
+                    <button
+                      key={img.id}
+                      onClick={() =>
+                        setRefIds((cur) => {
+                          const next = on ? cur.filter((x) => x !== img.id) : [...cur, img.id];
+                          // Never empty: falls back to the hero images.
+                          return next.length > 0 ? next : refImages.filter((r) => r.category === "hero").map((r) => r.id);
+                        })
+                      }
+                      title={img.description || img.category}
+                      className={cn(
+                        "relative w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors",
+                        on ? "border-indigo-500" : "border-gray-200 opacity-60 hover:opacity-100"
+                      )}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img.url} alt={img.description || img.category} className="w-full h-full object-cover" />
+                      {on && <span className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-indigo-500 border border-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <details className="bg-gray-50 rounded-lg border border-gray-200 p-3">
             <summary className="text-xs font-medium text-gray-700 cursor-pointer select-none">

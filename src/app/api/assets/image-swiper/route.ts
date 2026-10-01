@@ -9,6 +9,7 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import type { SwipeForm } from "@/lib/product-appearance";
 import { describePersonOverride, type PersonOverride } from "@/lib/person-options";
+import { resolveSwipeReferences } from "@/lib/swipe-references";
 import { buildImageSwiperSystemPrompt, buildImageSwiperUserPrompt, buildSwipePrompt } from "@/lib/swipe-image-prompt";
 import type { ProductFull } from "@/types";
 
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
     model: requestedModel,
     forms: requestedForms,
     person,
+    reference_ids: referenceIds,
   } = body as {
     image_url?: string;
     product?: string;
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest) {
     model?: string;
     forms?: string[];
     person?: PersonOverride;
+    reference_ids?: string[];
   };
   const personDescription = describePersonOverride(person);
   const forms = (Array.isArray(requestedForms) ? requestedForms : []).filter(
@@ -104,15 +107,8 @@ export async function POST(req: NextRequest) {
     }
     product = productData as ProductFull;
 
-    // Fetch product hero images for Nano Banana reference
-    const { data: productImages } = await db
-      .from("product_images")
-      .select("url")
-      .eq("product_id", product.id)
-      .eq("category", "hero")
-      .order("sort_order", { ascending: true });
-
-    productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
+    // Product reference photos: the user's pick, or the hero images.
+    productHeroUrls = await resolveSwipeReferences(db, product.id, referenceIds);
   }
 
   // Detect actual source image dimensions (runs in parallel with Claude call)

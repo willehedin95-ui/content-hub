@@ -5,17 +5,19 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import { kieImageCost } from "@/lib/pricing";
 import { IMAGE_MODEL_IDS } from "@/lib/constants";
+import { resolveSwipeReferences } from "@/lib/swipe-references";
 
 export const maxDuration = 800;
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { prompt, product, aspect_ratio, competitor_image_url, model: requestedModel } = body as {
+  const { prompt, product, aspect_ratio, competitor_image_url, model: requestedModel, reference_ids } = body as {
     prompt?: string;
     product?: string;
     aspect_ratio?: string;
     competitor_image_url?: string;
     model?: string;
+    reference_ids?: string[];
   };
   const imageModel = requestedModel && IMAGE_MODEL_IDS.includes(requestedModel) ? requestedModel : "gpt-image-2-image-to-image";
 
@@ -40,14 +42,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (productData) {
-      const { data: productImages } = await db
-        .from("product_images")
-        .select("url")
-        .eq("product_id", productData.id)
-        .eq("category", "hero")
-        .order("sort_order", { ascending: true });
-
-      productHeroUrls = (productImages ?? []).map((img: { url: string }) => img.url);
+      productHeroUrls = await resolveSwipeReferences(db, productData.id, reference_ids);
     }
   }
 
