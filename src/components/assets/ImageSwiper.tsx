@@ -352,6 +352,33 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     }
   }, [timeoutRetry, product, refIds, forms]);
 
+  // Download straight to disk. A plain <a download> to the Supabase URL is
+  // cross-origin, so the browser ignores "download" and opens the image
+  // instead - and going back from there wiped the page (2026-10-01).
+  const [downloading, setDownloading] = useState(false);
+  const handleDownload = useCallback(async () => {
+    if (!generatedImageUrl) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(generatedImageUrl);
+      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+      const blob = await res.blob();
+      const ext = blob.type === "image/png" ? "png" : "jpg";
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `swipe-${product || "style"}-${Date.now()}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 10_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDownloading(false);
+    }
+  }, [generatedImageUrl, product]);
+
   // Save to assets modal
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -954,14 +981,14 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Generated {product ? `(${product === "happysleep" ? "HappySleep" : "Collagen Formula"})` : "(Style)"}
                   </p>
-                  <a
-                    href={generatedImageUrl}
-                    download={`image-swiper-${product || "style"}-${Date.now()}.png`}
-                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700"
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    Download
-                  </a>
+                    {downloading ? "Laddar ner..." : "Download"}
+                  </button>
                 </div>
                 <img
                   src={generatedImageUrl}
