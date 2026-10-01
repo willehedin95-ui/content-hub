@@ -5,7 +5,7 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import { kieImageCost } from "@/lib/pricing";
 import { IMAGE_MODEL_IDS } from "@/lib/constants";
-import { resolveSwipeReferences, modelNeedsImage } from "@/lib/swipe-references";
+import { resolveSwipeReferences, resolveShotGlassReference, modelNeedsImage } from "@/lib/swipe-references";
 
 export const maxDuration = 800;
 
@@ -48,6 +48,10 @@ export async function POST(req: NextRequest) {
       productHeroUrls = showsBottle || competitor_image_url || modelNeedsImage(imageModel)
         ? await resolveSwipeReferences(db, productData.id, reference_ids)
         : [];
+      if (Array.isArray(forms) && forms.includes("shot") && !competitor_image_url) {
+        const shotRef = await resolveShotGlassReference(db, productData.id);
+        if (shotRef) productHeroUrls = showsBottle ? [...productHeroUrls, shotRef] : [shotRef];
+      }
     }
   }
 

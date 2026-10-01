@@ -16,7 +16,7 @@ import { getSwipeFormDescriptions, getSwipeGlassContents, getSwipeProductNote, t
  * the instruction.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function swapCompetitorProduct(extraction: Record<string, any>, product: ProductFull | null, hasProductRef: boolean, forms: SwipeForm[] = []) {
+export function swapCompetitorProduct(extraction: Record<string, any>, product: ProductFull | null, hasProductRef: boolean, forms: SwipeForm[] = [], hasShotRef = false) {
   const json = structuredClone(extraction);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const subjects: Record<string, any>[] = Array.isArray(json.subjects) ? json.subjects : [];
@@ -53,7 +53,7 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
   }
 
   const picked: SwipeForm[] = forms.length > 0 ? forms : ["bottle"];
-  const desc = getSwipeFormDescriptions(product, hasProductRef);
+  const desc = getSwipeFormDescriptions(product, hasProductRef, hasShotRef);
   const wantBottle = picked.includes("bottle");
   const queue = picked.filter((f) => f !== "bottle");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,8 +125,10 @@ export function buildSwipePrompt(opts: {
   forms: SwipeForm[];
   mode: SwipeMode;
   notes?: string;
+  /** A photo of the product's own shot glass is among the references. */
+  hasShotRef?: boolean;
 }): string {
-  const { extraction, product, hasProductRef, forms, mode, notes } = opts;
+  const { extraction, product, hasProductRef, forms, mode, notes, hasShotRef = false } = opts;
   // No choice = bottle, same as before the toggles existed.
   const showsBottle = forms.length === 0 || forms.includes("bottle");
   // Build Nano Banana JSON prompt: swap competitor product with target product
@@ -138,8 +140,11 @@ export function buildSwipePrompt(opts: {
   // The label rule only applies when the bottle is in the picture. With
   // only a shot/glass picked, the reference photo is there for colours
   // and the model must not paint the bottle into the scene.
+  const shotRefNote = hasShotRef
+    ? ` The shot glass must look exactly like the shot glass in the reference image, including the printed Envana logo. Use that reference ONLY for the glass - do not copy the person, face, hand or background from it.`
+    : "";
   const labelNote = !showsBottle
-    ? ` Do NOT show any bottle, can, jar or package in this image - the product appears only as the drink described in the subjects.`
+    ? ` Do NOT show any bottle, can, jar or package in this image - the product appears only as the drink described in the subjects.${shotRefNote}`
     : hasProductRef
     ? ` CRITICAL: The product must look exactly like the product reference image, including its label, logo, colours and printed text. Copy the label from the reference; do not invent new text and do not leave the product blank.`
     : "";
@@ -147,7 +152,7 @@ export function buildSwipePrompt(opts: {
   // product photo only. Sending the original photo too (tried 2026-09-30)
   // made the model copy it near pixel-for-pixel - that is Replica's job.
   const compositionNote = product ? getSwipeProductNote(product) : "";
-  const nanaBananaJson = swapCompetitorProduct(extraction, product, hasProductRef, forms);
+  const nanaBananaJson = swapCompetitorProduct(extraction, product, hasProductRef, forms, hasShotRef);
   nanaBananaJson.task = "generate_image";
 
   const isReplica = mode === "replica";

@@ -21,6 +21,17 @@ export async function resolveSwipeReferences(db: SupabaseClient, productId: stri
   return (data ?? []).map((r: { url: string }) => r.url);
 }
 
+/**
+ * The product's branded shot glass photo, if the product bank has one (an
+ * image whose description starts with "Shotglas"). Sent when "Shotglas" is
+ * picked, so the model copies the real glass and its printed logo instead of
+ * drawing a generic shot glass with invented text.
+ */
+export async function resolveShotGlassReference(db: SupabaseClient, productId: string): Promise<string | null> {
+  const { data } = await db.from("product_images").select("url").eq("product_id", productId).ilike("description", "Shotglas%").order("sort_order", { ascending: true }).limit(1);
+  return data?.[0]?.url ?? null;
+}
+
 /** Kie models that reject a task with no input image (measured 2026-10-01: only Grok; the GPT and Nano Banana image-to-image models generate fine without one). */
 export function modelNeedsImage(model: string): boolean {
   return model.startsWith("grok-");

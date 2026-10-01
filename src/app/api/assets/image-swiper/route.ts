@@ -9,7 +9,7 @@ import { createImageTask, pollTaskResult } from "@/lib/kie";
 import { persistSwipeImage } from "@/lib/swipe-image-store";
 import type { SwipeForm } from "@/lib/product-appearance";
 import { describePersonOverride, type PersonOverride } from "@/lib/person-options";
-import { resolveSwipeReferences, modelNeedsImage } from "@/lib/swipe-references";
+import { resolveSwipeReferences, resolveShotGlassReference, modelNeedsImage } from "@/lib/swipe-references";
 import { buildImageSwiperSystemPrompt, buildImageSwiperUserPrompt, buildSwipePrompt } from "@/lib/swipe-image-prompt";
 import type { ProductFull } from "@/types";
 
@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
 
   let product: ProductFull | null = null;
   let productHeroUrls: string[] = [];
+  let hasShotRef = false;
 
   if (productSlug) {
     // Workspace-scoped lookup (same pattern as video-swiper) - product slugs
@@ -121,6 +122,15 @@ export async function POST(req: NextRequest) {
     productHeroUrls = showsBottle || mode === "replica" || modelNeedsImage(imageModel)
       ? await resolveSwipeReferences(db, product.id, referenceIds)
       : [];
+    // "Shotglas" picked and the product has a photo of its own shot glass:
+    // send it so the glass and its logo are copied, not invented.
+    if (forms.includes("shot") && mode !== "replica") {
+      const shotRef = await resolveShotGlassReference(db, product.id);
+      if (shotRef) {
+        productHeroUrls = showsBottle ? [...productHeroUrls, shotRef] : [shotRef];
+        hasShotRef = true;
+      }
+    }
   }
 
   // Detect actual source image dimensions (runs in parallel with Claude call)
@@ -217,7 +227,7 @@ export async function POST(req: NextRequest) {
 
       const hasProductRef = !!product && productHeroUrls.length > 0;
       const isReplica = mode === "replica";
-      const nanaBananaPrompt = buildSwipePrompt({ extraction, product, hasProductRef, forms, mode, notes });
+      const nanaBananaPrompt = buildSwipePrompt({ extraction, product, hasProductRef, forms, mode, notes, hasShotRef });
 
       // Log Claude usage
       const inputTokens = response.usage.input_tokens;

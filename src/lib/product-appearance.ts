@@ -56,7 +56,7 @@ export function getSwipeGlassContents(product: ProductLike): string {
     : `a drink made with ${product.name}`;
 }
 
-export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: boolean): Record<SwipeForm, (count?: number) => string> {
+export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: boolean, hasShotRef = false): Record<SwipeForm, (count?: number) => string> {
   const bottle = (count = 1) => {
     const one = hasProductRef
       ? `the ${product.name} product, identical to the product reference image including its label and printed text`
@@ -66,7 +66,9 @@ export function getSwipeFormDescriptions(product: ProductLike, hasProductRef: bo
   if (product.slug === "hydro13") {
     return {
       bottle,
-      shot: () => "a tiny 30 ml clear shot glass (espresso-cup size, about one-fifth the height of the product bottle) filled with a clear dark golden liquid like dark honey - an undiluted shot of the collagen",
+      shot: () => hasShotRef
+        ? "the Envana shot glass exactly as in the shot-glass reference image: a straight-sided clear glass with the white vertical Envana wordmark printed on it, filled with a clear dark golden liquid like dark honey - an undiluted shot of the collagen"
+        : "a tiny 30 ml clear shot glass (espresso-cup size, about one-fifth the height of the product bottle) filled with a clear dark golden liquid like dark honey - an undiluted shot of the collagen",
       glass: () => "a clear drinking glass with the collagen mixed into a drink: a pale, light straw-yellow, softly translucent liquid",
     };
   }
