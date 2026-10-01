@@ -86,6 +86,19 @@ export function swapCompetitorProduct(extraction: Record<string, any>, product: 
         swapServing(sv, desc[f]());
       }
     }
+    // A shot replaces the competitor's vessel, but the people still "hold a
+    // large stemmed wine glass" in their own description - and the image
+    // model followed that (2026-10-01: Shotglas picked, wine glass drawn).
+    // Tell each person who holds or drinks from a vessel what it is now.
+    if (f === "shot") {
+      for (const person of subjects) {
+        if (person.type !== "person" || servings.includes(person)) continue;
+        const text = `${person.description ?? ""} ${person.action ?? ""}`;
+        if (!/\b(glass|glasses|cup|mug|goblet|tumbler|drink|drinking|sip|sipping)\b/i.test(text)) continue;
+        const note = `Whatever glass they hold is now ${desc.shot()} - not the original glass.`;
+        person.action = person.action ? `${person.action}. ${note}` : note;
+      }
+    }
   }
   for (const f of queue) {
     subjects.push({ type: "product", description: desc[f](), position: "next to the other product, on the same surface or held naturally", action: "standing still" });
@@ -288,6 +301,7 @@ Analyze the image and extract ALL visual details into this exact JSON structure:
 - **NEVER include logos, brand tags, watermarks, or branded overlays** in the extraction — skip them entirely from the subjects list. The competitor's branding must not appear in the generated image.
 - **NEVER include overlaid text** (headlines, slogans, captions, prices, badges) as subjects — the generated image has no overlay text by default. Only if the user's notes explicitly ask for a text (keep it, change it, add one) include it as they say.
 - **This applies to EVERY field**, not only the subjects list: do not mention text blocks, headlines or typography in composition, focal_point, negative_space, scene or style either. Describe that area as the empty background it would be without the text - otherwise the image model paints new text there.
+- **Outside its own marked subject, call the competitor's drink just "the drink"** (e.g. "holding the drink in her right hand", "the drink catches the sunlight") - never its glass type (wine glass, tumbler), colour or garnish, in ANY other field: the person's description and action, focal_point, colors.mood, scene. The marked serving subject is the only place that describes the vessel and its contents, because that is what gets replaced; anywhere else those words bring the competitor's drink back (2026-10-01: a shot was picked, the wine glass came back).
 - **Outside the marked subjects, call the competitor's product just "the product"** (e.g. "the product held in the raised hand"), never by its colour, shape or packaging type - those words reach the image model and bring the competitor's package back.
 - If the user provides additional notes/instructions, APPLY them to the extraction. For example: "change 60 days to 100 days" → modify the text subject's description to say "100 days". "Remove the badge" → omit that subject entirely. "Make the background blue" → update the background and color palette accordingly.
 
