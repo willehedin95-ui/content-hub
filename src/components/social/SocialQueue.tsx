@@ -24,6 +24,7 @@ interface Post {
   ig_error: string | null;
   fb_post_id: string | null;
   fb_error: string | null;
+  original_urls: string[] | null;
 }
 
 const STATUS: Record<Post["status"], { label: string; cls: string }> = {
@@ -121,6 +122,26 @@ export default function SocialQueue() {
     if (!res.ok) { setError((await res.json().catch(() => ({}))).error || "Kunde inte ändra ordningen"); await load(); }
   }, [load]);
 
+  const crop = useCallback(async (id: string, index: number, box: CropBox) => {
+    setBusy(id); setError(null);
+    const res = await fetch("/api/social/crop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, index, ...box }) });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) setError(json.error || "Kunde inte beskära");
+    else setPosts((cur) => cur.map((p) => (p.id === id ? json.post : p)));
+    setBusy(null);
+  }, []);
+
+  const captionAll = useCallback(async () => {
+    const n = posts.filter((p) => p.status === "draft" && !p.caption.trim()).length;
+    if (!n || !confirm(`Skriva bildtext för ${n} utkast som saknar? Det tar ungefär ${Math.ceil(n * 12 / 60)} min.`)) return;
+    setBusy("captions"); setError(null);
+    const res = await fetch("/api/social/caption-all", { method: "POST" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.errors?.length) setError(json.error || `${json.errors?.length} bildtexter misslyckades: ${json.errors?.[0] ?? ""}`);
+    await load();
+    setBusy(null);
+  }, [posts, load]);
+
   const arrangeAll = useCallback(async () => {
     setBusy("arrange"); setError(null);
     const res = await fetch("/api/social/arrange", { method: "POST" });
@@ -156,7 +177,12 @@ export default function SocialQueue() {
             <button onClick={() => setView("list")} className={cn("px-3 py-2 text-sm flex items-center gap-1", view === "list" ? "bg-gray-100 text-gray-900" : "text-gray-500")}><List className="w-4 h-4" />Lista</button>
             <button onClick={() => setView("grid")} className={cn("px-3 py-2 text-sm flex items-center gap-1", view === "grid" ? "bg-gray-100 text-gray-900" : "text-gray-500")}><LayoutGrid className="w-4 h-4" />Rutnät</button>
           </div>
-          <button onClick={arrangeAll} disabled={busy === "arrange"} title="Sprider ut typerna: aldrig två karuseller i rad, aldrig samma typ i rad, text och foto omväxlande" className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1">
+          {posts.some((p) => p.status === "draft" && !p.caption.trim()) && (
+            <button onClick={captionAll} disabled={busy === "captions"} className="px-3 py-2 rounded-lg border border-indigo-200 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-1">
+              {busy === "captions" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Skriv alla bildtexter ({posts.filter((p) => p.status === "draft" && !p.caption.trim()).length})
+            </button>
+          )}
+          <button onClick={arrangeAll} disabled={busy === "arrange"} title="Dina uppladdade bilder behåller sin ordning. Claudes inlägg (karuseller, textinlägg m.m.) stoppas in emellan för att bryta upp långa sviter av samma typ." className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1">
             {busy === "arrange" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}Fördela
           </button>
         {drafts.length > 0 && (
@@ -196,7 +222,7 @@ export default function SocialQueue() {
         <FeedGrid posts={posts} onReorder={reorder} />
       ) : (
         <SortableList posts={posts} onReorder={reorder} render={(p, handle) => (
-          <PostCard post={p} busy={busy === p.id} onPatch={patch} onRemove={remove} onCaption={writeCaption} handle={handle} />
+          <PostCard post={p} busy={busy === p.id} onPatch={patch} onRemove={remove} onCaption={writeCaption} onCrop={crop} handle={handle} />
         )} />
       )}
     </div>
@@ -290,7 +316,8 @@ function GridCell({ post: p, slot, disabled }: { post: Post; slot: string; disab
   );
 }
 
-function PostCard({ post, busy, onPatch, onRemove, onCaption, handle }: { post: Post; busy: boolean; onPatch: (id: string, b: Record<string, unknown>) => void; onRemove: (id: string) => void; onCaption: (id: string, hint?: string) => void; handle?: React.ReactNode }) {
+function PostCard({ post, busy, onPatch, onRemove, onCaption, onCrop, handle }: { post: Post; busy: boolean; onPatch: (id: string, b: Record<string, unknown>) => void; onRemove: (id: string) => void; onCaption: (id: string, hint?: string) => void; onCrop: (id: string, index: number, box: CropBox) => Promise<void>; handle?: React.ReactNode }) {
+  const [cropIndex, setCropIndex] = useState<number | null>(null);
   const [caption, setCaption] = useState(post.caption);
   useEffect(() => setCaption(post.caption), [post.caption]);
   const locked = post.status === "publishing" || post.status === "posted";
@@ -303,9 +330,19 @@ function PostCard({ post, busy, onPatch, onRemove, onCaption, handle }: { post: 
       {handle}
       <div className="flex gap-1.5 shrink-0 overflow-x-auto max-w-[45%]">
         {post.media_urls.map((u, i) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={i} src={u} alt="" className="w-24 h-32 object-cover rounded-md border border-gray-100" />
+          <button key={i} type="button" disabled={locked} onClick={() => setCropIndex(i)} title={locked ? undefined : "Beskär"} className="relative group shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={u} alt="" className="w-24 h-[120px] object-cover rounded-md border border-gray-100" />
+            {!locked && <span className="absolute inset-x-0 bottom-0 text-[10px] text-white bg-black/50 rounded-b-md py-0.5 opacity-0 group-hover:opacity-100">Beskär</span>}
+          </button>
         ))}
+        {cropIndex !== null && (
+          <CropModal
+            src={(post.original_urls ?? post.media_urls)[cropIndex] ?? post.media_urls[cropIndex]}
+            onClose={() => setCropIndex(null)}
+            onSave={async (box) => { await onCrop(post.id, cropIndex, box); setCropIndex(null); }}
+          />
+        )}
       </div>
       <div className="flex-1 min-w-0 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -422,6 +459,71 @@ function ListRow({ post, disabled, render }: { post: Post; disabled: boolean; re
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-30")}>
       {render(post, handle)}
+    </div>
+  );
+}
+
+type CropBox = { x: number; y: number; w: number; h: number };
+
+// 4:5 crop frame over the original. Drag the frame; the slider zooms in.
+function CropModal({ src, onClose, onSave }: { src: string; onClose: () => void; onSave: (box: CropBox) => Promise<void> }) {
+  const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pos, setPos] = useState({ x: 0.5, y: 0.5 }); // frame centre, 0-1
+  const [saving, setSaving] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const R = 4 / 5;
+  // Frame size as fractions of the image, the largest 4:5 that fits, times 1/zoom.
+  const frame = useMemo(() => {
+    if (!nat) return { w: 1, h: 1 };
+    const imgR = nat.w / nat.h;
+    const base = imgR > R ? { w: (nat.h * R) / nat.w, h: 1 } : { w: 1, h: nat.w / R / nat.h };
+    return { w: base.w / zoom, h: base.h / zoom };
+  }, [nat, zoom]);
+  const clampPos = useCallback((p: { x: number; y: number }) => ({
+    x: Math.min(1 - frame.w / 2, Math.max(frame.w / 2, p.x)),
+    y: Math.min(1 - frame.h / 2, Math.max(frame.h / 2, p.y)),
+  }), [frame]);
+  useEffect(() => setPos((p) => clampPos(p)), [clampPos]);
+  const box: CropBox = { x: pos.x - frame.w / 2, y: pos.y - frame.h / 2, w: frame.w, h: frame.h };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl p-5 max-w-lg w-full space-y-4" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm font-medium text-gray-900">Beskär till 4:5 <span className="text-gray-500 font-normal">· dra rutan, zooma med reglaget</span></p>
+        <div
+          ref={boxRef}
+          className="relative mx-auto select-none touch-none"
+          style={{ width: nat ? Math.min(440, (typeof window !== "undefined" ? window.innerHeight * 0.62 : 560) * (nat.w / nat.h)) : 440 }}
+          onPointerMove={(e) => {
+            if (!drag.current || !boxRef.current) return;
+            const r = boxRef.current.getBoundingClientRect();
+            setPos(clampPos({ x: drag.current.px + (e.clientX - drag.current.x) / r.width, y: drag.current.py + (e.clientY - drag.current.y) / r.height }));
+          }}
+          onPointerUp={() => { drag.current = null; }}
+          onPointerLeave={() => { drag.current = null; }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={src} alt="" className="w-full block rounded" draggable={false} onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
+          {nat && (
+            <div
+              onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y }; }}
+              className="absolute border-2 border-white cursor-move"
+              style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, boxShadow: "0 0 0 9999px rgba(0,0,0,.55)" }}
+            />
+          )}
+        </div>
+        <label className="flex items-center gap-3 text-xs text-gray-600">Zoom
+          <input type="range" min={1} max={2.5} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="flex-1" />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700">Avbryt</button>
+          <button disabled={!nat || saving} onClick={async () => { setSaving(true); await onSave(box); setSaving(false); }} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-60 flex items-center gap-1">
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}Spara beskärning
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
-import { randomUUID } from "crypto";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
-import { STORAGE_BUCKET } from "@/lib/constants";
 import { DEFAULT_SLOTS, nextFreeSlots } from "@/lib/social-slots";
 import { SOCIAL_KINDS } from "@/lib/social-kinds";
+import { storeFeedImage } from "@/lib/social-crop";
 
 const KINDS = Object.keys(SOCIAL_KINDS);
 
@@ -49,14 +47,13 @@ export async function POST(req: NextRequest) {
   const kind = typeof body.kind === "string" && KINDS.includes(body.kind) ? body.kind : "other";
 
   const urls: string[] = [];
+  const originals: string[] = [];
   for (const src of sources) {
     const res = await fetch(src, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) return NextResponse.json({ error: `fetch ${res.status}` }, { status: 502 });
-    const jpeg = await sharp(Buffer.from(await res.arrayBuffer())).rotate().resize({ width: 1080, withoutEnlargement: true }).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
-    const path = `social/${ws}/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.jpg`;
-    const { error } = await db.storage.from(STORAGE_BUCKET).upload(path, jpeg, { contentType: "image/jpeg" });
-    if (error) return NextResponse.json({ error: `upload: ${error.message}` }, { status: 500 });
-    urls.push(`${base}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`);
+    // Taller than 4:5 is cropped to 4:5 where the subject is; the original is kept for "Beskär".
+    const stored = await storeFeedImage(db, ws, Buffer.from(await res.arrayBuffer()));
+    urls.push(stored.url); originals.push(stored.original);
   }
 
   const { data: existing } = await db.from("social_posts").select("scheduled_at,status").eq("workspace_id", ws)
@@ -66,10 +63,11 @@ export async function POST(req: NextRequest) {
   const slots = (((w?.settings as Record<string, unknown> | null)?.social as Record<string, unknown> | undefined)?.slots as string[] | undefined) ?? DEFAULT_SLOTS;
 
   const groups = carousel ? [urls] : urls.map((u) => [u]);
+  const origGroups = carousel ? [originals] : originals.map((u) => [u]);
   const times = nextFreeSlots(groups.length, taken, slots);
   const rows = groups.map((g, i) => ({
     workspace_id: ws, scheduled_at: times[i].toISOString(), format: g.length > 1 ? "carousel" : "image",
-    media_urls: g, caption, kind, status: "draft", source: "william",
+    media_urls: g, original_urls: origGroups[i], caption, kind, status: "draft", source: "william",
   }));
   const { data, error } = await db.from("social_posts").insert(rows).select("*");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

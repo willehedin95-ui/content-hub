@@ -3,15 +3,15 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { arrange } from "@/lib/social-arrange";
 
-// POST - re-spread all future drafts/approved posts over their own slots by the mix rules.
+// POST - keep William's uploads in his order and slot Claude's posts in between (see social-arrange.ts).
 export async function POST() {
   const db = createServerSupabase();
   const ws = await getWorkspaceId();
   const now = new Date(Date.now() + 15 * 60_000).toISOString();
-  const { data: posts } = await db.from("social_posts").select("id,scheduled_at,kind,format").eq("workspace_id", ws)
+  const { data: posts } = await db.from("social_posts").select("id,scheduled_at,kind,format,source").eq("workspace_id", ws)
     .in("status", ["draft", "approved"]).gte("scheduled_at", now);
   if (!posts?.length) return NextResponse.json({ moved: 0 });
-  const { data: last } = await db.from("social_posts").select("id,scheduled_at,kind,format").eq("workspace_id", ws)
+  const { data: last } = await db.from("social_posts").select("id,scheduled_at,kind,format,source").eq("workspace_id", ws)
     .lt("scheduled_at", now).order("scheduled_at", { ascending: false }).limit(1);
   const plan = arrange(posts, last?.[0] ?? null);
   let moved = 0;
