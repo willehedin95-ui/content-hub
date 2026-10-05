@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { IMAGE_MODELS, type ImageModelId } from "@/lib/constants";
 import type { SwipeForm } from "@/lib/product-appearance";
 import { shrinkForUpload } from "@/lib/shrink-for-upload";
+import { unlockSound, playDoneSound } from "@/lib/notify-sound";
 import { GENDER_OPTIONS, AGE_OPTIONS, ETHNICITY_OPTIONS, type PersonOverride } from "@/lib/person-options";
 
 // "" = keep what the competitor's image shows.
@@ -194,6 +195,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
 
   // Start the full pipeline
   const handleAnalyze = useCallback(async () => {
+    unlockSound();
     if (!competitorImageUrl && !competitorImageFile) return;
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -296,6 +298,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             setPromptUsed(event.prompt_used || null);
             if (event.aspect_ratio) setMeasuredRatio(event.aspect_ratio);
             setPhase("done");
+            playDoneSound();
           }
         }
       }
@@ -317,6 +320,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   // Kie timed out: generate the image again from the finished prompt with the
   // fastest model, without redoing Claude's analysis.
   const handleTimeoutRetry = useCallback(async () => {
+    unlockSound();
     if (!timeoutRetry) return;
     const fallback = "nano-banana-2";
     setError(null);
@@ -344,6 +348,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       setMeasuredRatio(timeoutRetry.ratio);
       setTimeoutRetry(null);
       setPhase("done");
+      playDoneSound();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setPhase("upload");
@@ -460,6 +465,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   // Retry — regenerate with same prompt + optional edit instructions
   const handleRetry = useCallback(async () => {
     if (!promptUsed) return;
+    unlockSound();
     setRetrying(true);
     setError(null);
     setSaved(false);
@@ -503,6 +509,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
 
       const { image_url } = await res.json();
       setGeneratedImageUrl(image_url);
+      playDoneSound();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
