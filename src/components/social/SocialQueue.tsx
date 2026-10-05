@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Check, Undo2, Trash2, Loader2, AlertCircle, CalendarDays } from "lucide-react";
+import { Upload, Check, Undo2, Trash2, Loader2, AlertCircle, CalendarDays, Sparkles, Shuffle, LayoutGrid, List } from "lucide-react";
+import { SOCIAL_KINDS, type SocialKind } from "@/lib/social-kinds";
 import { cn } from "@/lib/utils";
 import { shrinkForUpload } from "@/lib/shrink-for-upload";
 import { stockholmToUtc } from "@/lib/social-slots";
@@ -13,6 +14,7 @@ interface Post {
   media_urls: string[];
   caption: string;
   status: "draft" | "approved" | "publishing" | "posted" | "failed";
+  kind: SocialKind;
   source: string;
   label: string | null;
   ig_media_id: string | null;
@@ -41,6 +43,8 @@ export default function SocialQueue() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [asCarousel, setAsCarousel] = useState(false);
+  const [uploadKind, setUploadKind] = useState<SocialKind>("product");
+  const [view, setView] = useState<"list" | "grid">("list");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -82,7 +86,7 @@ export default function SocialQueue() {
         if (!r.ok) throw new Error(`Uppladdningen misslyckades (${r.status})`);
         urls.push((await r.json()).url);
       }
-      const res = await fetch("/api/social/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls, carousel: asCarousel && urls.length > 1 }) });
+      const res = await fetch("/api/social/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls, carousel: asCarousel && urls.length > 1, kind: uploadKind }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Kunde inte lägga i kön");
       await load();
@@ -92,7 +96,25 @@ export default function SocialQueue() {
       setBusy(null);
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [asCarousel, load]);
+  }, [asCarousel, uploadKind, load]);
+
+  const writeCaption = useCallback(async (id: string, hint?: string) => {
+    setBusy(id); setError(null);
+    const res = await fetch("/api/social/caption", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hint }) });
+    const json = await res.json();
+    if (!res.ok) setError(json.error || "Kunde inte skriva bildtext");
+    else setPosts((cur) => cur.map((p) => (p.id === id ? json.post : p)));
+    setBusy(null);
+  }, []);
+
+  const arrangeAll = useCallback(async () => {
+    setBusy("arrange"); setError(null);
+    const res = await fetch("/api/social/arrange", { method: "POST" });
+    const json = await res.json();
+    if (!res.ok) setError(json.error || "Kunde inte fördela");
+    await load();
+    setBusy(null);
+  }, [load]);
 
   const drafts = posts.filter((p) => p.status === "draft");
   const approveAll = useCallback(async () => {
@@ -120,11 +142,20 @@ export default function SocialQueue() {
             Bara <span className="font-medium text-gray-700">godkända</span> inlägg går ut, vid sin tid.
           </p>
         </div>
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button onClick={() => setView("list")} className={cn("px-3 py-2 text-sm flex items-center gap-1", view === "list" ? "bg-gray-100 text-gray-900" : "text-gray-500")}><List className="w-4 h-4" />Lista</button>
+            <button onClick={() => setView("grid")} className={cn("px-3 py-2 text-sm flex items-center gap-1", view === "grid" ? "bg-gray-100 text-gray-900" : "text-gray-500")}><LayoutGrid className="w-4 h-4" />Rutnät</button>
+          </div>
+          <button onClick={arrangeAll} disabled={busy === "arrange"} title="Sprider ut typerna: aldrig två karuseller i rad, aldrig samma typ i rad, text och foto omväxlande" className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1">
+            {busy === "arrange" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}Fördela
+          </button>
         {drafts.length > 0 && (
           <button onClick={approveAll} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
             Godkänn alla utkast ({drafts.length})
           </button>
         )}
+        </div>
       </div>
 
       {error && (
@@ -136,7 +167,10 @@ export default function SocialQueue() {
           <p className="text-sm font-medium text-gray-800">Lägg till bilder</p>
           <p className="text-xs text-gray-500">Hamnar som utkast på nästa lediga tider. Varje bild blir ett eget inlägg, eller en karusell om du kryssar i rutan.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <select value={uploadKind} onChange={(e) => setUploadKind(e.target.value as SocialKind)} className="text-sm border border-gray-200 rounded-lg px-2 py-2 bg-white text-gray-700" title="Typ av inlägg">
+            {Object.entries(SOCIAL_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={asCarousel} onChange={(e) => setAsCarousel(e.target.checked)} />Som karusell</label>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
           <button onClick={() => fileRef.current?.click()} disabled={busy === "upload"} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2">
@@ -149,11 +183,13 @@ export default function SocialQueue() {
         <div className="text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Hämtar kön...</div>
       ) : posts.length === 0 ? (
         <p className="text-sm text-gray-500">Kön är tom.</p>
+      ) : view === "grid" ? (
+        <FeedGrid posts={posts} />
       ) : (
         byDay.map(([day, list]) => (
           <section key={day} className="space-y-3">
             <h2 className="text-sm font-semibold text-gray-700 capitalize">{dayLabel(list[0].scheduled_at)}</h2>
-            {list.map((p) => <PostCard key={p.id} post={p} busy={busy === p.id} onPatch={patch} onRemove={remove} />)}
+            {list.map((p) => <PostCard key={p.id} post={p} busy={busy === p.id} onPatch={patch} onRemove={remove} onCaption={writeCaption} />)}
           </section>
         ))
       )}
@@ -161,7 +197,29 @@ export default function SocialQueue() {
   );
 }
 
-function PostCard({ post, busy, onPatch, onRemove }: { post: Post; busy: boolean; onPatch: (id: string, b: Record<string, unknown>) => void; onRemove: (id: string) => void }) {
+// Instagram-style 3-column grid, newest first, so the feed can be judged before approving.
+function FeedGrid({ posts }: { posts: Post[] }) {
+  const sorted = [...posts].sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+  return (
+    <div className="max-w-md mx-auto grid grid-cols-3 gap-0.5 bg-white">
+      {sorted.map((p) => (
+        <div key={p.id} className="relative aspect-[3/4] bg-gray-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={p.media_urls[0]} alt="" className="w-full h-full object-cover" />
+          <div className="absolute top-1 left-1 flex gap-1">
+            <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", STATUS[p.status].cls)}>{STATUS[p.status].label}</span>
+          </div>
+          <div className="absolute bottom-1 left-1 right-1 flex justify-between text-[10px] text-white drop-shadow">
+            <span>{SOCIAL_KINDS[p.kind] ?? p.kind}</span><span>{dayLabel(p.scheduled_at).split(" ").slice(1).join(" ")} {timeLabel(p.scheduled_at)}</span>
+          </div>
+          {p.format === "carousel" && <span className="absolute top-1 right-1 text-white text-xs drop-shadow">▣</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PostCard({ post, busy, onPatch, onRemove, onCaption }: { post: Post; busy: boolean; onPatch: (id: string, b: Record<string, unknown>) => void; onRemove: (id: string) => void; onCaption: (id: string, hint?: string) => void }) {
   const [caption, setCaption] = useState(post.caption);
   useEffect(() => setCaption(post.caption), [post.caption]);
   const locked = post.status === "publishing" || post.status === "posted";
@@ -180,6 +238,9 @@ function PostCard({ post, busy, onPatch, onRemove }: { post: Post; busy: boolean
       <div className="flex-1 min-w-0 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", st.cls)}>{st.label}</span>
+          <select value={post.kind} disabled={locked} onChange={(e) => onPatch(post.id, { kind: e.target.value })} className="text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-700 bg-white disabled:bg-gray-50">
+            {Object.entries(SOCIAL_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
           <span className="text-xs text-gray-500">{post.format === "carousel" ? `Karusell, ${post.media_urls.length} bilder` : "Bild"}</span>
           <input
             type="datetime-local"
@@ -214,6 +275,7 @@ function PostCard({ post, busy, onPatch, onRemove }: { post: Post; busy: boolean
             ) : (
               <button onClick={() => onPatch(post.id, { status: "approved" })} disabled={busy || !caption.trim()} title={!caption.trim() ? "Skriv en bildtext först" : undefined} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1"><Check className="w-3.5 h-3.5" />{post.status === "failed" ? "Försök igen" : "Godkänn"}</button>
             )}
+            <button onClick={() => { const hint = caption.trim() ? prompt("Önskemål till den nya bildtexten? (lämna tomt för ett nytt förslag)") ?? undefined : undefined; onCaption(post.id, hint || undefined); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-indigo-200 text-xs text-indigo-700 hover:bg-indigo-50 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />{caption.trim() ? "Ny bildtext" : "Skriv bildtext"}</button>
             <button onClick={() => onRemove(post.id)} disabled={busy} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 hover:text-red-600 hover:border-red-200 flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />Ta bort</button>
             {busy && <Loader2 className="w-4 h-4 animate-spin text-gray-400 self-center" />}
           </div>

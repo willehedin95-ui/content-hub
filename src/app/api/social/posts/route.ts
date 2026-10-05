@@ -5,6 +5,9 @@ import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { STORAGE_BUCKET } from "@/lib/constants";
 import { DEFAULT_SLOTS, nextFreeSlots } from "@/lib/social-slots";
+import { SOCIAL_KINDS } from "@/lib/social-kinds";
+
+const KINDS = Object.keys(SOCIAL_KINDS);
 
 export const maxDuration = 120;
 
@@ -43,6 +46,7 @@ export async function POST(req: NextRequest) {
   const carousel = body.carousel === true;
   if (carousel && sources.length > 10) return NextResponse.json({ error: "max 10 bilder i en karusell" }, { status: 400 });
   const caption = typeof body.caption === "string" ? body.caption : "";
+  const kind = typeof body.kind === "string" && KINDS.includes(body.kind) ? body.kind : "other";
 
   const urls: string[] = [];
   for (const src of sources) {
@@ -65,7 +69,7 @@ export async function POST(req: NextRequest) {
   const times = nextFreeSlots(groups.length, taken, slots);
   const rows = groups.map((g, i) => ({
     workspace_id: ws, scheduled_at: times[i].toISOString(), format: g.length > 1 ? "carousel" : "image",
-    media_urls: g, caption, status: "draft", source: "william",
+    media_urls: g, caption, kind, status: "draft", source: "william",
   }));
   const { data, error } = await db.from("social_posts").insert(rows).select("*");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -87,6 +91,7 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof body.caption === "string") patch.caption = body.caption;
   if (typeof body.label === "string") patch.label = body.label;
+  if (typeof body.kind === "string" && KINDS.includes(body.kind)) patch.kind = body.kind;
   if (typeof body.scheduled_at === "string" && !Number.isNaN(Date.parse(body.scheduled_at))) patch.scheduled_at = new Date(body.scheduled_at).toISOString();
   if (body.status === "approved") { patch.status = "approved"; patch.approved_at = new Date().toISOString(); patch.ig_error = null; patch.fb_error = null; }
   if (body.status === "draft") { patch.status = "draft"; patch.approved_at = null; }
