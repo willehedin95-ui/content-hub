@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Check, Undo2, Trash2, Loader2, AlertCircle, CalendarDays, Sparkles, Shuffle, LayoutGrid, List } from "lucide-react";
+import { Upload, Check, Undo2, Trash2, Loader2, AlertCircle, CalendarDays, Sparkles, Shuffle, LayoutGrid, List, GripVertical } from "lucide-react";
 import { SOCIAL_KINDS, type SocialKind } from "@/lib/social-kinds";
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { SortableContext, arrayMove, rectSortingStrategy, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { shrinkForUpload } from "@/lib/shrink-for-upload";
@@ -136,11 +136,6 @@ export default function SocialQueue() {
     for (const p of drafts) await patch(p.id, { status: "approved" });
   }, [drafts, patch]);
 
-  const byDay = useMemo(() => {
-    const m = new Map<string, Post[]>();
-    for (const p of posts) { const k = dayKey(p.scheduled_at); m.set(k, [...(m.get(k) ?? []), p]); }
-    return Array.from(m.entries());
-  }, [posts]);
 
   if (!loading && !social) {
     return <div className="p-8 text-sm text-gray-600">Den här arbetsytan har ingen koppling till Instagram eller Facebook.</div>;
@@ -200,12 +195,9 @@ export default function SocialQueue() {
       ) : view === "grid" ? (
         <FeedGrid posts={posts} onReorder={reorder} />
       ) : (
-        byDay.map(([day, list]) => (
-          <section key={day} className="space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700 capitalize">{dayLabel(list[0].scheduled_at)}</h2>
-            {list.map((p) => <PostCard key={p.id} post={p} busy={busy === p.id} onPatch={patch} onRemove={remove} onCaption={writeCaption} />)}
-          </section>
-        ))
+        <SortableList posts={posts} onReorder={reorder} render={(p, handle) => (
+          <PostCard post={p} busy={busy === p.id} onPatch={patch} onRemove={remove} onCaption={writeCaption} handle={handle} />
+        )} />
       )}
     </div>
   );
@@ -298,7 +290,7 @@ function GridCell({ post: p, slot, disabled }: { post: Post; slot: string; disab
   );
 }
 
-function PostCard({ post, busy, onPatch, onRemove, onCaption }: { post: Post; busy: boolean; onPatch: (id: string, b: Record<string, unknown>) => void; onRemove: (id: string) => void; onCaption: (id: string, hint?: string) => void }) {
+function PostCard({ post, busy, onPatch, onRemove, onCaption, handle }: { post: Post; busy: boolean; onPatch: (id: string, b: Record<string, unknown>) => void; onRemove: (id: string) => void; onCaption: (id: string, hint?: string) => void; handle?: React.ReactNode }) {
   const [caption, setCaption] = useState(post.caption);
   useEffect(() => setCaption(post.caption), [post.caption]);
   const locked = post.status === "publishing" || post.status === "posted";
@@ -308,6 +300,7 @@ function PostCard({ post, busy, onPatch, onRemove, onCaption }: { post: Post; bu
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 flex gap-4">
+      {handle}
       <div className="flex gap-1.5 shrink-0 overflow-x-auto max-w-[45%]">
         {post.media_urls.map((u, i) => (
           // eslint-disable-next-line @next/next/no-img-element
@@ -322,6 +315,7 @@ function PostCard({ post, busy, onPatch, onRemove, onCaption }: { post: Post; bu
           </select>
           <span className="text-xs text-gray-500">{post.format === "carousel" ? `Karusell, ${post.media_urls.length} bilder` : "Bild"}</span>
           <input
+            key={post.scheduled_at}
             type="datetime-local"
             disabled={locked}
             defaultValue={`${day}T${time}`}
@@ -360,6 +354,74 @@ function PostCard({ post, busy, onPatch, onRemove, onCaption }: { post: Post; bu
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// List view, earliest first. Same reorder as the grid: drag a card by its
+// handle, the times stay with the positions. Posted posts cannot move.
+function SortableList({ posts, onReorder, render }: { posts: Post[]; onReorder: (idsEarliestFirst: string[]) => void; render: (p: Post, handle: React.ReactNode) => React.ReactNode }) {
+  const movable = (p: Post) => p.status === "draft" || p.status === "approved";
+  const sorted = useMemo(() => [...posts].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)), [posts]);
+  const [order, setOrder] = useState<string[]>(sorted.map((p) => p.id));
+  useEffect(() => setOrder(sorted.map((p) => p.id)), [sorted]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const byId = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
+  const slotTimes = useMemo(() => sorted.map((p) => p.scheduled_at), [sorted]);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }));
+  const onDragEnd = (e: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = e;
+    if (!over || active.id === over.id || !movable(byId.get(String(over.id))!)) return;
+    const next = arrayMove(order, order.indexOf(String(active.id)), order.indexOf(String(over.id)));
+    const free = next.filter((id) => movable(byId.get(id)!));
+    let f = 0;
+    const merged = order.map((id) => (movable(byId.get(id)!) ? free[f++] : id));
+    setOrder(merged);
+    onReorder(merged.filter((id) => movable(byId.get(id)!)));
+  };
+  const active = activeId ? byId.get(activeId) : null;
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => setActiveId(String(e.active.id))} onDragCancel={() => setActiveId(null)} onDragEnd={onDragEnd}>
+      <SortableContext items={order} strategy={verticalListSortingStrategy}>
+        <div className="space-y-3">
+          {order.map((id, i) => {
+            const p = byId.get(id);
+            if (!p) return null;
+            const showDay = i === 0 || dayKey(slotTimes[i]) !== dayKey(slotTimes[i - 1]);
+            return (
+              <div key={id}>
+                {showDay && <h2 className="text-sm font-semibold text-gray-700 capitalize mb-2 mt-4">{dayLabel(slotTimes[i])}</h2>}
+                <ListRow post={{ ...p, scheduled_at: slotTimes[i] }} disabled={!movable(p)} render={render} />
+              </div>
+            );
+          })}
+        </div>
+      </SortableContext>
+      <DragOverlay dropAnimation={{ duration: 180 }}>
+        {active ? (
+          <div className="bg-white rounded-lg border-2 border-indigo-500 shadow-2xl p-3 flex gap-3 items-center w-[360px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={active.media_urls[0]} alt="" className="w-16 h-20 object-cover rounded" />
+            <span className="text-sm text-gray-700 line-clamp-3">{active.caption || "Ingen bildtext än"}</span>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function ListRow({ post, disabled, render }: { post: Post; disabled: boolean; render: (p: Post, handle: React.ReactNode) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: post.id, disabled });
+  const handle = (
+    <button {...attributes} {...listeners} disabled={disabled} title={disabled ? "Publicerad" : "Dra för att flytta"}
+      className={cn("shrink-0 self-center p-1 rounded text-gray-400 touch-none", disabled ? "opacity-30 cursor-default" : "cursor-grab active:cursor-grabbing hover:bg-gray-100 hover:text-gray-600")}>
+      <GripVertical className="w-5 h-5" />
+    </button>
+  );
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-30")}>
+      {render(post, handle)}
     </div>
   );
 }
