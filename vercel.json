@@ -87,6 +87,10 @@
     {
       "schedule": "30 * * * *",
       "path": "/api/cron/progressbild-beloningar"
+    },
+    {
+      "path": "/api/cron/social-publish",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
