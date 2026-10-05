@@ -107,6 +107,13 @@ export default function SocialQueue() {
     setBusy(null);
   }, []);
 
+  const reorder = useCallback(async (ids: string[]) => {
+    setError(null);
+    const res = await fetch("/api/social/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    if (!res.ok) setError((await res.json().catch(() => ({}))).error || "Kunde inte ändra ordningen");
+    await load();
+  }, [load]);
+
   const arrangeAll = useCallback(async () => {
     setBusy("arrange"); setError(null);
     const res = await fetch("/api/social/arrange", { method: "POST" });
@@ -184,7 +191,7 @@ export default function SocialQueue() {
       ) : posts.length === 0 ? (
         <p className="text-sm text-gray-500">Kön är tom.</p>
       ) : view === "grid" ? (
-        <FeedGrid posts={posts} />
+        <FeedGrid posts={posts} onReorder={reorder} />
       ) : (
         byDay.map(([day, list]) => (
           <section key={day} className="space-y-3">
@@ -197,24 +204,53 @@ export default function SocialQueue() {
   );
 }
 
-// Instagram-style 3-column grid, newest first, so the feed can be judged before approving.
-function FeedGrid({ posts }: { posts: Post[] }) {
+const SHORT_KIND: Record<string, string> = { product: "Produkt", person: "Person", knowledge: "Kunskap", humor: "Humor", question: "Fråga", other: "Annat" };
+
+// Instagram-style 3-column grid, newest first. Drafts and approved posts can be
+// dragged onto another post: the order changes and the times follow.
+function FeedGrid({ posts, onReorder }: { posts: Post[]; onReorder: (idsEarliestFirst: string[]) => void }) {
   const sorted = [...posts].sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const movable = (p: Post) => p.status === "draft" || p.status === "approved";
+
+  const drop = (targetId: string) => {
+    if (!dragId || dragId === targetId) return;
+    // Work on the movable posts only, in display order (newest first).
+    const order = sorted.filter(movable).map((p) => p.id);
+    const from = order.indexOf(dragId), to = order.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    onReorder([...order].reverse());
+  };
+
   return (
-    <div className="max-w-md mx-auto grid grid-cols-3 gap-0.5 bg-white">
-      {sorted.map((p) => (
-        <div key={p.id} className="relative aspect-[3/4] bg-gray-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={p.media_urls[0]} alt="" className="w-full h-full object-cover" />
-          <div className="absolute top-1 left-1 flex gap-1">
-            <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", STATUS[p.status].cls)}>{STATUS[p.status].label}</span>
+    <div className="max-w-md mx-auto">
+      <p className="text-xs text-gray-500 mb-2 text-center">Dra ett inlägg till en annan ruta för att ändra ordningen. Tiderna följer med.</p>
+      <div className="grid grid-cols-3 gap-0.5 bg-white">
+        {sorted.map((p) => (
+          <div
+            key={p.id}
+            draggable={movable(p)}
+            onDragStart={(e) => { setDragId(p.id); e.dataTransfer.effectAllowed = "move"; }}
+            onDragEnd={() => { setDragId(null); setOverId(null); }}
+            onDragOver={(e) => { if (dragId && movable(p)) { e.preventDefault(); setOverId(p.id); } }}
+            onDragLeave={() => setOverId((o) => (o === p.id ? null : o))}
+            onDrop={(e) => { e.preventDefault(); drop(p.id); setDragId(null); setOverId(null); }}
+            className={cn("relative aspect-[3/4] bg-gray-100 select-none", movable(p) ? "cursor-grab active:cursor-grabbing" : "opacity-90",
+              dragId === p.id && "opacity-40", overId === p.id && dragId !== p.id && "ring-4 ring-indigo-500 ring-inset")}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.media_urls[0]} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
+            <span className={cn("absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-medium", STATUS[p.status].cls)}>{STATUS[p.status].label}</span>
+            {p.format === "carousel" && <span className="absolute top-1 right-1 text-white text-xs drop-shadow">▣</span>}
+            <div className="absolute inset-x-0 bottom-0 px-1.5 pt-6 pb-1 bg-gradient-to-t from-black/70 to-transparent flex justify-between items-end text-[10px] leading-tight text-white">
+              <span className="font-medium">{SHORT_KIND[p.kind] ?? p.kind}</span>
+              <span className="text-right">{dayLabel(p.scheduled_at).split(" ").slice(1).join(" ")}<br />{timeLabel(p.scheduled_at)}</span>
+            </div>
           </div>
-          <div className="absolute bottom-1 left-1 right-1 flex justify-between text-[10px] text-white drop-shadow">
-            <span>{SOCIAL_KINDS[p.kind] ?? p.kind}</span><span>{dayLabel(p.scheduled_at).split(" ").slice(1).join(" ")} {timeLabel(p.scheduled_at)}</span>
-          </div>
-          {p.format === "carousel" && <span className="absolute top-1 right-1 text-white text-xs drop-shadow">▣</span>}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
