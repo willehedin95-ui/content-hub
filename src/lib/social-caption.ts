@@ -15,7 +15,7 @@ const KIND_GUIDE: Record<SocialKind, string> = {
 export interface CaptionResult { caption: string; hashtags: string[] }
 
 /** Write a Swedish caption for one post from its image(s), its kind and the brand brief. */
-export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string }): Promise<CaptionResult> {
+export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel" }): Promise<CaptionResult> {
   const client = new Anthropic();
   const system = `Du skriver bildtexter till Instagram och Facebook för ett svenskt varumärke.
 
@@ -30,7 +30,15 @@ Regler för texten:
 - Upprepa inte inledningar eller formuleringar från de senaste bildtexterna.
 
 Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#...", "#..."]} med 3-5 relevanta svenska hashtags.`;
-  const user = `Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${KIND_GUIDE[opts.kind]}
+  // A single image never says "svep" - that made the captions of one-image
+  // text posts promise slides that do not exist (2026-10-05).
+  const formatNote = opts.format === "carousel"
+    ? "Inlägget är en karusell med flera bilder."
+    : "Inlägget är EN enda bild, ingen karusell. Skriv aldrig svep, nästa bild eller liknande. Hänvisa inte till fler bilder.";
+  const guide = opts.kind === "knowledge" && opts.format !== "carousel"
+    ? "Det är ett textinlägg (en bild med en lista eller ett citat). Plocka en eller två rader ur bilden och lägg till en egen tanke, eller ställ en fråga som får folk att svara i kommentarerna. Nämn inte produkten."
+    : KIND_GUIDE[opts.kind];
+  const user = `Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
 ${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}De senaste bildtexterna (upprepa inte dessa):
 ${opts.recent.slice(0, 8).map((c) => `- ${c.slice(0, 160).replace(/\n/g, " ")}`).join("\n") || "- (inga än)"}`;
 

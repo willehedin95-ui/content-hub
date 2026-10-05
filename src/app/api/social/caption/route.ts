@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const brief = String((((w?.settings as Record<string, unknown>)?.social ?? {}) as Record<string, unknown>).brand_brief ?? "");
   const { data: recent } = await db.from("social_posts").select("caption").eq("workspace_id", ws).neq("id", id).neq("caption", "").order("scheduled_at", { ascending: false }).limit(8);
   try {
-    const r = await writeCaption({ imageUrls: post.media_urls, kind: post.kind as SocialKind, brief, recent: (recent ?? []).map((x) => x.caption), hint });
+    const r = await writeCaption({ imageUrls: post.media_urls, kind: post.kind as SocialKind, brief, recent: (recent ?? []).map((x) => x.caption), hint, format: post.format });
     const caption = r.hashtags.length ? `${r.caption}\n\n${r.hashtags.join(" ")}` : r.caption;
     const { data, error } = await db.from("social_posts").update({ caption, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
     if (error) throw new Error(error.message);
