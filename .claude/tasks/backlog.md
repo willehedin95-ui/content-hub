@@ -1,3 +1,14 @@
+## Envana sociala inlägg (/social) - från 2026-10-06
+
+- [ ] **Verifiera första riktiga publiceringen** på @shopenvana OCH FB-sidan Envana (bara torrkörning gjord).
+- [ ] William: gå igenom 14 auto-beskurna bilder (Beskär), skriv bildtexter, godkänn.
+- [ ] Fler egna inlägg i godkända stilar (text på enfärgad bakgrund, produktjämförelser) -> Fördela.
+- [ ] Statistik per publicerat inlägg (IG insights: reach, saves, shares) in i /social.
+- [ ] Humor: ta fram ur referenskontona (`envana-social/referenskonton/`), inte egna skämt.
+- [ ] Swipe: ljuset på flaskan i hårt solljus - testa Nano Banana Pro och en packshot i sol som referens.
+- [ ] Swipe: Nano Banana + shotglas - testa rent utklipp av glaset som referens.
+- [x] Omtest bildmodeller, Seedream bort, formval, personval, referensväljare, shotglas-referens, Sonnet 5.5, kö + publicering + dra/släpp + beskärning. Live `05e6210f`.
+
 ## Swipe Image - nästa steg (från sessionen 2026-09-30)
 
 - [x] **OMTEST av bildmodeller i den RIKTIGA kedjan** - KLART 2026-09-30. GPT Image 2 står kvar som standard.
