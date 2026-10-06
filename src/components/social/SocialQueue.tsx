@@ -182,7 +182,7 @@ export default function SocialQueue() {
               {busy === "captions" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Skriv alla bildtexter ({posts.filter((p) => p.status === "draft" && !p.caption.trim()).length})
             </button>
           )}
-          <button onClick={arrangeAll} disabled={busy === "arrange"} title="Dina uppladdade bilder behåller sin ordning. Claudes inlägg (karuseller, textinlägg m.m.) stoppas in emellan för att bryta upp långa sviter av samma typ." className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1">
+          <button onClick={arrangeAll} disabled={busy === "arrange"} title="Lägger hela kön i ordning: grafik aldrig två i rad och utspridd i rutnätet, produktbilder jämnt mellan modellbilderna. Körs också automatiskt efter varje uppladdning." className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1">
             {busy === "arrange" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}Fördela
           </button>
         {drafts.length > 0 && (

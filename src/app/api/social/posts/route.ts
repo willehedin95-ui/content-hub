@@ -1,13 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { DEFAULT_SLOTS, nextFreeSlots } from "@/lib/social-slots";
 import { SOCIAL_KINDS } from "@/lib/social-kinds";
 import { storeFeedImage } from "@/lib/social-crop";
+import { arrangeQueue } from "@/lib/social-arrange-queue";
+import { fillMissingCaptions } from "@/lib/social-caption-fill";
 
 const KINDS = Object.keys(SOCIAL_KINDS);
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 // GET /api/social/posts?from=ISO&to=ISO - the queue for the current workspace.
 export async function GET(req: NextRequest) {
@@ -29,7 +31,8 @@ export async function GET(req: NextRequest) {
  * rejects request bodies over 4.5 MB). Here each image is fetched, made JPEG
  * (Instagram only takes JPEG) and stored under social/, then queued as DRAFTS
  * in the next free slots. carousel=true makes one carousel of all images,
- * otherwise one post per image.
+ * otherwise one post per image. Afterwards the whole queue is re-ordered and
+ * missing captions are written, so an upload is all William has to do.
  */
 export async function POST(req: NextRequest) {
   const db = createServerSupabase();
@@ -71,6 +74,12 @@ export async function POST(req: NextRequest) {
   }));
   const { data, error } = await db.from("social_posts").insert(rows).select("*");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // William only uploads; the order and the captions are Claude's job (2026-10-06).
+  // Runs after the response; anything not finished is picked up by the next upload or the buttons.
+  after(async () => {
+    try { await arrangeQueue(db, ws); await fillMissingCaptions(db, ws); }
+    catch (e) { console.error("social: arrange/captions after upload failed", e); }
+  });
   return NextResponse.json({ posts: data });
 }
 
