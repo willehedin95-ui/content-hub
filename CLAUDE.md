@@ -146,6 +146,24 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
   - **Resultatet kopieras till vår lagring** (`swipe-results/`) som JPEG via `src/lib/swipe-image-store.ts`, eftersom Kies filserver ibland tar minuter på en 2 MB-fil.
   - **Produktspecifika regler** läggs i `getSwipeProductNote` (`src/lib/product-appearance.ts`), formulerade villkorat, t.ex. vätskans färg bara om scenen har en dryck.
   - **En route-fil får inte exportera annat än route-handlers och config.** `next build` fäller den (tsc gör det inte). Exportera testhjälpare från `src/lib/` i stället.
+  - **Prompt och produktbyte ligger i `src/lib/swipe-image-prompt.ts`** (`buildImageSwiperSystemPrompt`, `swapCompetitorProduct`, `buildSwipePrompt`). Testskript importerar samma funktioner, så ett test kör exakt prod-kedjan (`scripts/_swipe-extract-test.ts`).
+  - **Extraktionen kör Sonnet 5.5** (`SWIPER_CLAUDE_MODEL` i routen). Sonnet 4.5 läste en vit man som "East Asian" 3/3 (2026-10-01). 5.5 avvisar `temperature` och lägger ibland ett thinking-block FÖRST - läs alltid första `text`-blocket, aldrig `content[0]` ("No response from AI"-buggen).
+  - **Formval Flaska / Shotglas / Glas** (kombinerbara, standard Flaska). Claude markerar `is_competitor_product` (förpackning, alla exemplar) och `is_competitor_serving` (alla glas). En PERSON ersätts aldrig - bara glaset i handen. Glas behåller konkurrentens kärl och byter innehåll. Konkurrentens dryck kallas bara "the drink" utanför sitt eget objekt, annars kommer vinglaset tillbaka.
+  - **Referenser:** utan Flaska skickas ingen produktreferens (Grok kräver en bild och får packshoten). Shotglas skickar produktbilden vars beskrivning börjar på "Shotglas" (`resolveShotGlassReference`). Valbar produktreferens i UI (`resolveSwipeReferences`) - hällbild för lutande flaska.
+  - **Vätska:** shot = mörk gyllene, utspädd drink = ljust halmgul (`getSwipeProductNote`/`getSwipeFormDescriptions`).
+  - **Ingen konkurrenttext** i någon del av extraktionen. Exponering/färgton har eget fält (`exposure_and_grading`).
+  - **Kända gränser:** GPT Image 2 belyser inte om flaskan efter scenens ljus (hårt solljus blir platt, testat A/B/C 2026-10-05). Nano Banana ritar shotglasets logga fel; GPT Image 2 rätt.
+  - **Inklistrade bilder krymps i webbläsaren** (`src/lib/shrink-for-upload.ts`) - Vercel avvisar request-kroppar över 4,5 MB med 413. Download hämtar som blob (cross-origin `<a download>` öppnar bara bilden).
+- **Sociala inlägg** (`/social`, syns när `workspaces.settings.social` finns; Envana sedan 2026-10-05):
+  - **Publicerar till Instagram (@shopenvana) och Facebook (sidan Envana)** via Meta-systemanvändarens token (`META_SYSTEM_USER_TOKEN`, går inte ut). Sidan och IG ligger i portföljen Incensor AB och är tilldelade systemanvändaren Content HUB. ID:n i `settings.social` (`ig_user_id`, `fb_page_id`).
+  - **Tabell `social_posts`**: status draft -> approved -> publishing -> posted/failed, `kind` (product/person/knowledge/humor/question/other), `source` (william/claude), `original_urls` (okropad original för Beskär).
+  - **Cron `/api/cron/social-publish` var 15:e minut** publicerar ETT godkänt inlägg som är dags. Raden tas (approved -> publishing) före Meta-anropen, inga omförsök på anrop som skapar inlägg, IG och FB var för sig. Kräver alltid CRON_SECRET (ingen `?manual=true`).
+  - **Tider** 07:30 och 18:30 Stockholm (`src/lib/social-slots.ts`, `settings.social.slots` kan ändra).
+  - **Fördela** (`src/lib/social-arrange.ts`): Williams uppladdningar behåller sin ordning, Claudes inlägg stoppas in jämnt och bryter sviter. Får ALDRIG bli en regelbaserad omblandning igen - William ordnar sina bilder för hand.
+  - **Dra och släpp** (dnd-kit) i både rutnät och lista, `/api/social/reorder`: tiden står kvar på positionen.
+  - **Bildtext** (`src/lib/social-caption.ts`, Sonnet 5.5): bild + typ + `settings.social.brand_brief` (sajtens argument). Kontroller bara på språk, ALDRIG påståendegrindar. En enskild bild får aldrig "svep".
+  - **4:5:** bilder högre än 4:5 beskärs vid uppladdning (`src/lib/social-crop.ts`, sharp attention; OBS: bara SISTA resize i en sharp-kedja gäller), Beskär-rutan beskär om från originalet. IG-API:t tog emot 9:16-containrar i test, men William vill ha 4:5. Karusellmallen i `envana-social/` renderar 1080x1350.
+  - **Business Discovery** (läsa andra företagskontons inlägg gratis) går via samma token och @shopenvanas IG-id. Har en kvot per timme - läs `x-app-usage`.
 - **Bildmodeller** (`IMAGE_MODELS` i `src/lib/constants.ts`):
   - Varje modell har ett eget inputschema. Verifiera alltid mot docs.kie.ai innan en modell läggs till.
   - `allowedRatios` gör att `kie.ts` mappar ett otillåtet format till närmaste tillåtna.
