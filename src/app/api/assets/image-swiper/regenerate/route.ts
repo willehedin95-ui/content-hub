@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No image generated" }, { status: 500 });
     }
 
-    return NextResponse.json({ image_url: await persistSwipeImage(result.urls[0]) });
+    return NextResponse.json({ image_url: await persistSwipeImage(result.urls[0], ratio) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[image-swiper/regenerate] Error:", msg);

@@ -143,6 +143,7 @@ Tables: `pages`, `translations`, `ab_tests`, `usage_logs`, `image_jobs`, `source
   - **Etiketten kopieras från produktfotot.** De gamla "no labels / unbranded"-reglerna gäller bara när produkten saknar hero-bild.
   - **Hero-bilden får inte visa ett ansikte.** En referens med en person gör att modellen ritar den personen med konkurrentens produkt (13 av 21 fel i testet).
   - **Standardmodell:** GPT Image 2, i 1K. Modellväljaren i UI:t gäller både generering och Retry.
+  - **Format** väljs i UI:t (standard 4:5, "Original" = konkurrentbildens mätta format). GPT Image 2.5 och Grok saknar 4:5 och får närmaste format av `kie.ts`; `persistSwipeImage` beskär då resultatet till valt format (sharp attention). Retry kan byta format utan ny analys.
   - **Resultatet kopieras till vår lagring** (`swipe-results/`) som JPEG via `src/lib/swipe-image-store.ts`, eftersom Kies filserver ibland tar minuter på en 2 MB-fil.
   - **Produktspecifika regler** läggs i `getSwipeProductNote` (`src/lib/product-appearance.ts`), formulerade villkorat, t.ex. vätskans färg bara om scenen har en dryck.
   - **En route-fil får inte exportera annat än route-handlers och config.** `next build` fäller den (tsc gör det inte). Exportera testhjälpare från `src/lib/` i stället.

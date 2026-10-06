@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
     forms: requestedForms,
     person,
     reference_ids: referenceIds,
+    aspect_ratio: requestedRatio,
   } = body as {
     image_url?: string;
     product?: string;
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest) {
     forms?: string[];
     person?: PersonOverride;
     reference_ids?: string[];
+    /** A ratio from VALID_RATIOS, or "original" / missing = same as the competitor image. */
+    aspect_ratio?: string;
   };
   const personDescription = describePersonOverride(person);
   const forms = (Array.isArray(requestedForms) ? requestedForms : []).filter(
@@ -133,8 +136,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Detect actual source image dimensions (runs in parallel with Claude call)
-  const aspectRatioPromise = detectAspectRatio(image_url);
+  // Output format: the one picked in the UI, else the competitor image's own
+  // (measured in parallel with the Claude call).
+  const pickedRatio = (VALID_RATIOS as readonly string[]).includes(requestedRatio ?? "") ? requestedRatio! : null;
+  const aspectRatioPromise = pickedRatio ? Promise.resolve(pickedRatio) : detectAspectRatio(image_url);
 
   // Build Claude system prompt (product-agnostic — extraction only)
   const systemPrompt = buildImageSwiperSystemPrompt();
@@ -227,7 +232,8 @@ export async function POST(req: NextRequest) {
 
       const hasProductRef = !!product && productHeroUrls.length > 0;
       const isReplica = mode === "replica";
-      const nanaBananaPrompt = buildSwipePrompt({ extraction, product, hasProductRef, forms, mode, notes, hasShotRef });
+      const outputRatio = await aspectRatioPromise;
+      const nanaBananaPrompt = buildSwipePrompt({ extraction, product, hasProductRef, forms, mode, notes, hasShotRef, aspectRatio: outputRatio });
 
       // Log Claude usage
       const inputTokens = response.usage.input_tokens;
@@ -263,9 +269,6 @@ export async function POST(req: NextRequest) {
         message: "Generating adapted image...",
       });
 
-      // Use programmatically measured aspect ratio (not Claude's guess)
-      const detectedRatio = await aspectRatioPromise;
-
       // Only Replica sends the original photo (it is a copy-with-changes mode).
       // Standard/UGC get the JSON description + our product photo, so the
       // result is a new image in that style, not a copy.
@@ -274,14 +277,14 @@ export async function POST(req: NextRequest) {
       const imageTaskId = await createImageTask(
         nanaBananaPrompt,
         referenceImages,
-        detectedRatio,
+        outputRatio,
         // 1K: Instagram shows at most 1080 px wide, 2K only costs more.
         "1K",
         imageModel,
         // JPEG: a 2K PNG from Kie is ~6.6 MB and draws row by row for seconds.
         "jpg"
       );
-      currentTask = { id: imageTaskId, model: imageModel, ratio: detectedRatio, prompt: nanaBananaPrompt };
+      currentTask = { id: imageTaskId, model: imageModel, ratio: outputRatio, prompt: nanaBananaPrompt };
 
       // Log the Kie task IMMEDIATELY (same as the Retry route): the image is
       // paid for once the task exists, and a task that never finishes must
@@ -294,7 +297,7 @@ export async function POST(req: NextRequest) {
         metadata: {
           product: productSlug,
           task_id: imageTaskId,
-          aspect_ratio: detectedRatio,
+          aspect_ratio: outputRatio,
           has_product_ref: productHeroUrls.length > 0,
         },
       });
@@ -309,14 +312,14 @@ export async function POST(req: NextRequest) {
       }
 
       await emit({ step: "generating", message: "Saving image..." });
-      const storedUrl = await persistSwipeImage(result.urls[0]);
+      const storedUrl = await persistSwipeImage(result.urls[0], outputRatio);
 
       await emit({
         step: "completed",
         message: "Image generated",
         image_url: storedUrl,
         prompt_used: nanaBananaPrompt,
-        aspect_ratio: detectedRatio,
+        aspect_ratio: outputRatio,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

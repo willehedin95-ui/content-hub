@@ -32,6 +32,16 @@ const SWIPE_FORM_OPTIONS: { id: SwipeForm; label: string; hint: string }[] = [
   { id: "shot", label: "Shotglas", hint: "Ett litet shotglas med outspätt kollagen" },
   { id: "glass", label: "Glas", hint: "Ett vanligt glas med kollagen utblandat i vatten" },
 ];
+// Output format. "original" = same ratio as the competitor image (measured
+// server-side). Models without the picked ratio get the nearest one and the
+// result is cropped to the pick (swipe-image-store.ts).
+const SWIPE_FORMATS = [
+  { id: "4:5", hint: "Instagram-flöde" },
+  { id: "1:1", hint: "Kvadrat" },
+  { id: "9:16", hint: "Story och Reels" },
+  { id: "16:9", hint: "Liggande" },
+  { id: "original", hint: "Samma format som konkurrentbilden" },
+];
 import { ASSET_CATEGORIES, type Product, type Asset, type AssetCategory } from "@/types";
 import { useProducts } from "@/hooks/useProducts";
 
@@ -100,7 +110,9 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [promptUsed, setPromptUsed] = useState<string | null>(null);
-  const [measuredRatio, setMeasuredRatio] = useState<string>("4:5");
+  const [format, setFormat] = useState("4:5");
+  // Ratio of the shown result; Retry uses it and can change it.
+  const [resultRatio, setResultRatio] = useState<string>("4:5");
   const [resolvedCompetitorUrl, setResolvedCompetitorUrl] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   // Which Kie model is running and since when - shown as "GPT Image 2 · 2:14".
@@ -249,6 +261,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
           person,
           reference_ids: refIds,
           model: imageModel,
+          aspect_ratio: format,
         }),
         signal: controller.signal,
       });
@@ -296,7 +309,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             completed = true;
             setGeneratedImageUrl(event.image_url);
             setPromptUsed(event.prompt_used || null);
-            if (event.aspect_ratio) setMeasuredRatio(event.aspect_ratio);
+            if (event.aspect_ratio) setResultRatio(event.aspect_ratio);
             setPhase("done");
             playDoneSound();
           }
@@ -315,7 +328,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setGenInfo(null);
     }
-  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms, person, refIds]);
+  }, [competitorImageUrl, competitorImageFile, product, notes, mode, imageModel, forms, person, refIds, format]);
 
   // Kie timed out: generate the image again from the finished prompt with the
   // fastest model, without redoing Claude's analysis.
@@ -345,7 +358,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
       if (!res.ok || !json.image_url) throw new Error(json.error || `API error: ${res.status}`);
       setGeneratedImageUrl(json.image_url);
       setPromptUsed(timeoutRetry.prompt);
-      setMeasuredRatio(timeoutRetry.ratio);
+      setResultRatio(timeoutRetry.ratio);
       setTimeoutRetry(null);
       setPhase("done");
       playDoneSound();
@@ -470,20 +483,20 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setError(null);
     setSaved(false);
 
-    // Use the programmatically measured ratio from the initial generation
-    const retryRatio = measuredRatio;
+    const retryRatio = resultRatio;
 
-    // If edit instructions provided, inject them into the prompt JSON
+    // Inject edit instructions and the (possibly changed) format into the
+    // prompt JSON. Replica prompts are plain text and go as-is.
     let finalPrompt = promptUsed;
-    if (editInstructions.trim()) {
-      try {
-        const parsed = JSON.parse(promptUsed);
+    try {
+      const parsed = JSON.parse(promptUsed);
+      if (editInstructions.trim()) {
         parsed.instruction = (parsed.instruction || "") + ` EDIT INSTRUCTIONS: ${editInstructions.trim()}`;
-        finalPrompt = JSON.stringify(parsed);
-      } catch {
-        // Fallback — append as-is
-        finalPrompt = promptUsed;
       }
+      if (parsed.composition) parsed.composition.aspect_ratio = retryRatio;
+      finalPrompt = JSON.stringify(parsed);
+    } catch {
+      finalPrompt = promptUsed;
     }
 
     try {
@@ -516,7 +529,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     } finally {
       setRetrying(false);
     }
-  }, [promptUsed, product, editInstructions, measuredRatio, mode, resolvedCompetitorUrl, imageModel, refIds, forms]);
+  }, [promptUsed, product, editInstructions, resultRatio, mode, resolvedCompetitorUrl, imageModel, refIds, forms]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -537,7 +550,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
     setSaved(false);
     setEditInstructions("");
     setShowSaveModal(false);
-    setMeasuredRatio("4:5");
+    setResultRatio("4:5");
   }, [competitorImageUrl, competitorImageFile]);
 
   return (
@@ -641,7 +654,7 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
             </>
           )}
 
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Product <span className="text-gray-400 font-normal">(optional)</span>
@@ -736,6 +749,28 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
                 </div>
               </div>
             )}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Format
+              </label>
+              <div className="flex gap-2">
+                {SWIPE_FORMATS.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setFormat(f.id)}
+                    title={f.hint}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors",
+                      format === f.id
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                        : "bg-white border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    )}
+                  >
+                    {f.id === "original" ? "Original" : f.id}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Bildmodell
@@ -1031,6 +1066,17 @@ export default function ImageSwiper({ onAssetCreated }: Props) {
               >
                 {IMAGE_MODELS.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                value={resultRatio}
+                onChange={(e) => setResultRatio(e.target.value)}
+                disabled={retrying}
+                className="rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50"
+                title="Format för Retry"
+              >
+                {[...new Set([...SWIPE_FORMATS.filter((f) => f.id !== "original").map((f) => f.id), resultRatio])].map((r) => (
+                  <option key={r} value={r}>{r}</option>
                 ))}
               </select>
               <button

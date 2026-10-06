@@ -11,12 +11,27 @@ import { STORAGE_BUCKET } from "@/lib/constants";
 // failure - a slow image beats no image.
 const FETCH_TIMEOUT_MS = 280_000;
 
-export async function persistSwipeImage(kieUrl: string): Promise<string> {
+// GPT Image 2.5 and Grok have no 4:5, so kie.ts asks them for the nearest
+// ratio (3:4 / 2:3). Crop the result to the ratio that was picked, so "4:5"
+// always comes back as 4:5 whatever the model.
+async function cropToRatio(input: Buffer, ratio: string): Promise<Buffer> {
+  const [rw, rh] = ratio.split(":").map(Number);
+  const { width = 0, height = 0 } = await sharp(input).metadata();
+  if (!rw || !rh || !width || !height) return input;
+  const target = rw / rh;
+  if (Math.abs(width / height - target) / target < 0.01) return input;
+  const w = width / height > target ? Math.round(height * target) : width;
+  const h = width / height > target ? height : Math.round(width / target);
+  return sharp(input).resize({ width: w, height: h, fit: "cover", position: sharp.strategy.attention }).toBuffer();
+}
+
+export async function persistSwipeImage(kieUrl: string, ratio?: string): Promise<string> {
   try {
     const res = await fetch(kieUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`fetch ${res.status}`);
-    const input = Buffer.from(await res.arrayBuffer());
-    const jpeg = await sharp(input).rotate().jpeg({ quality: 88, mozjpeg: true }).toBuffer();
+    const rotated = await sharp(Buffer.from(await res.arrayBuffer())).rotate().toBuffer();
+    const input = ratio ? await cropToRatio(rotated, ratio) : rotated;
+    const jpeg = await sharp(input).jpeg({ quality: 88, mozjpeg: true }).toBuffer();
     const path = `swipe-results/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.jpg`;
     const db = createServerSupabase();
     const { error } = await db.storage.from(STORAGE_BUCKET).upload(path, jpeg, { contentType: "image/jpeg", upsert: false });

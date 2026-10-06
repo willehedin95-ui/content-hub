@@ -127,8 +127,10 @@ export function buildSwipePrompt(opts: {
   notes?: string;
   /** A photo of the product's own shot glass is among the references. */
   hasShotRef?: boolean;
+  /** Output format picked in the UI; replaces the competitor's ratio in the JSON. */
+  aspectRatio?: string;
 }): string {
-  const { extraction, product, hasProductRef, forms, mode, notes, hasShotRef = false } = opts;
+  const { extraction, product, hasProductRef, forms, mode, notes, hasShotRef = false, aspectRatio } = opts;
   // No choice = bottle, same as before the toggles existed.
   const showsBottle = forms.length === 0 || forms.includes("bottle");
   // Build Nano Banana JSON prompt: swap competitor product with target product
@@ -154,6 +156,9 @@ export function buildSwipePrompt(opts: {
   const compositionNote = product ? getSwipeProductNote(product) : "";
   const nanaBananaJson = swapCompetitorProduct(extraction, product, hasProductRef, forms, hasShotRef);
   nanaBananaJson.task = "generate_image";
+  // The JSON otherwise still says the competitor's ratio (e.g. 9:16) while
+  // the request asks for another one.
+  if (aspectRatio && nanaBananaJson.composition) nanaBananaJson.composition.aspect_ratio = aspectRatio;
 
   const isReplica = mode === "replica";
   const ethnicityNote = " CRITICAL: Any people in the generated image MUST exactly match the ethnicity, skin tone, hair color, hair texture, and approximate age described in the subjects. Do NOT change the person's appearance.";
