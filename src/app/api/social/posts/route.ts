@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
-import { DEFAULT_SLOTS, nextFreeSlots } from "@/lib/social-slots";
+import { nextFreeSlots, type SlotConfig } from "@/lib/social-slots";
 import { SOCIAL_KINDS } from "@/lib/social-kinds";
 import { storeFeedImage } from "@/lib/social-crop";
 import { arrangeQueue } from "@/lib/social-arrange-queue";
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     .gte("scheduled_at", new Date().toISOString()).neq("status", "failed");
   const taken = new Set((existing ?? []).map((p) => new Date(p.scheduled_at).getTime()));
   const { data: w } = await db.from("workspaces").select("settings").eq("id", ws).single();
-  const slots = (((w?.settings as Record<string, unknown> | null)?.social as Record<string, unknown> | undefined)?.slots as string[] | undefined) ?? DEFAULT_SLOTS;
+  const slots = ((((w?.settings as Record<string, unknown> | null)?.social ?? {}) as SlotConfig));
 
   const groups = carousel ? [urls] : urls.map((u) => [u]);
   const origGroups = carousel ? [originals] : originals.map((u) => [u]);

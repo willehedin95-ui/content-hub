@@ -50,8 +50,8 @@ Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#...", "#..."]} med 0-3 
     ? "Det är ett textinlägg (en bild med en lista eller ett citat). Plocka en eller två rader ur bilden och lägg till en egen tanke, eller ställ en fråga som får folk att svara i kommentarerna. Nämn inte produkten."
     : KIND_GUIDE[opts.kind];
   const user = `Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
-${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}De senaste bildtexterna (upprepa inte dessa):
-${opts.recent.slice(0, 8).map((c) => `- ${c.slice(0, 160).replace(/\n/g, " ")}`).join("\n") || "- (inga än)"}`;
+${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}Inledningar som redan är använda i flödet. Börja inte på samma sätt och bygg inte texten på samma argument som de tre senaste:
+${opts.recent.slice(0, 40).map((c) => `- ${c.replace(/(\s*#\S+)+\s*$/, "").split(/(?<=[.!?])\s|\n/)[0].slice(0, 140)}`).join("\n") || "- (inga än)"}`;
 
   const content: Anthropic.MessageParam["content"] = [
     ...opts.imageUrls.slice(0, 4).map((url) => ({ type: "image" as const, source: { type: "url" as const, url } })),
@@ -60,7 +60,7 @@ ${opts.recent.slice(0, 8).map((c) => `- ${c.slice(0, 160).replace(/\n/g, " ")}`)
   const res = await client.messages.create({ model: "claude-sonnet-5-5", max_tokens: 1500, system, messages: [{ role: "user", content }] });
   const tb = res.content.find((b) => b.type === "text");
   const raw = tb && tb.type === "text" ? tb.text.trim() : "";
-  const json = JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim().match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+  const json = parseLastJson(raw);
   // Language checks only: no dashes, sane length, 3-5 hashtags.
   const caption = String(json.caption ?? "").replace(/\s*[–—]\s*/g, ". ").replace(/\.\s*\./g, ".").trim();
   if (!caption) throw new Error(`Claude gav ingen bildtext (stop_reason: ${res.stop_reason})`);
@@ -68,4 +68,23 @@ ${opts.recent.slice(0, 8).map((c) => `- ${c.slice(0, 160).replace(/\n/g, " ")}`)
     .map((h: unknown) => String(h).trim().replace(/^#?/, "#").replace(/\s+/g, ""))
     .filter((h: string) => h.length > 2).slice(0, 3);
   return { caption: caption.slice(0, 2000), hashtags };
+}
+
+/**
+ * The model sometimes answers with a JSON object, second thoughts and a
+ * corrected object. Take the LAST balanced {...} that parses and has a caption
+ * (a greedy /\{.*\}/ swallowed both and threw, 2026-10-06).
+ */
+export function parseLastJson(raw: string): { caption?: unknown; hashtags?: unknown } {
+  const objs: string[] = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") { if (depth === 0) start = i; depth++; }
+    else if (ch === "}" && depth > 0 && --depth === 0) objs.push(raw.slice(start, i + 1));
+  }
+  for (const o of objs.reverse()) { try { const j = JSON.parse(o); if (j && j.caption) return j; } catch { /* next */ } }
+  return {};
 }

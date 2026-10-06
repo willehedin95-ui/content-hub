@@ -1,5 +1,5 @@
 // Posting slots for organic social, in Swedish time. William's call 2026-10-01:
-// 07:30 and 18:30 while posting twice a day; tune later from results.
+// 07:30 and 18:30 while posting twice a day; tune later from results. See SlotConfig below.
 export const DEFAULT_SLOTS = ["07:30", "18:30"];
 const TZ = "Europe/Stockholm";
 
@@ -18,13 +18,30 @@ export function stockholmYmd(date: Date): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-/** Next free slot after `from` that is not in `taken` (ISO strings). */
-export function nextFreeSlots(count: number, taken: Set<number>, slots = DEFAULT_SLOTS, from = new Date(Date.now() + 15 * 60_000)): Date[] {
+/**
+ * The posting schedule (workspaces.settings.social): `slots` per day, and from
+ * `single_from` (YYYY-MM-DD, Stockholm) one post a day, taking `single_slots`
+ * in turn day by day. William 2026-10-01/10-06: two a day for the first ten
+ * posts, then one a day. Alternating morning/evening keeps both times tested.
+ */
+export interface SlotConfig { slots?: string[]; single_from?: string; single_slots?: string[] }
+
+export function slotsForDay(ymd: string, cfg: SlotConfig | string[] = DEFAULT_SLOTS): string[] {
+  const c: SlotConfig = Array.isArray(cfg) ? { slots: cfg } : cfg;
+  const daily = c.slots?.length ? c.slots : DEFAULT_SLOTS;
+  if (!c.single_from || ymd < c.single_from) return daily;
+  const single = c.single_slots?.length ? c.single_slots : daily;
+  const days = Math.round((Date.parse(ymd) - Date.parse(c.single_from)) / 86_400_000);
+  return [single[days % single.length]];
+}
+
+/** Next free slots after `from` that are not in `taken` (epoch ms). */
+export function nextFreeSlots(count: number, taken: Set<number>, cfg: SlotConfig | string[] = DEFAULT_SLOTS, from = new Date(Date.now() + 15 * 60_000)): Date[] {
   const out: Date[] = [];
   const day = new Date(from);
-  for (let i = 0; i < 400 && out.length < count; i++) {
+  for (let i = 0; i < 800 && out.length < count; i++) {
     const ymd = stockholmYmd(new Date(day.getTime() + i * 86_400_000));
-    for (const s of slots) {
+    for (const s of slotsForDay(ymd, cfg)) {
       const t = stockholmToUtc(ymd, s);
       if (t > from && !taken.has(t.getTime())) { out.push(t); taken.add(t.getTime()); if (out.length === count) break; }
     }

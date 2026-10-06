@@ -10,7 +10,8 @@ export async function fillMissingCaptions(db: SupabaseClient, ws: string): Promi
   const { data: w } = await db.from("workspaces").select("settings").eq("id", ws).single();
   const brief = String((((w?.settings as Record<string, unknown>)?.social ?? {}) as Record<string, unknown>).brand_brief ?? "");
   const { data: posts } = await db.from("social_posts").select("*").eq("workspace_id", ws).eq("status", "draft").eq("caption", "").order("scheduled_at");
-  const { data: written } = await db.from("social_posts").select("caption").eq("workspace_id", ws).neq("caption", "").order("scheduled_at", { ascending: false }).limit(8);
+  // Every caption already in the feed or the queue, so a new one does not reuse an opening (it only saw 8 before).
+  const { data: written } = await db.from("social_posts").select("caption").eq("workspace_id", ws).neq("caption", "").neq("status", "failed").order("scheduled_at", { ascending: false }).limit(40);
   const recent = (written ?? []).map((x) => x.caption);
   let done = 0; const errors: string[] = [];
   for (const p of posts ?? []) {
