@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Check, Undo2, Trash2, Loader2, AlertCircle, CalendarDays, Sparkles, Shuffle, LayoutGrid, List, GripVertical } from "lucide-react";
+import { Upload, Check, Undo2, Trash2, Loader2, AlertCircle, CalendarDays, Sparkles, Shuffle, LayoutGrid, List, GripVertical, Images } from "lucide-react";
 import { SOCIAL_KINDS, type SocialKind } from "@/lib/social-kinds";
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -9,6 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { shrinkForUpload } from "@/lib/shrink-for-upload";
 import { stockholmToUtc } from "@/lib/social-slots";
+import AssetPicker from "@/components/social/AssetPicker";
 
 interface Post {
   id: string;
@@ -49,6 +50,7 @@ export default function SocialQueue() {
   const [asCarousel, setAsCarousel] = useState(false);
   const [uploadKind, setUploadKind] = useState<SocialKind>("product");
   const [view, setView] = useState<"list" | "grid">("list");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -100,6 +102,14 @@ export default function SocialQueue() {
       setBusy(null);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }, [asCarousel, uploadKind, load]);
+
+  // Assets already live in our storage: their URLs go straight into the queue.
+  const addFromAssets = useCallback(async (urls: string[]) => {
+    const res = await fetch("/api/social/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls, carousel: asCarousel && urls.length > 1, kind: uploadKind }) });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Kunde inte lägga i kön");
+    await load();
   }, [asCarousel, uploadKind, load]);
 
   const writeCaption = useCallback(async (id: string, hint?: string) => {
@@ -197,10 +207,13 @@ export default function SocialQueue() {
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700"><AlertCircle className="w-4 h-4" />{error}</div>
       )}
 
+      <AssetPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onAdd={addFromAssets}
+        kind={uploadKind} setKind={setUploadKind} asCarousel={asCarousel} setAsCarousel={setAsCarousel} />
+
       <div className="bg-white rounded-lg border border-dashed border-gray-300 p-5 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <p className="text-sm font-medium text-gray-800">Lägg till bilder</p>
-          <p className="text-xs text-gray-500">Hamnar som utkast på nästa lediga tider. Varje bild blir ett eget inlägg, eller en karusell om du kryssar i rutan.</p>
+          <p className="text-xs text-gray-500">Ladda upp från datorn eller välj direkt ur Assets. Kön ordnas och får bildtexter automatiskt. Varje bild blir ett eget inlägg, eller en karusell om du kryssar i rutan.</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <select value={uploadKind} onChange={(e) => setUploadKind(e.target.value as SocialKind)} className="text-sm border border-gray-200 rounded-lg px-2 py-2 bg-white text-gray-700" title="Typ av inlägg">
@@ -210,6 +223,9 @@ export default function SocialQueue() {
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => upload(e.target.files)} />
           <button onClick={() => fileRef.current?.click()} disabled={busy === "upload"} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2">
             {busy === "upload" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}Välj bilder
+          </button>
+          <button onClick={() => setPickerOpen(true)} className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-medium hover:bg-indigo-50 flex items-center gap-2">
+            <Images className="w-4 h-4" />Välj från Assets
           </button>
         </div>
       </div>
