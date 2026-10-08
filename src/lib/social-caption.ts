@@ -15,7 +15,7 @@ const KIND_GUIDE: Record<SocialKind, string> = {
 export interface CaptionResult { caption: string; hashtags: string[] }
 
 /** Write a Swedish caption for one post from its image(s), its kind and the brand brief. */
-export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel" }): Promise<CaptionResult> {
+export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel"; scheduledAt?: string }): Promise<CaptionResult> {
   const client = new Anthropic();
   // Rules from the vault corpus (instagram-carousels-captions-stories, envana-karuseller-sa-designar-man-dem)
   // and from 2 675 captions of 20 reference brands measured 2026-10-06: brands write as "vi" to "du"
@@ -59,7 +59,10 @@ Svara ENDAST med JSON: {"detalj": "den konkreta saken i bilden du valde", "capti
   // The brief's arguments, so the last few posts' arguments can be blocked (3 of 8 samples reused "smakar bär").
   const ARGS: [string, RegExp][] = [["smaken (bär, inte fisk, sockerfri)", /bär|fisk|sockerfri/i], ["dosen (12 500 mg)", /12\s?500|dos/i], ["peptider/upptag", /peptid|dalton|tas upp/i], ["13 ingredienser", /13 (aktiva )?ingredienser|hyaluron|elastin/i], ["tillverkning (Sverige, tungmetaller, ASC)", /tungmetall|asc|tillverkad i sverige/i], ["garantin", /garanti|pengarna tillbaka/i], ["tidslinjen (vecka för vecka)", /vecka \d/i], ["kollagenförlust med åldern", /procent|efter 25|klimakteriet tar/i], ["flytande i stället för kapslar/pulver", /kapsl|pulver|flytande/i]];
   const usedArgs = ARGS.filter(([, re]) => opts.recent.slice(0, 6).some((c) => re.test(c))).map(([n]) => n);
-  const user = `${usedArgs.length ? `Argument som redan används i de senaste inläggen, använd INTE dessa nu: ${usedArgs.join("; ")}.\n` : ""}Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
+  // The model invented weekdays ("Söndagen..." on a Thursday post, 2026-10-08): tell it the real one.
+  const when = opts.scheduledAt ? new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Stockholm", weekday: "long" }).format(new Date(opts.scheduledAt)) : null;
+  const dayNote = when ? `Inlägget publiceras en ${when}. Nämner du en veckodag måste det vara ${when}, annars ingen veckodag alls.\n` : "Nämn ingen veckodag.\n";
+  const user = `${dayNote}${usedArgs.length ? `Argument som redan används i de senaste inläggen, använd INTE dessa nu: ${usedArgs.join("; ")}.\n` : ""}Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
 ${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}Inledningar som redan är använda i flödet. Börja inte på samma sätt och bygg inte texten på samma argument som de tre senaste:
 ${opts.recent.slice(0, 40).map((c) => `- ${c.replace(/(\s*#\S+)+\s*$/, "").split(/(?<=[.!?])\s|\n/)[0].slice(0, 140)}`).join("\n") || "- (inga än)"}`;
 

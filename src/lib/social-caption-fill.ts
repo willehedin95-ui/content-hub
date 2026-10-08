@@ -16,7 +16,7 @@ export async function fillMissingCaptions(db: SupabaseClient, ws: string): Promi
   let done = 0; const errors: string[] = [];
   for (const p of posts ?? []) {
     try {
-      const r = await writeCaption({ imageUrls: p.media_urls, kind: p.kind as SocialKind, brief, recent, format: p.format });
+      const r = await writeCaption({ imageUrls: p.media_urls, kind: p.kind as SocialKind, brief, recent, format: p.format, scheduledAt: p.scheduled_at });
       const caption = r.hashtags.length ? `${r.caption}\n\n${r.hashtags.join(" ")}` : r.caption;
       // Only fill if still empty - William may have typed one meanwhile.
       await db.from("social_posts").update({ caption, updated_at: new Date().toISOString() }).eq("id", p.id).eq("caption", "");
