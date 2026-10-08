@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-admin";
 import { getWorkspaceId } from "@/lib/workspace";
 import { writeCaption, type SocialKind } from "@/lib/social-caption";
+import { loadCaptionContext, neighbours, sampleExamples } from "@/lib/social-caption-fill";
 
 export const maxDuration = 120;
 
@@ -14,11 +15,10 @@ export async function POST(req: NextRequest) {
   const { data: post } = await db.from("social_posts").select("*").eq("id", id).eq("workspace_id", ws).single();
   if (!post) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (post.status === "publishing" || post.status === "posted") return NextResponse.json({ error: "inlägget är redan publicerat" }, { status: 409 });
-  const { data: w } = await db.from("workspaces").select("settings").eq("id", ws).single();
-  const brief = String((((w?.settings as Record<string, unknown>)?.social ?? {}) as Record<string, unknown>).brand_brief ?? "");
-  const { data: recent } = await db.from("social_posts").select("caption").eq("workspace_id", ws).neq("id", id).neq("caption", "").order("scheduled_at", { ascending: false }).limit(8);
+  const ctx = await loadCaptionContext(db, ws);
   try {
-    const r = await writeCaption({ imageUrls: post.media_urls, kind: post.kind as SocialKind, brief, recent: (recent ?? []).map((x) => x.caption), hint, format: post.format, scheduledAt: post.scheduled_at });
+    // Neighbours in the feed, not the 8 latest-scheduled posts (those were weeks away from this one).
+    const r = await writeCaption({ imageUrls: post.media_urls, kind: post.kind as SocialKind, brief: ctx.brief, recent: neighbours(ctx.rows, post.scheduled_at, post.id), examples: sampleExamples(ctx.approved), hint, format: post.format, scheduledAt: post.scheduled_at });
     const caption = r.hashtags.length ? `${r.caption}\n\n${r.hashtags.join(" ")}` : r.caption;
     const { data, error } = await db.from("social_posts").update({ caption, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
     if (error) throw new Error(error.message);

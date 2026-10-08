@@ -1,75 +1,81 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { SOCIAL_KINDS, type SocialKind } from "@/lib/social-kinds";
+import { pickTopic, clashes, type Topic } from "@/lib/social-caption-topics";
 export { SOCIAL_KINDS, type SocialKind };
 
 const KIND_GUIDE: Record<SocialKind, string> = {
   product: "Produktbild.",
-  person: "Bild på en kvinna med produkten.",
+  person: "Bild på en kvinna med produkten. Modellerna är ofta yngre än 50: skriv aldrig om hennes ålder och beskriv henne inte.",
   knowledge: "Kunskapskarusell. Första raden ska väcka nyfikenhet på det karusellen lovar, utan att upprepa omslagets rubrik. Avsluta med en uppmaning att spara inlägget eller skicka det till någon. Nämn inte produkten.",
   humor: "Humorinlägg. En rad, högst två. Förklara aldrig skämtet.",
   question: "En fråga till följarna. Upprepa frågan kort.",
   other: "Skriv en kort bildtext.",
 };
 
-/** Angles a single-image caption can take. Rotated so neighbours never sound alike (2026-10-08). */
-const ANGLES = [
-  "ETT argument ur faktan, sagt kort och rakt.",
-  "En kort rad om hur det är att vara kvinna efter 50, varm och lite kaxig. Ingen produktfakta.",
-  "En kort tanke eller påminnelse till läsaren, som 'påminnelsen vi alla behövde idag'. Ingen produktfakta.",
-  "En kort etikett på stunden eller känslan i bilden, en rad. Ingen produktfakta.",
-  "Ett kort, konkret tips för hud, hår eller vardag som inte handlar om produkten.",
-];
-
 export interface CaptionResult { caption: string; hashtags: string[] }
 
 /** Write a Swedish caption for one post from its image(s), its kind and the brand brief. */
-export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel"; scheduledAt?: string; angleIndex?: number }): Promise<CaptionResult> {
-  const client = new Anthropic();
-  // Rules from the vault corpus and 2 675 captions of 20 reference brands (2026-10-06): brand voice
-  // ("vi" to "du", first person singular in 5.6 %), short, mostly generic. William 2026-10-08: generic is
-  // fine, the problem is the SAME thing in every post. Forcing every caption to describe its image
-  // ("detail first") read as forced. So: short and generic, angles rotated, arguments and phrases rationed.
-  const system = `Du skriver bildtexter till Instagram och Facebook för varumärket Envana.
+/**
+ * One caption. `recent` = captions of the posts around this one in the feed
+ * (before and after), `examples` = captions William approved, used for tone.
+ * The topic is picked in code (social-caption-topics.ts) and a caption that
+ * drifts onto a neighbour's topic is rewritten, up to three tries.
+ */
+export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel"; scheduledAt?: string; examples?: string[] }): Promise<CaptionResult> {
+  const single = opts.kind === "product" || opts.kind === "person";
+  const tried = new Set<string>();
+  let last: CaptionResult | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const topic = single ? pickTopic(opts.kind, opts.recent, tried) : null;
+    if (topic) tried.add(topic.key);
+    const r = await writeOnce(opts, topic);
+    // "Länk i bio" in every other caption (2026-10-08 simulation): keep it only if none of the 3 posts before has it.
+    const before = opts.recent.slice(0, 3);
+    if (before.some((c) => /länk i bio/i.test(c))) r.caption = r.caption.replace(/\s*Länk i bio\.?/gi, "").trim();
+    last = r;
+    if (!topic || clashes(r.caption, topic.key, opts.recent).length === 0) return r;
+  }
+  return last!;
+}
 
-Fakta du FÅR använda (inte måste):
+async function writeOnce(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel"; scheduledAt?: string; examples?: string[] }, topic: Topic | null): Promise<CaptionResult> {
+  const client = new Anthropic();
+  // Voice from the vault corpus and 20 reference brands (vi/du, short, generic is fine). What to write
+  // about is decided in code (topic), the tone comes from captions William approved (2026-10-08).
+  const examples = (opts.examples ?? []).slice(0, 10);
+  const system = `Du skriver bildtexter till Instagram och Facebook för varumärket Envana, flytande marint kollagen för svenska kvinnor.
+
+${examples.length ? `Så här låter våra texter. Det här är texter vi har godkänt. Härma TONEN och LÄNGDEN, inte innehållet:
+${examples.map((e) => `- ${e.replace(/(\s*#\S+)+\s*$/, "").replace(/\n+/g, " ")}`).join("\n")}
+
+` : ""}Bakgrund om produkten (använd bara det som hör till ämnet du får):
 ${opts.brief}
 
-Röst:
-- Varumärket talar. Skriv "vi" om Envana och "du" till läsaren. ALDRIG jag-form (jag, min, mitt, mig).
-- Varmt, rakt och lite kaxigt. Korta meningar. Ingen vetenskaplig ton, inga förbehåll.
-- Texten behöver INTE handla om bilden. Beskriv inte bilden. En generell rad är helt okej.
+Regler:
+- Varumärket talar. Skriv "vi" om Envana och "du" till läsaren. ALDRIG jag-form.
+- Kort: en eller två meningar, under 25 ord. Generiskt är okej. Beskriv inte bilden.
+- Skriv om ÄMNET du får, inget annat. Lägg inte till andra produktargument.
+- Skriv aldrig om kvinnans ålder i bilden. "Efter 50" bara om ämnet uttryckligen handlar om att bli äldre.
+- Uttjatat, får inte användas: "tio sekunder", "det vackraste du kan bära", "inte magi, det är biologi", "bara för din skull".
+- Svenska med å, ä och ö. Inga engelska ord. Inga tankstreck (– eller —). Högst en emoji, gärna ingen.
+- "Länk i bio" högst ibland, bara på produktbilder. Aldrig "kommentera JA" eller "vad tycker du?".
+- Hitta inte på siffror.
 
-Form:
-- KORT. En eller två meningar, under 25 ord (hashtags oräknade). En enda rad är ofta bäst.
-- Utslitna fraser som INTE får användas: "tio sekunder", "det vackraste du/en kvinna kan bära", "inte magi, det är biologi", "aldrig funkat ... dosen", "bara för din skull", "något för dig själv".
-- Uppmaning bara ibland. Karusell: "Spara till ..." eller "Skicka till en vän som ...". Aldrig "vad tycker du?" eller "kommentera JA".
-- "Länk i bio" högst ibland, bara på produktbilder.
-- Svenska med å, ä och ö. Inga engelska ord. Inga tankstreck (– eller —), använd punkt eller komma.
-- Högst en emoji, gärna ingen.
-- Hitta inte på siffror som inte står i faktan.
-- Upprepa inte inledningar eller formuleringar från de senaste bildtexterna.
-
-Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#..."]} med 0-3 svenska sökords-hashtags (till exempel #kollagen, #marintkollagen).`;
+Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#..."]} med 0-3 svenska sökords-hashtags.`;
   // A single image never says "svep" - that made the captions of one-image
   // text posts promise slides that do not exist (2026-10-05).
   const formatNote = opts.format === "carousel"
     ? "Inlägget är en karusell med flera bilder."
     : "Inlägget är EN enda bild, ingen karusell. Skriv aldrig svep, nästa bild eller liknande. Hänvisa inte till fler bilder.";
-  // Batches pass their position so neighbours get different angles; a single "Ny bildtext" gets a random one.
-  const angle = ANGLES[(opts.angleIndex ?? Math.floor(Math.random() * ANGLES.length)) % ANGLES.length];
   const guide = opts.kind === "knowledge" && opts.format !== "carousel"
-    ? "Det är ett textinlägg (en bild med en lista eller ett citat). Plocka en eller två rader ur bilden och lägg till en egen tanke, eller ställ en fråga som får folk att svara i kommentarerna. Nämn inte produkten."
-    : opts.kind === "product" || opts.kind === "person" ? `${KIND_GUIDE[opts.kind]} Vinkel för den här texten: ${angle}` : KIND_GUIDE[opts.kind];
-  // The brief's arguments, so the last few posts' arguments can be blocked (3 of 8 samples reused "smakar bär").
-  const ARGS: [string, RegExp][] = [["smaken (bär, inte fisk, sockerfri)", /bär|fisk|sockerfri/i], ["dosen (12 500 mg)", /12\s?500|dos/i], ["peptider/upptag", /peptid|dalton|tas upp/i], ["13 ingredienser", /13 (aktiva )?ingredienser|hyaluron|elastin/i], ["tillverkning (Sverige, tungmetaller, ASC)", /tungmetall|asc|tillverkad i sverige/i], ["garantin", /garanti|pengarna tillbaka/i], ["tidslinjen (vecka för vecka)", /vecka \d/i], ["kollagenförlust med åldern", /procent|efter 25|klimakteriet tar/i], ["flytande i stället för kapslar/pulver", /kapsl|pulver|flytande/i]];
-  const usedArgs = ARGS.filter(([, re]) => opts.recent.slice(0, 6).some((c) => re.test(c))).map(([n]) => n);
-  // The model invented weekdays ("Söndagen..." on a Thursday post, 2026-10-08): tell it the real one.
+    ? "Det är ett textinlägg (en bild med en lista eller ett citat). Plocka en rad ur bilden och lägg till en egen kort tanke. Nämn inte produkten."
+    : KIND_GUIDE[opts.kind];
+  // The model invented weekdays ("Söndagen..." on a Thursday post, 2026-10-08).
   const when = opts.scheduledAt ? new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Stockholm", weekday: "long" }).format(new Date(opts.scheduledAt)) : null;
-  const dayNote = when ? `Nämn helst ingen veckodag. Om det verkligen behövs: inlägget publiceras en ${when}.\n` : "Nämn ingen veckodag.\n";
-  const user = `${dayNote}${usedArgs.length ? `Argument som redan används i de senaste inläggen, använd INTE dessa nu: ${usedArgs.join("; ")}.\n` : ""}Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
-${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}Inledningar som redan är använda i flödet. Börja inte på samma sätt och bygg inte texten på samma argument som de tre senaste:
-${opts.recent.slice(0, 40).map((c) => `- ${c.replace(/(\s*#\S+)+\s*$/, "").split(/(?<=[.!?])\s|\n/)[0].slice(0, 140)}`).join("\n") || "- (inga än)"}`;
+  const user = `Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
+${topic ? `ÄMNE för den här texten: ${topic.brief}\n` : ""}${when ? `Nämn helst ingen veckodag. Om det behövs: inlägget publiceras en ${when}.\n` : ""}${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}Inläggen runt det här i flödet. Säg inte samma sak, och börja inte likadant:
+${opts.recent.slice(0, 12).map((c) => `- ${c.replace(/(\s*#\S+)+\s*$/, "").replace(/\n+/g, " ").slice(0, 160)}`).join("\n") || "- (inga än)"}`;
 
   const content: Anthropic.MessageParam["content"] = [
     ...opts.imageUrls.slice(0, 4).map((url) => ({ type: "image" as const, source: { type: "url" as const, url } })),
