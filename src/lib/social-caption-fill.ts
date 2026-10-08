@@ -14,9 +14,11 @@ export async function fillMissingCaptions(db: SupabaseClient, ws: string): Promi
   const { data: written } = await db.from("social_posts").select("caption").eq("workspace_id", ws).neq("caption", "").neq("status", "failed").order("scheduled_at", { ascending: false }).limit(40);
   const recent = (written ?? []).map((x) => x.caption);
   let done = 0; const errors: string[] = [];
+  // Continue the angle rotation from the number of captions already in the feed.
+  let angleIndex = written?.length ?? 0;
   for (const p of posts ?? []) {
     try {
-      const r = await writeCaption({ imageUrls: p.media_urls, kind: p.kind as SocialKind, brief, recent, format: p.format, scheduledAt: p.scheduled_at });
+      const r = await writeCaption({ imageUrls: p.media_urls, kind: p.kind as SocialKind, brief, recent, format: p.format, scheduledAt: p.scheduled_at, angleIndex: angleIndex++ });
       const caption = r.hashtags.length ? `${r.caption}\n\n${r.hashtags.join(" ")}` : r.caption;
       // Only fill if still empty - William may have typed one meanwhile.
       await db.from("social_posts").update({ caption, updated_at: new Date().toISOString() }).eq("id", p.id).eq("caption", "");

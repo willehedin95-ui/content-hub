@@ -4,38 +4,41 @@ import { SOCIAL_KINDS, type SocialKind } from "@/lib/social-kinds";
 export { SOCIAL_KINDS, type SocialKind };
 
 const KIND_GUIDE: Record<SocialKind, string> = {
-  product: "Produktbild. Utgå från miljön eller stunden i bilden (var flaskan står, vad som händer runt den). Lägg gärna till ETT kort argument ur briefen, men bara om det hör ihop med bilden.",
-  person: "Bild på en kvinna med produkten. Utgå från stunden i bilden: var hon är, vad hon gör, vilken känsla eller tid på dagen det är. Produktfakta behövs inte, högst ett kort argument om det passar bilden.",
+  product: "Produktbild.",
+  person: "Bild på en kvinna med produkten.",
   knowledge: "Kunskapskarusell. Första raden ska väcka nyfikenhet på det karusellen lovar, utan att upprepa omslagets rubrik. Avsluta med en uppmaning att spara inlägget eller skicka det till någon. Nämn inte produkten.",
   humor: "Humorinlägg. En rad, högst två. Förklara aldrig skämtet.",
   question: "En fråga till följarna. Upprepa frågan kort.",
-  other: "Skriv en kort bildtext som utgår från bilden.",
+  other: "Skriv en kort bildtext.",
 };
+
+/** Angles a single-image caption can take. Rotated so neighbours never sound alike (2026-10-08). */
+const ANGLES = [
+  "ETT argument ur faktan, sagt kort och rakt.",
+  "En kort rad om hur det är att vara kvinna efter 50, varm och lite kaxig. Ingen produktfakta.",
+  "En kort tanke eller påminnelse till läsaren, som 'påminnelsen vi alla behövde idag'. Ingen produktfakta.",
+  "En kort etikett på stunden eller känslan i bilden, en rad. Ingen produktfakta.",
+  "Ett kort, konkret tips för hud, hår eller vardag som inte handlar om produkten.",
+];
 
 export interface CaptionResult { caption: string; hashtags: string[] }
 
 /** Write a Swedish caption for one post from its image(s), its kind and the brand brief. */
-export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel"; scheduledAt?: string }): Promise<CaptionResult> {
+export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind; brief: string; recent: string[]; hint?: string; format?: "image" | "carousel"; scheduledAt?: string; angleIndex?: number }): Promise<CaptionResult> {
   const client = new Anthropic();
-  // Rules from the vault corpus (instagram-carousels-captions-stories, envana-karuseller-sa-designar-man-dem)
-  // and from 2 675 captions of 20 reference brands measured 2026-10-06: brands write as "vi" to "du"
-  // (first person singular in 5.6 %), median 48 words, 62 % without hashtags, calls to action under 10 %.
-  // 2026-10-08: "never describe the image" made every caption the same brief boilerplate ("tio sekunder",
-  // "det vackraste du kan bära"). The reference brands anchor the caption in the moment of THAT image
-  // ("Spotted in July", "What a bank holiday should look like", "Current status: prioritising me").
+  // Rules from the vault corpus and 2 675 captions of 20 reference brands (2026-10-06): brand voice
+  // ("vi" to "du", first person singular in 5.6 %), short, mostly generic. William 2026-10-08: generic is
+  // fine, the problem is the SAME thing in every post. Forcing every caption to describe its image
+  // ("detail first") read as forced. So: short and generic, angles rotated, arguments and phrases rationed.
   const system = `Du skriver bildtexter till Instagram och Facebook för varumärket Envana.
 
 Fakta du FÅR använda (inte måste):
 ${opts.brief}
 
-Så gör du:
-1. Titta på bilden och välj EN konkret sak som bara finns i just den bilden: platsen (yogamatta, sjö, kök, säng, båt, gata), stunden eller tiden (morgon, solnedgång, söndag, efter träningen), det hon gör (häller upp, skålar, blåser en puss, blundar) eller en sak i bilden (kaffekoppen, solhatten, persikan).
-2. Bygg bildtexten på den saken. Gärna som en kort etikett på stunden, en lekfull rad eller en tanke som den stunden väcker hos läsaren. Texten ska INTE kunna stå under en annan bild.
-3. Produkten får nämnas med ETT kort argument, men bara om det hänger ihop med stunden. Hälften av texterna klarar sig utan produktfakta.
-
 Röst:
 - Varumärket talar. Skriv "vi" om Envana och "du" till läsaren. ALDRIG jag-form (jag, min, mitt, mig).
-- Varmt, lite kaxigt, med glimt i ögat. Korta meningar. Ingen vetenskaplig ton, inga förbehåll.
+- Varmt, rakt och lite kaxigt. Korta meningar. Ingen vetenskaplig ton, inga förbehåll.
+- Texten behöver INTE handla om bilden. Beskriv inte bilden. En generell rad är helt okej.
 
 Form:
 - KORT. En eller två meningar, under 25 ord (hashtags oräknade). En enda rad är ofta bäst.
@@ -47,21 +50,23 @@ Form:
 - Hitta inte på siffror som inte står i faktan.
 - Upprepa inte inledningar eller formuleringar från de senaste bildtexterna.
 
-Svara ENDAST med JSON: {"detalj": "den konkreta saken i bilden du valde", "caption": "...", "hashtags": ["#..."]} med 0-3 svenska sökords-hashtags (till exempel #kollagen, #marintkollagen).`;
+Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#..."]} med 0-3 svenska sökords-hashtags (till exempel #kollagen, #marintkollagen).`;
   // A single image never says "svep" - that made the captions of one-image
   // text posts promise slides that do not exist (2026-10-05).
   const formatNote = opts.format === "carousel"
     ? "Inlägget är en karusell med flera bilder."
     : "Inlägget är EN enda bild, ingen karusell. Skriv aldrig svep, nästa bild eller liknande. Hänvisa inte till fler bilder.";
+  // Batches pass their position so neighbours get different angles; a single "Ny bildtext" gets a random one.
+  const angle = ANGLES[(opts.angleIndex ?? Math.floor(Math.random() * ANGLES.length)) % ANGLES.length];
   const guide = opts.kind === "knowledge" && opts.format !== "carousel"
     ? "Det är ett textinlägg (en bild med en lista eller ett citat). Plocka en eller två rader ur bilden och lägg till en egen tanke, eller ställ en fråga som får folk att svara i kommentarerna. Nämn inte produkten."
-    : KIND_GUIDE[opts.kind];
+    : opts.kind === "product" || opts.kind === "person" ? `${KIND_GUIDE[opts.kind]} Vinkel för den här texten: ${angle}` : KIND_GUIDE[opts.kind];
   // The brief's arguments, so the last few posts' arguments can be blocked (3 of 8 samples reused "smakar bär").
   const ARGS: [string, RegExp][] = [["smaken (bär, inte fisk, sockerfri)", /bär|fisk|sockerfri/i], ["dosen (12 500 mg)", /12\s?500|dos/i], ["peptider/upptag", /peptid|dalton|tas upp/i], ["13 ingredienser", /13 (aktiva )?ingredienser|hyaluron|elastin/i], ["tillverkning (Sverige, tungmetaller, ASC)", /tungmetall|asc|tillverkad i sverige/i], ["garantin", /garanti|pengarna tillbaka/i], ["tidslinjen (vecka för vecka)", /vecka \d/i], ["kollagenförlust med åldern", /procent|efter 25|klimakteriet tar/i], ["flytande i stället för kapslar/pulver", /kapsl|pulver|flytande/i]];
   const usedArgs = ARGS.filter(([, re]) => opts.recent.slice(0, 6).some((c) => re.test(c))).map(([n]) => n);
   // The model invented weekdays ("Söndagen..." on a Thursday post, 2026-10-08): tell it the real one.
   const when = opts.scheduledAt ? new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Stockholm", weekday: "long" }).format(new Date(opts.scheduledAt)) : null;
-  const dayNote = when ? `Inlägget publiceras en ${when}. Nämner du en veckodag måste det vara ${when}, annars ingen veckodag alls.\n` : "Nämn ingen veckodag.\n";
+  const dayNote = when ? `Nämn helst ingen veckodag. Om det verkligen behövs: inlägget publiceras en ${when}.\n` : "Nämn ingen veckodag.\n";
   const user = `${dayNote}${usedArgs.length ? `Argument som redan används i de senaste inläggen, använd INTE dessa nu: ${usedArgs.join("; ")}.\n` : ""}Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
 ${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}Inledningar som redan är använda i flödet. Börja inte på samma sätt och bygg inte texten på samma argument som de tre senaste:
 ${opts.recent.slice(0, 40).map((c) => `- ${c.replace(/(\s*#\S+)+\s*$/, "").split(/(?<=[.!?])\s|\n/)[0].slice(0, 140)}`).join("\n") || "- (inga än)"}`;
