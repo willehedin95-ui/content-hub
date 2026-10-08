@@ -4,12 +4,12 @@ import { SOCIAL_KINDS, type SocialKind } from "@/lib/social-kinds";
 export { SOCIAL_KINDS, type SocialKind };
 
 const KIND_GUIDE: Record<SocialKind, string> = {
-  product: "Produktbild. Ta ETT argument från briefen och säg det kort och rakt. Ingen säljuppmaning, högst ibland en mjuk hänvisning till länken i bio.",
-  person: "Bild på en kvinna med produkten. Beskriv INTE bilden (inte 'hon ler', 'glaset i handen'). Säg något som betalar av känslan i bilden: en tanke, ett argument eller en igenkänning riktad till läsaren. Produkten får nämnas, men det är ingen reklam.",
+  product: "Produktbild. Utgå från miljön eller stunden i bilden (var flaskan står, vad som händer runt den). Lägg gärna till ETT kort argument ur briefen, men bara om det hör ihop med bilden.",
+  person: "Bild på en kvinna med produkten. Utgå från stunden i bilden: var hon är, vad hon gör, vilken känsla eller tid på dagen det är. Produktfakta behövs inte, högst ett kort argument om det passar bilden.",
   knowledge: "Kunskapskarusell. Första raden ska väcka nyfikenhet på det karusellen lovar, utan att upprepa omslagets rubrik. Avsluta med en uppmaning att spara inlägget eller skicka det till någon. Nämn inte produkten.",
   humor: "Humorinlägg. En rad, högst två. Förklara aldrig skämtet.",
   question: "En fråga till följarna. Upprepa frågan kort.",
-  other: "Skriv en kort bildtext som passar bilden.",
+  other: "Skriv en kort bildtext som utgår från bilden.",
 };
 
 export interface CaptionResult { caption: string; hashtags: string[] }
@@ -19,28 +19,35 @@ export async function writeCaption(opts: { imageUrls: string[]; kind: SocialKind
   const client = new Anthropic();
   // Rules from the vault corpus (instagram-carousels-captions-stories, envana-karuseller-sa-designar-man-dem)
   // and from 2 675 captions of 20 reference brands measured 2026-10-06: brands write as "vi" to "du"
-  // (first person singular in 5.6 %, mostly founder stories), median 48 words, 2 emoji, 62 % no hashtags,
-  // calls to action in under 10 %. The first first-person captions were rejected by William as worthless.
+  // (first person singular in 5.6 %), median 48 words, 62 % without hashtags, calls to action under 10 %.
+  // 2026-10-08: "never describe the image" made every caption the same brief boilerplate ("tio sekunder",
+  // "det vackraste du kan bära"). The reference brands anchor the caption in the moment of THAT image
+  // ("Spotted in July", "What a bank holiday should look like", "Current status: prioritising me").
   const system = `Du skriver bildtexter till Instagram och Facebook för varumärket Envana.
 
+Fakta du FÅR använda (inte måste):
 ${opts.brief}
 
+Så gör du:
+1. Titta på bilden och välj EN konkret sak som bara finns i just den bilden: platsen (yogamatta, sjö, kök, säng, båt, gata), stunden eller tiden (morgon, solnedgång, söndag, efter träningen), det hon gör (häller upp, skålar, blåser en puss, blundar) eller en sak i bilden (kaffekoppen, solhatten, persikan).
+2. Bygg bildtexten på den saken. Gärna som en kort etikett på stunden, en lekfull rad eller en tanke som den stunden väcker hos läsaren. Texten ska INTE kunna stå under en annan bild.
+3. Produkten får nämnas med ETT kort argument, men bara om det hänger ihop med stunden. Hälften av texterna klarar sig utan produktfakta.
+
 Röst:
-- Varumärket talar. Skriv "vi" om Envana och "du" till läsaren. ALDRIG jag-form (jag, min, mitt, mig). Inga påhittade personer som berättar.
-- Enkelt och rakt, varmt och lite kaxigt. Korta meningar. Ingen vetenskaplig ton, inga förbehåll.
+- Varumärket talar. Skriv "vi" om Envana och "du" till läsaren. ALDRIG jag-form (jag, min, mitt, mig).
+- Varmt, lite kaxigt, med glimt i ögat. Korta meningar. Ingen vetenskaplig ton, inga förbehåll.
 
 Form:
-- KORT. Helst en eller två meningar, högst tre korta rader och under 35 ord (hashtags oräknade).
-- Första raden bär texten: en krok som betalar av bilden i stället för att beskriva eller upprepa den, och gärna ett ord folk söker på (kollagen, hud, naglar, hår, klimakteriet, leder).
-- Beskriv aldrig vad som syns i bilden.
-- Uppmaning bara när den passar och aldrig samma varje gång. Karusell: "Spara till ..." eller "Skicka till en vän som ...". Fråga bara något specifikt som läsaren kan svara på om sig själv, aldrig "vad tycker du?" eller "kommentera JA".
-- "Länk i bio" bara på produktinlägg, och inte varje gång.
+- KORT. En eller två meningar, under 25 ord (hashtags oräknade). En enda rad är ofta bäst.
+- Utslitna fraser som INTE får användas: "tio sekunder", "det vackraste du/en kvinna kan bära", "inte magi, det är biologi", "aldrig funkat ... dosen", "bara för din skull", "något för dig själv".
+- Uppmaning bara ibland. Karusell: "Spara till ..." eller "Skicka till en vän som ...". Aldrig "vad tycker du?" eller "kommentera JA".
+- "Länk i bio" högst ibland, bara på produktbilder.
 - Svenska med å, ä och ö. Inga engelska ord. Inga tankstreck (– eller —), använd punkt eller komma.
-- Högst två emoji, gärna ingen.
-- Använd samma argument som i briefen när du nämner produkten. Hitta inte på nya siffror.
+- Högst en emoji, gärna ingen.
+- Hitta inte på siffror som inte står i faktan.
 - Upprepa inte inledningar eller formuleringar från de senaste bildtexterna.
 
-Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#...", "#..."]} med 0-3 svenska sökords-hashtags (till exempel #kollagen, #marintkollagen). Hashtags ger ingen räckvidd, bara sökbarhet.`;
+Svara ENDAST med JSON: {"detalj": "den konkreta saken i bilden du valde", "caption": "...", "hashtags": ["#..."]} med 0-3 svenska sökords-hashtags (till exempel #kollagen, #marintkollagen).`;
   // A single image never says "svep" - that made the captions of one-image
   // text posts promise slides that do not exist (2026-10-05).
   const formatNote = opts.format === "carousel"
@@ -49,7 +56,10 @@ Svara ENDAST med JSON: {"caption": "...", "hashtags": ["#...", "#..."]} med 0-3 
   const guide = opts.kind === "knowledge" && opts.format !== "carousel"
     ? "Det är ett textinlägg (en bild med en lista eller ett citat). Plocka en eller två rader ur bilden och lägg till en egen tanke, eller ställ en fråga som får folk att svara i kommentarerna. Nämn inte produkten."
     : KIND_GUIDE[opts.kind];
-  const user = `Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
+  // The brief's arguments, so the last few posts' arguments can be blocked (3 of 8 samples reused "smakar bär").
+  const ARGS: [string, RegExp][] = [["smaken (bär, inte fisk, sockerfri)", /bär|fisk|sockerfri/i], ["dosen (12 500 mg)", /12\s?500|dos/i], ["peptider/upptag", /peptid|dalton|tas upp/i], ["13 ingredienser", /13 (aktiva )?ingredienser|hyaluron|elastin/i], ["tillverkning (Sverige, tungmetaller, ASC)", /tungmetall|asc|tillverkad i sverige/i], ["garantin", /garanti|pengarna tillbaka/i], ["tidslinjen (vecka för vecka)", /vecka \d/i], ["kollagenförlust med åldern", /procent|efter 25|klimakteriet tar/i], ["flytande i stället för kapslar/pulver", /kapsl|pulver|flytande/i]];
+  const usedArgs = ARGS.filter(([, re]) => opts.recent.slice(0, 6).some((c) => re.test(c))).map(([n]) => n);
+  const user = `${usedArgs.length ? `Argument som redan används i de senaste inläggen, använd INTE dessa nu: ${usedArgs.join("; ")}.\n` : ""}Typ av inlägg: ${SOCIAL_KINDS[opts.kind]}. ${guide} ${formatNote}
 ${opts.hint ? `Önskemål: ${opts.hint}\n` : ""}Inledningar som redan är använda i flödet. Börja inte på samma sätt och bygg inte texten på samma argument som de tre senaste:
 ${opts.recent.slice(0, 40).map((c) => `- ${c.replace(/(\s*#\S+)+\s*$/, "").split(/(?<=[.!?])\s|\n/)[0].slice(0, 140)}`).join("\n") || "- (inga än)"}`;
 
